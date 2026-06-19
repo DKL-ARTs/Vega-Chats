@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
@@ -30,8 +29,4 @@ android {
 
 kotlin {
     jvmToolchain(17)
-}
-
-flutter {
-    source = "../.."
 }
