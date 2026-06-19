@@ -32,8 +32,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       
       await for (final chunk in resp.stream.transform(utf8.decoder)) {
-        for (final line in chunk.split('
-')) {
+        for (final line in chunk.split('\n')) {
           if (line.startsWith('data: ') && line != 'data: [DONE]') {
             final data = line.substring(6);
             buffer.write(data);
