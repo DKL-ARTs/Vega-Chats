@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 
@@ -31,7 +32,8 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       
       await for (final chunk in resp.stream.transform(utf8.decoder)) {
-        for (final line in chunk.split('\n')) {
+        for (final line in chunk.split('
+')) {
           if (line.startsWith('data: ') && line != 'data: [DONE]') {
             final data = line.substring(6);
             buffer.write(data);
@@ -59,11 +61,11 @@ class _ChatScreenState extends State<ChatScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.folder_outlined, color: VegaTheme.textSecondary),
-            onPressed: () => Navigator.pushNamed(context, '/ide'),
+            onPressed: () => context.push('/ide'),
           ),
           IconButton(
             icon: Icon(Icons.settings_outlined, color: VegaTheme.textSecondary),
-            onPressed: () => Navigator.pushNamed(context, '/settings'),
+            onPressed: () => context.push('/settings'),
           ),
         ],
       ),
@@ -108,10 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: VegaTheme.surface,
-              border: Border(top: BorderSide(color: VegaTheme.border)),
-            ),
+            color: VegaTheme.dark,
             child: Row(
               children: [
                 Expanded(
@@ -121,17 +120,19 @@ class _ChatScreenState extends State<ChatScreen> {
                     decoration: InputDecoration(
                       hintText: 'Message...',
                       hintStyle: TextStyle(color: VegaTheme.textSecondary),
+                      filled: true,
+                      fillColor: VegaTheme.surface,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide(color: VegaTheme.border),
+                        borderSide: BorderSide.none,
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide(color: VegaTheme.border),
+                        borderSide: BorderSide.none,
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide(color: VegaTheme.accent),
+                        borderSide: BorderSide.none,
                       ),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
