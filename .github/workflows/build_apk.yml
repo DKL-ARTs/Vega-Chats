@@ -34,3 +34,4 @@ jobs:
         with:
           name: vega-chat-debug
           path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          compression-level: 0
