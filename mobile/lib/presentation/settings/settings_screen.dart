@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
-import '../../core/api_client.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -21,6 +21,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'deepseek/deepseek-chat',
     'google/gemini-2.0-flash',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _apiKeyController.text = prefs.getString('api_key') ?? '';
+      _baseUrlController.text = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+      _selectedModel = prefs.getString('model') ?? 'openrouter/auto';
+    });
+  }
+
+  Future<void> _saveSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('api_key', _apiKeyController.text);
+    await prefs.setString('base_url', _baseUrlController.text);
+    await prefs.setString('model', _selectedModel);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
             ),
             obscureText: true,
+            onChanged: (_) => _saveSettings(),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -57,6 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
               focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
             ),
+            onChanged: (_) => _saveSettings(),
           ),
           const SizedBox(height: 24),
           Text('Default Model', style: TextStyle(color: VegaTheme.accent, fontSize: 16, fontWeight: FontWeight.bold)),
@@ -74,22 +98,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 dropdownColor: VegaTheme.surface,
                 style: TextStyle(color: VegaTheme.textPrimary),
                 items: _models.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
-                onChanged: (v) => setState(() => _selectedModel = v ?? _selectedModel),
+                onChanged: (v) {
+                  setState(() => _selectedModel = v ?? _selectedModel);
+                  _saveSettings();
+                },
               ),
             ),
-          ),
-          const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Settings saved')),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: VegaTheme.accent,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: Text('Save', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

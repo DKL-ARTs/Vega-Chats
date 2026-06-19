@@ -18,6 +18,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _model = 'openrouter/auto';
 
   Future<void> _send() async {
+    FocusScope.of(context).unfocus();
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
     _controller.clear();
