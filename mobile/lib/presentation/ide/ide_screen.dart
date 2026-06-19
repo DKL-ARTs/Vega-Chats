@@ -37,35 +37,95 @@ class _IdeScreenState extends State<IdeScreen> {
       setState(() => _currentPath = _currentPath + '/' + item['name']);
       await _loadFiles();
     } else {
-      try {
-        final result = await _client.readFile(_currentPath + '/' + item['name']);
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              backgroundColor: VegaTheme.surface,
-              title: Text(item['name'], style: TextStyle(color: VegaTheme.textPrimary)),
-              content: SingleChildScrollView(
-                child: Text(
-                  result['content'] ?? '',
-                  style: TextStyle(color: VegaTheme.textSecondary, fontFamily: 'monospace', fontSize: 13),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text('Close', style: TextStyle(color: VegaTheme.accent)),
-                ),
-              ],
-            ),
-          );
-        }
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
+      _openFileEditor(_currentPath + '/' + item['name'], item['name']);
     }
+  }
+
+  void _openFileEditor(String path, String name) async {
+    try {
+      final result = await _client.readFile(path);
+      final controller = TextEditingController(text: result['content'] ?? '');
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: VegaTheme.surface,
+          title: Row(
+            children: [
+              Expanded(child: Text(name, style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14))),
+              IconButton(
+                icon: Icon(Icons.save, color: VegaTheme.accent, size: 20),
+                onPressed: () async {
+                  await _client.writeFile(path, controller.text);
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Saved'), duration: Duration(seconds: 1)),
+                  );
+                },
+              ),
+            ],
+          ),
+          content: TextField(
+            controller: controller,
+            maxLines: null,
+            expands: true,
+            style: TextStyle(color: VegaTheme.textPrimary, fontFamily: 'monospace', fontSize: 13),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: 'Start typing...',
+              hintStyle: TextStyle(color: VegaTheme.textSecondary),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Close', style: TextStyle(color: VegaTheme.textSecondary)),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  void _createNewFile() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: Text('New file', style: TextStyle(color: VegaTheme.textPrimary)),
+        content: TextField(
+          controller: controller,
+          style: TextStyle(color: VegaTheme.textPrimary),
+          decoration: InputDecoration(
+            hintText: 'filename.txt',
+            hintStyle: TextStyle(color: VegaTheme.textSecondary),
+            border: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                Navigator.pop(ctx);
+                _openFileEditor(_currentPath + '/' + name, name);
+              }
+            },
+            child: Text('Create', style: TextStyle(color: VegaTheme.accent)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -85,6 +145,12 @@ class _IdeScreenState extends State<IdeScreen> {
                 },
               )
             : null,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.add, color: VegaTheme.textSecondary),
+            onPressed: _createNewFile,
+          ),
+        ],
       ),
       body: _loading
           ? Center(child: CircularProgressIndicator(color: VegaTheme.accent))

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
@@ -15,16 +16,18 @@ class _ChatScreenState extends State<ChatScreen> {
   final _messages = <Map<String, String>>[];
   final _client = ApiClient();
   bool _loading = false;
+  bool _typing = false;
   String _model = 'openrouter/auto';
 
   Future<void> _send() async {
-    FocusScope.of(context).unfocus();
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
     _controller.clear();
+    FocusScope.of(context).unfocus();
     setState(() {
       _messages.add({'role': 'user', 'content': text});
       _loading = true;
+      _typing = true;
     });
 
     try {
@@ -48,8 +51,22 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.add({'role': 'assistant', 'content': 'Error: $e'});
       });
     } finally {
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _typing = false;
+      });
     }
+  }
+
+  void _copyMessage(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Copied'),
+        duration: Duration(seconds: 1),
+        backgroundColor: VegaTheme.surface,
+      ),
+    );
   }
 
   @override
@@ -59,6 +76,10 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         title: Text('Vega Chat', style: TextStyle(color: VegaTheme.textPrimary)),
         actions: [
+          IconButton(
+            icon: Icon(Icons.terminal, color: VegaTheme.textSecondary),
+            onPressed: () => context.push('/terminal'),
+          ),
           IconButton(
             icon: Icon(Icons.folder_outlined, color: VegaTheme.textSecondary),
             onPressed: () => context.push('/ide'),
@@ -74,40 +95,64 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
+              itemCount: _messages.length + (_typing ? 1 : 0),
               itemBuilder: (ctx, i) {
+                if (_typing && i == _messages.length) {
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: VegaTheme.assistantBubble,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: VegaTheme.border),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(VegaTheme.accent),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text('Thinking...', style: TextStyle(color: VegaTheme.textSecondary)),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 final msg = _messages[i];
                 final isUser = msg['role'] == 'user';
-                return Align(
-                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(12),
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(ctx).size.width * 0.8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: VegaTheme.border),
-                    ),
-                    child: Text(
-                      msg['content'] ?? '',
-                      style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
+                return GestureDetector(
+                  onLongPress: () => _copyMessage(msg['content'] ?? ''),
+                  child: Align(
+                    alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(ctx).size.width * 0.8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: VegaTheme.border),
+                      ),
+                      child: Text(
+                        msg['content'] ?? '',
+                        style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
+                      ),
                     ),
                   ),
                 );
               },
             ),
           ),
-          if (_loading)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: LinearProgressIndicator(
-                backgroundColor: VegaTheme.border,
-                valueColor: AlwaysStoppedAnimation(VegaTheme.accent),
-              ),
-            ),
           Container(
             padding: const EdgeInsets.all(12),
             color: VegaTheme.dark,
@@ -123,14 +168,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       filled: true,
                       fillColor: VegaTheme.surface,
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,
                       ),
