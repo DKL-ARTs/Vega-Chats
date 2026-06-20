@@ -17,8 +17,8 @@ android {
         applicationId = "com.vega.vega_chat"
         minSdk = flutter.minSdkVersion
         targetSdk = 34
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = flutter.versionCode()
+        versionName = flutter.versionName()
     }
 
     buildTypes {
