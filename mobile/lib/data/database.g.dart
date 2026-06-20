@@ -592,11 +592,11 @@ final class $$ChatsTableReferences
   static MultiTypedResultKey<$MessagesTable, List<Message>> _messagesRefsTable(
           _$AppDatabase db) =>
       MultiTypedResultKey.fromTable(db.messages,
-          aliasName: 'chats__id__messages__chat_id');
+          aliasName: $_aliasNameGenerator(db.chats.id, db.messages.chatId));
 
   $$MessagesTableProcessedTableManager get messagesRefs {
     final manager = $$MessagesTableTableManager($_db, $_db.messages)
-        .filter((f) => f.chatId.id.sqlEquals($_itemColumn<int>('id')!));
+        .filter((f) => f.chatId.id($_item.id));
 
     final cache = $_typedResult.readTableOrNull(_messagesRefsTable($_db));
     return ProcessedTableManager(
@@ -769,7 +769,7 @@ class $$ChatsTableTableManager extends RootTableManager<
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (messagesRefs)
-                    await $_getPrefetchedData<Chat, $ChatsTable, Message>(
+                    await $_getPrefetchedData(
                         currentTable: table,
                         referencedTable:
                             $$ChatsTableReferences._messagesRefsTable(db),
@@ -817,14 +817,13 @@ final class $$MessagesTableReferences
     extends BaseReferences<_$AppDatabase, $MessagesTable, Message> {
   $$MessagesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $ChatsTable _chatIdTable(_$AppDatabase db) =>
-      db.chats.createAlias('messages__chat_id__chats__id');
+  static $ChatsTable _chatIdTable(_$AppDatabase db) => db.chats
+      .createAlias($_aliasNameGenerator(db.messages.chatId, db.chats.id));
 
-  $$ChatsTableProcessedTableManager get chatId {
-    final $_column = $_itemColumn<int>('chat_id')!;
-
+  $$ChatsTableProcessedTableManager? get chatId {
+    if ($_item.chatId == null) return null;
     final manager = $$ChatsTableTableManager($_db, $_db.chats)
-        .filter((f) => f.id.sqlEquals($_column));
+        .filter((f) => f.id($_item.chatId!));
     final item = $_typedResult.readTableOrNull(_chatIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
