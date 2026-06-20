@@ -27,11 +27,11 @@ jobs:
       
       - name: Build APK
         working-directory: ./mobile
-        run: flutter build apk --debug --split-per-abi --no-shrink
+        run: flutter build apk --release --split-per-abi --no-shrink
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: vega-chat-debug
-          path: mobile/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
+          name: vega-chat-release
+          path: mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           compression-level: 0
