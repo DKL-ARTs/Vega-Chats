@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
+import '../../data/database.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final int? chatId;
+  const ChatScreen({super.key, this.chatId});
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
@@ -15,15 +17,45 @@ class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _messages = <Map<String, String>>[];
   final _client = ApiClient();
+  final _db = AppDatabase();
   bool _loading = false;
   bool _typing = false;
   String _model = 'openrouter/auto';
+  int? _currentChatId;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentChatId = widget.chatId;
+    if (_currentChatId != null) {
+      _loadChat(_currentChatId!);
+    }
+  }
+
+  Future<void> _loadChat(int chatId) async {
+    final messages = await _db.getMessages(chatId);
+    setState(() {
+      _messages.clear();
+      for (final msg in messages) {
+        _messages.add({'role': msg.role, 'content': msg.content});
+      }
+    });
+  }
 
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
     _controller.clear();
     FocusScope.of(context).unfocus();
+
+    // Create chat if not exists
+    if (_currentChatId == null) {
+      _currentChatId = await _db.createChat(text.length > 30 ? text.substring(0, 30) + '...' : text);
+    }
+
+    // Save user message
+    await _db.addMessage(_currentChatId!, 'user', text);
+
     setState(() {
       _messages.add({'role': 'user', 'content': text});
       _loading = true;
@@ -45,6 +77,11 @@ class _ChatScreenState extends State<ChatScreen> {
             });
           }
         }
+      }
+
+      // Save assistant message
+      if (_currentChatId != null) {
+        await _db.addMessage(_currentChatId!, 'assistant', buffer.toString());
       }
     } catch (e) {
       setState(() {
@@ -76,6 +113,10 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         title: Text('Vega Chat', style: TextStyle(color: VegaTheme.textPrimary)),
         actions: [
+          IconButton(
+            icon: Icon(Icons.history, color: VegaTheme.textSecondary),
+            onPressed: () => context.push('/history'),
+          ),
           IconButton(
             icon: Icon(Icons.terminal, color: VegaTheme.textSecondary),
             onPressed: () => context.push('/terminal'),
@@ -192,6 +233,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _db.close();
     super.dispose();
   }
 }

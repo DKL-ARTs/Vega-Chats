@@ -1,0 +1,76 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../core/theme.dart';
+import '../../data/database.dart';
+
+class HistoryScreen extends StatefulWidget {
+  const HistoryScreen({super.key});
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  final _db = AppDatabase();
+  List<Chat> _chats = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChats();
+  }
+
+  Future<void> _loadChats() async {
+    final chats = await _db.getAllChats();
+    setState(() => _chats = chats.reversed.toList());
+  }
+
+  Future<void> _deleteChat(int id) async {
+    await _db.deleteChat(id);
+    await _loadChats();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: VegaTheme.dark,
+      appBar: AppBar(
+        title: Text('History', style: TextStyle(color: VegaTheme.textPrimary)),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.add, color: VegaTheme.textSecondary),
+            onPressed: () => context.push('/chat'),
+          ),
+        ],
+      ),
+      body: _chats.isEmpty
+          ? Center(
+              child: Text('No chats yet', style: TextStyle(color: VegaTheme.textSecondary)),
+            )
+          : ListView.builder(
+              itemCount: _chats.length,
+              itemBuilder: (ctx, i) {
+                final chat = _chats[i];
+                return ListTile(
+                  leading: Icon(Icons.chat_bubble_outline, color: VegaTheme.accent),
+                  title: Text(chat.title, style: TextStyle(color: VegaTheme.textPrimary)),
+                  subtitle: Text(
+                    chat.updatedAt.day.toString() + '/' + chat.updatedAt.month.toString() + '/' + chat.updatedAt.year.toString(),
+                    style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
+                  ),
+                  trailing: IconButton(
+                    icon: Icon(Icons.delete_outline, color: VegaTheme.textSecondary),
+                    onPressed: () => _deleteChat(chat.id),
+                  ),
+                  onTap: () => context.push('/chat', extra: chat.id),
+                );
+              },
+            ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _db.close();
+    super.dispose();
+  }
+}
