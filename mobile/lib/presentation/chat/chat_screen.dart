@@ -22,6 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _model = 'openrouter/auto';
   int? _currentChatId;
   bool _hasMessages = false;
+  List<Map<String, dynamic>> _chats = [];
 
   @override
   void initState() {
@@ -31,6 +32,12 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
     }
+    _loadChats();
+  }
+
+  Future<void> _loadChats() async {
+    final chats = await ChatHistory.getChats();
+    setState(() => _chats = chats);
   }
 
   Future<void> _loadChat(int chatId) async {
@@ -77,6 +84,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', buffer.toString());
       }
+      await _loadChats();
     } catch (e) {
       setState(() { _messages.add({'role': 'assistant', 'content': 'Error: $e'}); });
     } finally {
@@ -90,6 +98,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startNewChat() {
+    Scaffold.of(context).closeDrawer();
     setState(() {
       _currentChatId = null;
       _messages.clear();
@@ -97,49 +106,93 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _showDrawer() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: VegaTheme.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: VegaTheme.border, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 24),
-            ListTile(
-              leading: Icon(Icons.folder_outlined, color: VegaTheme.accent),
-              title: Text('Files', style: TextStyle(color: VegaTheme.textPrimary)),
-              onTap: () { Navigator.pop(ctx); context.push('/ide'); },
-            ),
-            ListTile(
-              leading: Icon(Icons.terminal, color: VegaTheme.accent),
-              title: Text('Terminal', style: TextStyle(color: VegaTheme.textPrimary)),
-              onTap: () { Navigator.pop(ctx); context.push('/terminal'); },
-            ),
-            ListTile(
-              leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
-              title: Text('Settings', style: TextStyle(color: VegaTheme.textPrimary)),
-              onTap: () { Navigator.pop(ctx); context.push('/settings'); },
-            ),
-          ],
-        ),
-      ),
-    );
+  void _openChat(int chatId) {
+    Scaffold.of(context).closeDrawer();
+    setState(() {
+      _currentChatId = chatId;
+      _hasMessages = true;
+    });
+    _loadChat(chatId);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: VegaTheme.dark,
+      drawer: Drawer(
+        width: MediaQuery.of(context).size.width * 0.7,
+        backgroundColor: VegaTheme.surface,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Chats', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: Icon(Icons.add, color: VegaTheme.accent),
+                      onPressed: _startNewChat,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: _chats.isEmpty
+                    ? Center(child: Text('No chats yet', style: TextStyle(color: VegaTheme.textSecondary)))
+                    : ListView.builder(
+                        itemCount: _chats.length,
+                        itemBuilder: (ctx, i) {
+                          final chat = _chats[i];
+                          final isActive = chat['id'] == _currentChatId;
+                          return ListTile(
+                            selected: isActive,
+                            selectedTileColor: VegaTheme.card,
+                            leading: Icon(Icons.chat_bubble_outline, color: isActive ? VegaTheme.accent : VegaTheme.textSecondary),
+                            title: Text(chat['title'] ?? 'Untitled', style: TextStyle(color: isActive ? VegaTheme.accent : VegaTheme.textPrimary)),
+                            subtitle: Text(chat['createdAt']?.toString().substring(0, 10) ?? '', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
+                            trailing: IconButton(
+                              icon: Icon(Icons.delete_outline, color: VegaTheme.textSecondary, size: 20),
+                              onPressed: () async {
+                                await ChatHistory.deleteChat(chat['id']);
+                                await _loadChats();
+                              },
+                            ),
+                            onTap: () => _openChat(chat['id']),
+                          );
+                        },
+                      ),
+              ),
+              Divider(color: VegaTheme.border),
+              ListTile(
+                leading: Icon(Icons.folder_outlined, color: VegaTheme.accent),
+                title: Text('Files', style: TextStyle(color: VegaTheme.textPrimary)),
+                onTap: () { context.push('/ide'); },
+              ),
+              ListTile(
+                leading: Icon(Icons.terminal, color: VegaTheme.accent),
+                title: Text('Terminal', style: TextStyle(color: VegaTheme.textPrimary)),
+                onTap: () { context.push('/terminal'); },
+              ),
+              ListTile(
+                leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
+                title: Text('Settings', style: TextStyle(color: VegaTheme.textPrimary)),
+                onTap: () { context.push('/settings'); },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
       appBar: AppBar(
         backgroundColor: VegaTheme.dark,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.menu, color: VegaTheme.textSecondary),
-          onPressed: _showDrawer,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: Icon(Icons.menu, color: VegaTheme.textSecondary),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
         ),
         actions: [
           if (_hasMessages)
