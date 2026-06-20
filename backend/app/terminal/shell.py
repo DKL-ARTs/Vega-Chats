@@ -4,7 +4,7 @@ from fastapi import APIRouter, WebSocket
 
 router = APIRouter()
 
-@router.websocket(/ws/terminal)
+@router.websocket("/ws/terminal")
 async def terminal_ws(websocket: WebSocket):
     await websocket.accept()
     try:
