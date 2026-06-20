@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
-import '../../data/database.dart';
+import '../../data/chat_history.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -10,8 +10,7 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  final _db = AppDatabase();
-  List<Chat> _chats = [];
+  List<Map<String, dynamic>> _chats = [];
 
   @override
   void initState() {
@@ -20,12 +19,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _loadChats() async {
-    final chats = await _db.getAllChats();
-    setState(() => _chats = chats.reversed.toList());
+    final chats = await ChatHistory.getChats();
+    setState(() => _chats = chats);
   }
 
   Future<void> _deleteChat(int id) async {
-    await _db.deleteChat(id);
+    await ChatHistory.deleteChat(id);
     await _loadChats();
   }
 
@@ -52,25 +51,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 final chat = _chats[i];
                 return ListTile(
                   leading: Icon(Icons.chat_bubble_outline, color: VegaTheme.accent),
-                  title: Text(chat.title, style: TextStyle(color: VegaTheme.textPrimary)),
+                  title: Text(chat['title'] ?? 'Untitled', style: TextStyle(color: VegaTheme.textPrimary)),
                   subtitle: Text(
-                    chat.updatedAt.day.toString() + '/' + chat.updatedAt.month.toString() + '/' + chat.updatedAt.year.toString(),
+                    chat['createdAt']?.toString().substring(0, 10) ?? '',
                     style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
                   ),
                   trailing: IconButton(
                     icon: Icon(Icons.delete_outline, color: VegaTheme.textSecondary),
-                    onPressed: () => _deleteChat(chat.id),
+                    onPressed: () => _deleteChat(chat['id']),
                   ),
-                  onTap: () => context.push('/chat', extra: chat.id),
+                  onTap: () => context.push('/chat', extra: chat['id']),
                 );
               },
             ),
     );
-  }
-
-  @override
-  void dispose() {
-    _db.close();
-    super.dispose();
   }
 }

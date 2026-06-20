@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
-import '../../data/database.dart';
+import '../../data/chat_history.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -17,7 +17,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _messages = <Map<String, String>>[];
   final _client = ApiClient();
-  final _db = AppDatabase();
   bool _loading = false;
   bool _typing = false;
   String _model = 'openrouter/auto';
@@ -33,11 +32,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadChat(int chatId) async {
-    final messages = await _db.getMessages(chatId);
+    final messages = await ChatHistory.getMessages(chatId);
     setState(() {
       _messages.clear();
       for (final msg in messages) {
-        _messages.add({'role': msg.role, 'content': msg.content});
+        _messages.add({'role': msg['role'], 'content': msg['content']});
       }
     });
   }
@@ -48,13 +47,13 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
     FocusScope.of(context).unfocus();
 
-    // Create chat if not exists
     if (_currentChatId == null) {
-      _currentChatId = await _db.createChat(text.length > 30 ? text.substring(0, 30) + '...' : text);
+      _currentChatId = await ChatHistory.createChat(
+        text.length > 30 ? text.substring(0, 30) + '...' : text
+      );
     }
 
-    // Save user message
-    await _db.addMessage(_currentChatId!, 'user', text);
+    await ChatHistory.addMessage(_currentChatId!, 'user', text);
 
     setState(() {
       _messages.add({'role': 'user', 'content': text});
@@ -68,7 +67,8 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       
       await for (final chunk in resp.stream.transform(utf8.decoder)) {
-        for (final line in chunk.split('\n')) {
+        for (final line in chunk.split('
+')) {
           if (line.startsWith('data: ') && line != 'data: [DONE]') {
             final data = line.substring(6);
             buffer.write(data);
@@ -79,9 +79,8 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
-      // Save assistant message
       if (_currentChatId != null) {
-        await _db.addMessage(_currentChatId!, 'assistant', buffer.toString());
+        await ChatHistory.addMessage(_currentChatId!, 'assistant', buffer.toString());
       }
     } catch (e) {
       setState(() {
@@ -233,7 +232,6 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _controller.dispose();
-    _db.close();
     super.dispose();
   }
 }
