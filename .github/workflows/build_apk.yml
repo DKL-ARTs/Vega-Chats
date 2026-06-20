@@ -20,6 +20,7 @@ jobs:
         with:
           flutter-version: "3.22.3"
           channel: "stable"
+          cache: false
       
       - name: Clean
         working-directory: ./mobile
