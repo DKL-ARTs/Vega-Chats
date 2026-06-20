@@ -22,20 +22,18 @@ jobs:
           channel: "stable"
           cache: false
       
-      - name: Clean
+      - name: Clean and pub get
         working-directory: ./mobile
-        run: flutter clean
-      
-      - name: Install dependencies
-        working-directory: ./mobile
-        run: flutter pub get
+        run: |
+          flutter clean
+          flutter pub get
       
       - name: Build APK
         working-directory: ./mobile
-        run: flutter build apk --debug --split-per-abi
+        run: flutter build apk --debug
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: vega-chat-debug
-          path: mobile/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
