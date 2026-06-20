@@ -21,11 +21,13 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _typing = false;
   String _model = 'openrouter/auto';
   int? _currentChatId;
+  bool _hasMessages = false;
 
   @override
   void initState() {
     super.initState();
     _currentChatId = widget.chatId;
+    _hasMessages = _currentChatId != null;
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
     }
@@ -38,6 +40,7 @@ class _ChatScreenState extends State<ChatScreen> {
       for (final msg in messages) {
         _messages.add({'role': msg['role'], 'content': msg['content']});
       }
+      _hasMessages = _messages.isNotEmpty;
     });
   }
 
@@ -47,13 +50,16 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
     FocusScope.of(context).unfocus();
     if (_currentChatId == null) {
-      _currentChatId = await ChatHistory.createChat(text.length > 30 ? text.substring(0, 30) + '...' : text);
+      _currentChatId = await ChatHistory.createChat(
+        text.length > 30 ? text.substring(0, 30) + '...' : text
+      );
     }
     await ChatHistory.addMessage(_currentChatId!, 'user', text);
     setState(() {
       _messages.add({'role': 'user', 'content': text});
       _loading = true;
       _typing = true;
+      _hasMessages = true;
     });
     try {
       final resp = await _client.streamChat(messages: _messages, model: _model);
@@ -83,37 +89,86 @@ class _ChatScreenState extends State<ChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface));
   }
 
+  void _startNewChat() {
+    setState(() {
+      _currentChatId = null;
+      _messages.clear();
+      _hasMessages = false;
+    });
+  }
+
+  void _showDrawer() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: VegaTheme.border, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 24),
+            ListTile(
+              leading: Icon(Icons.folder_outlined, color: VegaTheme.accent),
+              title: Text('Files', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () { Navigator.pop(ctx); context.push('/ide'); },
+            ),
+            ListTile(
+              leading: Icon(Icons.terminal, color: VegaTheme.accent),
+              title: Text('Terminal', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () { Navigator.pop(ctx); context.push('/terminal'); },
+            ),
+            ListTile(
+              leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
+              title: Text('Settings', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () { Navigator.pop(ctx); context.push('/settings'); },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: VegaTheme.dark,
       appBar: AppBar(
-        title: Text('Vega Chat', style: TextStyle(color: VegaTheme.textPrimary)),
+        backgroundColor: VegaTheme.dark,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.menu, color: VegaTheme.textSecondary),
+          onPressed: _showDrawer,
+        ),
         actions: [
-          IconButton(icon: Icon(Icons.history, color: VegaTheme.textSecondary), onPressed: () => context.push('/history')),
-          IconButton(icon: Icon(Icons.terminal, color: VegaTheme.textSecondary), onPressed: () => context.push('/terminal')),
-          IconButton(icon: Icon(Icons.folder_outlined, color: VegaTheme.textSecondary), onPressed: () => context.push('/ide')),
-          IconButton(icon: Icon(Icons.settings_outlined, color: VegaTheme.textSecondary), onPressed: () => context.push('/settings')),
+          if (_hasMessages)
+            IconButton(
+              icon: Icon(Icons.add, color: VegaTheme.textSecondary),
+              onPressed: _startNewChat,
+            ),
         ],
       ),
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_typing ? 1 : 0),
-              itemBuilder: (ctx, i) {
-                if (_typing && i == _messages.length) {
-                  return Align(alignment: Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Row(mainAxisSize: MainAxisSize.min, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(VegaTheme.accent))), const SizedBox(width: 8), Text('Thinking...', style: TextStyle(color: VegaTheme.textSecondary))])));
-                }
-                final msg = _messages[i];
-                final isUser = msg['role'] == 'user';
-                return GestureDetector(
-                  onLongPress: () => _copyMessage(msg['content'] ?? ''),
-                  child: Align(alignment: isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8), decoration: BoxDecoration(color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15)))),
-                );
-              },
-            ),
+            child: _messages.isEmpty && !_typing
+                ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _messages.length + (_typing ? 1 : 0),
+                    itemBuilder: (ctx, i) {
+                      if (_typing && i == _messages.length) {
+                        return Align(alignment: Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Row(mainAxisSize: MainAxisSize.min, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(VegaTheme.accent))), const SizedBox(width: 8), Text('Thinking...', style: TextStyle(color: VegaTheme.textSecondary))])));
+                      }
+                      final msg = _messages[i];
+                      final isUser = msg['role'] == 'user';
+                      return GestureDetector(
+                        onLongPress: () => _copyMessage(msg['content'] ?? ''),
+                        child: Align(alignment: isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8), decoration: BoxDecoration(color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15)))),
+                      );
+                    },
+                  ),
           ),
           Container(
             padding: const EdgeInsets.all(12),

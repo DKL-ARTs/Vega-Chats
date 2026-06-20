@@ -34,17 +34,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
       backgroundColor: VegaTheme.dark,
       appBar: AppBar(
         title: Text('History', style: TextStyle(color: VegaTheme.textPrimary)),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.add, color: VegaTheme.textSecondary),
-            onPressed: () => context.push('/chat'),
-          ),
-        ],
+        backgroundColor: VegaTheme.dark,
+        elevation: 0,
       ),
       body: _chats.isEmpty
-          ? Center(
-              child: Text('No chats yet', style: TextStyle(color: VegaTheme.textSecondary)),
-            )
+          ? Center(child: Text('No chats yet', style: TextStyle(color: VegaTheme.textSecondary)))
           : ListView.builder(
               itemCount: _chats.length,
               itemBuilder: (ctx, i) {
@@ -52,14 +46,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 return ListTile(
                   leading: Icon(Icons.chat_bubble_outline, color: VegaTheme.accent),
                   title: Text(chat['title'] ?? 'Untitled', style: TextStyle(color: VegaTheme.textPrimary)),
-                  subtitle: Text(
-                    chat['createdAt']?.toString().substring(0, 10) ?? '',
-                    style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
-                  ),
-                  trailing: IconButton(
-                    icon: Icon(Icons.delete_outline, color: VegaTheme.textSecondary),
-                    onPressed: () => _deleteChat(chat['id']),
-                  ),
+                  subtitle: Text(chat['createdAt']?.toString().substring(0, 10) ?? '', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
+                  trailing: IconButton(icon: Icon(Icons.delete_outline, color: VegaTheme.textSecondary), onPressed: () => _deleteChat(chat['id'])),
                   onTap: () => context.push('/chat', extra: chat['id']),
                 );
               },
