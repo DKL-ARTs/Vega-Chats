@@ -51,7 +51,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final cmd = _controller.text.trim();
     if (cmd.isEmpty || _channel == null) return;
     _channel!.sink.add(cmd);
-    setState(() => _output.add('$ ' + cmd));
+    setState(() => _output.add(r'$ ' + cmd));
     _controller.clear();
   }
 
@@ -82,7 +82,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
               itemBuilder: (ctx, i) => Text(
                 _output[i],
                 style: TextStyle(
-                  color: _output[i].startsWith('$ ') ? VegaTheme.accent : VegaTheme.textPrimary,
+                  color: _output[i].startsWith(r'$ ') ? VegaTheme.accent : VegaTheme.textPrimary,
                   fontFamily: 'monospace',
                   fontSize: 13,
                 ),
@@ -94,7 +94,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
             color: VegaTheme.surface,
             child: Row(
               children: [
-                Text('$ ', style: TextStyle(color: VegaTheme.accent, fontFamily: 'monospace')),
+                Text(r'$ ', style: TextStyle(color: VegaTheme.accent, fontFamily: 'monospace')),
                 Expanded(
                   child: TextField(
                     controller: _controller,
