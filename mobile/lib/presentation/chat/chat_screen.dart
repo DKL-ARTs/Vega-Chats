@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -29,10 +30,20 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _currentChatId = widget.chatId;
     _hasMessages = _currentChatId != null;
+    _loadSettings();
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
     }
     _loadChats();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _client.apiKey = prefs.getString('api_key') ?? '';
+      _client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+      _model = prefs.getString('model') ?? 'openrouter/auto';
+    });
   }
 
   Future<void> _loadChats() async {
@@ -81,7 +92,8 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       }
-      if (_currentChatId != null) {
+      _loadSettings();
+    if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', buffer.toString());
       }
       await _loadChats();

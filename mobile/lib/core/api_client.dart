@@ -2,15 +2,18 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
-  final String baseUrl;
-  final Map<String, String> _headers;
+  String baseUrl;
+  String apiKey;
 
-  ApiClient({this.baseUrl = 'http://127.0.0.1:8765', String? apiKey})
-      : _headers = {
-          'Content-Type': 'application/json',
-          if (apiKey != null && apiKey.isNotEmpty)
-            'Authorization': 'Bearer $apiKey',
-        };
+  ApiClient({this.baseUrl = 'http://127.0.0.1:8765', this.apiKey = ''});
+
+  Map<String, String> get _headers {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (apiKey.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $apiKey';
+    }
+    return headers;
+  }
 
   Future<http.StreamedResponse> streamChat({
     required List<Map<String, String>> messages,
