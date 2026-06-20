@@ -21,7 +21,7 @@ class VegaTheme {
       surface: surface,
       onSurface: textPrimary,
     ),
-    cardTheme: const CardTheme(
+    cardTheme: const CardThemeData(
       color: card,
       elevation: 0,
     ),
