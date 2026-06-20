@@ -18,7 +18,7 @@ jobs:
       
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.22.3"
+          flutter-version: "3.24.5"
           channel: "stable"
       
       - name: Install dependencies
@@ -34,4 +34,3 @@ jobs:
         with:
           name: vega-chat-release
           path: mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          compression-level: 0
