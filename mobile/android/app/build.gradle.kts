@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.vega.vega_chat"
-    compileSdk = 35
+    compileSdk = 34
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
