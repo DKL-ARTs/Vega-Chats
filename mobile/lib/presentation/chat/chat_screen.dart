@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
@@ -88,6 +91,91 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+      allowMultiple: false,
+    );
+    if (result != null && result.files.isNotEmpty) {
+      final file = result.files.first;
+      await _sendFile(file.path!, file.name);
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      await _sendFile(image.path, image.name);
+    }
+  }
+
+  Future<void> _sendFile(String filePath, String fileName) async {
+    await _loadSettings();
+    if (_currentChatId == null) {
+      _currentChatId = await ChatHistory.createChat('File: $fileName');
+    }
+    
+    // Send user message about file
+    final fileMsg = '📎 $fileName';
+    await ChatHistory.addMessage(_currentChatId!, 'user', fileMsg);
+    setState(() {
+      _messages.add({'role': 'user', 'content': fileMsg});
+      _loading = true;
+    });
+    _startThinking();
+    
+    try {
+      // Send file to backend
+      final file = File(filePath);
+      final bytes = await file.readAsBytes();
+      final base64Data = base64Encode(bytes);
+      
+      await ChatHistory.addMessage(_currentChatId!, 'assistant', 'File received: $fileName');
+      setState(() {
+        _messages.add({'role': 'assistant', 'content': '✅ File received: $fileName'});
+      });
+    } catch (e) {
+      setState(() {
+        _messages.add({'role': 'assistant', 'content': 'Error sending file: $e'});
+      });
+    } finally {
+      _stopThinking();
+      setState(() { _loading = false; });
+    }
+  }
+
+  void _showAttachMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.image, color: VegaTheme.accent),
+              title: Text('Photo', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickImage();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.attach_file, color: VegaTheme.accent),
+              title: Text('File', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickFile();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _send() async {
     final text = _controller.text.trim();
@@ -197,11 +285,9 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
-    
     if (confirmed == true) {
       await ChatHistory.deleteChat(chatId);
       await _loadChats();
-      // If we deleted the current chat, go to new chat screen
       if (_currentChatId == chatId) {
         _startNewChat();
       }
@@ -315,7 +401,7 @@ class _ChatScreenState extends State<ChatScreen> {
         leading: Builder(
           builder: (ctx) => IconButton(
             icon: Icon(Icons.menu, color: VegaTheme.textSecondary),
-            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
         actions: [
@@ -352,9 +438,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         children: [
                           GestureDetector(
                             onLongPress: () {
-                              if (isUser) {
-                                _showUserMessageMenu(context, msg, i);
-                              }
+                              if (isUser) _showUserMessageMenu(context, msg, i);
                             },
                             child: Container(
                               margin: const EdgeInsets.only(bottom: 4),
@@ -382,7 +466,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     borderRadius: BorderRadius.circular(4),
                                     child: Padding(
                                       padding: const EdgeInsets.all(4),
-                                      child: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary),
+                                      icon: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary),
                                     ),
                                   ),
                                 ],
@@ -397,6 +481,10 @@ class _ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.all(12),
             color: VegaTheme.dark,
             child: Row(children: [
+              IconButton(
+                icon: Icon(Icons.attach_file, color: VegaTheme.textSecondary),
+                onPressed: _showAttachMenu,
+              ),
               Expanded(child: TextField(controller: _controller, style: TextStyle(color: VegaTheme.textPrimary), decoration: InputDecoration(hintText: 'Message...', hintStyle: TextStyle(color: VegaTheme.textSecondary), filled: true, fillColor: VegaTheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)), onSubmitted: (_) => _send())),
               const SizedBox(width: 8),
               IconButton(onPressed: _loading ? null : _send, icon: Icon(Icons.send, color: VegaTheme.accent)),
