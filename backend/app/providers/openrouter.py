@@ -81,8 +81,8 @@ class OpenRouterProvider(BaseProvider):
                             content = self._extract_content(data)
                             if content:
                                 buffer += content
-                                # Send when we have a word or punctuation
-                                if content.endswith(' ') or content.endswith('\n') or content.endswith('.') or content.endswith('!') or content.endswith('?'):
+                                # Send when we have enough content or at natural break points
+                                if len(buffer) >= 20 or buffer.endswith('. ') or buffer.endswith('! ') or buffer.endswith('? ') or buffer.endswith('\n'):
                                     yield buffer
                                     buffer = ''
                         except json.JSONDecodeError:
