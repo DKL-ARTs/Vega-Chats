@@ -24,17 +24,26 @@ class OpenRouterProvider(BaseProvider):
                 return ''
             delta = choices[0].get('delta', {})
             content = delta.get('content', '')
-            # If content is a JSON string, try to parse it
-            if isinstance(content, str) and content.startswith('{'):
+            if not isinstance(content, str):
+                return ''
+            # Try to parse as JSON (Gemini returns JSON string in content)
+            if content.startswith('{'):
                 try:
                     parsed = json.loads(content)
+                    # Try nested structure
+                    if 'choices' in parsed:
+                        inner_delta = parsed['choices'][0].get('delta', {})
+                        inner_content = inner_delta.get('content', '')
+                        if inner_content:
+                            return inner_content
+                    # Try direct content
                     if 'content' in parsed:
                         return parsed['content']
                     if 'text' in parsed:
                         return parsed['text']
                 except:
                     pass
-            return content if isinstance(content, str) else ''
+            return content
         except:
             return ''
     
