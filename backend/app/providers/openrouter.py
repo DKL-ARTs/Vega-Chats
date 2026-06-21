@@ -16,6 +16,28 @@ class OpenRouterProvider(BaseProvider):
             timeout=120.0,
         )
     
+    def _extract_content(self, data):
+        """Extract text content from various response formats"""
+        try:
+            choices = data.get('choices', [])
+            if not choices:
+                return ''
+            delta = choices[0].get('delta', {})
+            content = delta.get('content', '')
+            # If content is a JSON string, try to parse it
+            if isinstance(content, str) and content.startswith('{'):
+                try:
+                    parsed = json.loads(content)
+                    if 'content' in parsed:
+                        return parsed['content']
+                    if 'text' in parsed:
+                        return parsed['text']
+                except:
+                    pass
+            return content if isinstance(content, str) else ''
+        except:
+            return ''
+    
     async def stream(self, messages: list[dict], model: str = None, **kwargs):
         model = model or settings.default_model
         print(f'[OpenRouter] Using model: {model}')
@@ -37,11 +59,10 @@ class OpenRouterProvider(BaseProvider):
                             return
                         try:
                             data = json.loads(chunk)
-                            delta = data['choices'][0].get('delta', {})
-                            content = delta.get('content', '')
+                            content = self._extract_content(data)
                             if content:
                                 yield content
-                        except (json.JSONDecodeError, KeyError, IndexError):
+                        except json.JSONDecodeError:
                             continue
         except Exception as e:
             yield f'Error: {str(e)}'
