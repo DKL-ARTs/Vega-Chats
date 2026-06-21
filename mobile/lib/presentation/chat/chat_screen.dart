@@ -25,8 +25,8 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _currentChatId = widget.chatId;
     _loadSettings();
+    _currentChatId = widget.chatId;
     _loadChats();
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
@@ -48,13 +48,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
-  void initState() {
-    super.initState();
-    _currentChatId = widget.chatId;
-    _loadChats();
-    if (_currentChatId != null) {
-      _loadChat(_currentChatId!);
-    }
   }
 
   @override
