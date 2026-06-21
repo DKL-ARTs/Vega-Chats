@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,10 +19,12 @@ class _ChatScreenState extends State<ChatScreen> {
   final _messages = <Map<String, String>>[];
   final _client = ApiClient();
   bool _loading = false;
-  bool _typing = false;
   String _model = 'openrouter/auto';
   int? _currentChatId;
   List<Map<String, dynamic>> _chats = [];
+  Timer? _thinkingTimer;
+  int _thinkingDots = 0;
+  String _assistantBuffer = '';
 
   @override
   void initState() {
@@ -31,6 +34,13 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
     }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _thinkingTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadChats() async {
@@ -48,6 +58,28 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _startThinking() {
+    _thinkingTimer?.cancel();
+    _thinkingDots = 0;
+    _thinkingTimer = Timer.periodic(const Duration(milliseconds: 400), (timer) {
+      if (mounted) {
+        setState(() {
+          _thinkingDots = (_thinkingDots + 1) % 4;
+        });
+      }
+    });
+  }
+
+  void _stopThinking() {
+    _thinkingTimer?.cancel();
+    _thinkingTimer = null;
+  }
+
+  String get _thinkingText {
+    if (_assistantBuffer.isNotEmpty) return _assistantBuffer;
+    return 'Thinking' + '.' * _thinkingDots;
+  }
+
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
@@ -62,29 +94,39 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.add({'role': 'user', 'content': text});
       _loading = true;
-      _typing = true;
+      _assistantBuffer = '';
     });
+    _startThinking();
     try {
       final resp = await _client.streamChat(messages: _messages, model: _model);
-      final buffer = StringBuffer();
+      _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       await for (final chunk in resp.stream.transform(utf8.decoder)) {
         for (final line in chunk.split('\n')) {
           if (line.startsWith('data: ') && line != 'data: [DONE]') {
             final data = line.substring(6);
-            buffer.write(data);
-            setState(() { _messages.last['content'] = buffer.toString(); });
+            try {
+              final json = jsonDecode(data);
+              final delta = json['choices'][0]['delta'];
+              final content = delta['content'] ?? '';
+              if (content.isNotEmpty) {
+                setState(() {
+                  _messages.last['content'] = (_messages.last['content'] ?? '') + content;
+                });
+              }
+            } catch (_) {}
           }
         }
       }
       if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, 'assistant', buffer.toString());
+        await ChatHistory.addMessage(_currentChatId!, 'assistant', _messages.last['content'] ?? '');
       }
       await _loadChats();
     } catch (e) {
+      _stopThinking();
       setState(() { _messages.add({'role': 'assistant', 'content': 'Error: $e'}); });
     } finally {
-      setState(() { _loading = false; _typing = false; });
+      setState(() { _loading = false; });
     }
   }
 
@@ -99,8 +141,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _currentChatId = null;
       _messages.clear();
       _loading = false;
-      _typing = false;
+      _assistantBuffer = '';
     });
+    _stopThinking();
   }
 
   void _openChat(int chatId) {
@@ -203,14 +246,20 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _messages.isEmpty && !_typing
+            child: _messages.isEmpty && !_loading
                 ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + (_typing ? 1 : 0),
+                    itemCount: _messages.length + (_loading ? 1 : 0),
                     itemBuilder: (ctx, i) {
-                      if (_typing && i == _messages.length) {
-                        return Align(alignment: Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Row(mainAxisSize: MainAxisSize.min, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(VegaTheme.accent))), const SizedBox(width: 8), Text('Thinking...', style: TextStyle(color: VegaTheme.textSecondary))])));
+                      if (_loading && i == _messages.length) {
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(_thinkingText, style: TextStyle(color: VegaTheme.textSecondary, fontSize: 15, fontStyle: FontStyle.italic)),
+                          ),
+                        );
                       }
                       final msg = _messages[i];
                       final isUser = msg['role'] == 'user';
@@ -234,7 +283,4 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
-  @override
-  void dispose() { _controller.dispose(); super.dispose(); }
 }
