@@ -94,20 +94,24 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startNewChat() {
-    Navigator.pop(context); // Закрываем шторку
+    Navigator.pop(context);
     setState(() {
       _currentChatId = null;
       _messages.clear();
+      _loading = false;
+      _typing = false;
     });
   }
 
   void _openChat(int chatId) {
-    Navigator.pop(context); // Закрываем шторку
+    Navigator.pop(context);
     setState(() {
       _currentChatId = chatId;
     });
     _loadChat(chatId);
   }
+
+  bool get _isNewChat => _currentChatId == null && _messages.isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -189,10 +193,11 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.add, color: VegaTheme.textSecondary),
-            onPressed: _startNewChat,
-          ),
+          if (!_isNewChat)
+            IconButton(
+              icon: Icon(Icons.add, color: VegaTheme.textSecondary),
+              onPressed: _startNewChat,
+            ),
         ],
       ),
       body: Column(
