@@ -94,9 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty || _loading) return;
     _controller.clear();
     FocusScope.of(context).unfocus();
-    
     await _loadSettings();
-    
     if (_currentChatId == null) {
       _currentChatId = await ChatHistory.createChat(
         text.length > 30 ? text.substring(0, 30) + '...' : text
@@ -112,7 +110,6 @@ class _ChatScreenState extends State<ChatScreen> {
       final resp = await _client.streamChat(messages: _messages, model: _model);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      
       String currentMessage = '';
       await for (final chunk in resp.stream.transform(utf8.decoder)) {
         for (final line in chunk.split('\n')) {
@@ -120,13 +117,10 @@ class _ChatScreenState extends State<ChatScreen> {
             final data = line.substring(6);
             if (data == '[DONE]') break;
             currentMessage += data;
-            setState(() {
-              _messages.last['content'] = currentMessage;
-            });
+            setState(() { _messages.last['content'] = currentMessage; });
           }
         }
       }
-      
       if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
       }
@@ -146,7 +140,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _showMessageMenu(BuildContext context, Map<String, String> message, int index) {
+  void _showUserMessageMenu(BuildContext context, Map<String, String> message, int index) {
     showModalBottomSheet(
       context: context,
       backgroundColor: VegaTheme.surface,
@@ -155,15 +149,14 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (message['role'] == 'user')
-              ListTile(
-                leading: Icon(Icons.edit, color: VegaTheme.accent),
-                title: Text('Edit', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _editMessage(index, message['content'] ?? '');
-                },
-              ),
+            ListTile(
+              leading: Icon(Icons.edit, color: VegaTheme.accent),
+              title: Text('Edit', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _editMessage(index, message['content'] ?? '');
+              },
+            ),
             ListTile(
               leading: Icon(Icons.copy, color: VegaTheme.accent),
               title: Text('Copy', style: TextStyle(color: VegaTheme.textPrimary)),
@@ -180,10 +173,39 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _editMessage(int index, String currentText) {
     _controller.text = currentText;
-    // TODO: Implement edit mode
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Edit mode - type new message'), duration: Duration(seconds: 2)),
     );
+  }
+
+  Future<void> _deleteChat(int chatId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: Text('Delete chat?', style: TextStyle(color: VegaTheme.textPrimary)),
+        content: Text('This action cannot be undone.', style: TextStyle(color: VegaTheme.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      await ChatHistory.deleteChat(chatId);
+      await _loadChats();
+      // If we deleted the current chat, go to new chat screen
+      if (_currentChatId == chatId) {
+        _startNewChat();
+      }
+    }
   }
 
   void _startNewChat() {
@@ -232,9 +254,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       children: [
                         IconButton(
                           icon: Icon(Icons.search, color: VegaTheme.textSecondary, size: 22),
-                          onPressed: () {
-                            // TODO: Search
-                          },
+                          onPressed: () {},
                         ),
                         IconButton(
                           icon: Icon(Icons.add, color: VegaTheme.accent),
@@ -261,10 +281,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             subtitle: Text(chat['createdAt']?.toString().substring(0, 10) ?? '', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
                             trailing: IconButton(
                               icon: Icon(Icons.delete_outline, color: VegaTheme.textSecondary, size: 20),
-                              onPressed: () async {
-                                await ChatHistory.deleteChat(chat['id']);
-                                await _loadChats();
-                              },
+                              onPressed: () => _deleteChat(chat['id']),
                             ),
                             onTap: () => _openChat(chat['id']),
                           );
@@ -334,7 +351,11 @@ class _ChatScreenState extends State<ChatScreen> {
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
                           GestureDetector(
-                            onLongPress: () => _showMessageMenu(context, msg, i),
+                            onLongPress: () {
+                              if (isUser) {
+                                _showUserMessageMenu(context, msg, i);
+                              }
+                            },
                             child: Container(
                               margin: const EdgeInsets.only(bottom: 4),
                               padding: const EdgeInsets.all(12),
@@ -344,7 +365,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: VegaTheme.border),
                               ),
-                              child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                              child: SelectableText(
+                                msg['content'] ?? '',
+                                style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
+                              ),
                             ),
                           ),
                           if (!isUser && msg['content']?.isNotEmpty == true)
