@@ -89,13 +89,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
 
-
   Future<void> _send() async {
-    await _loadSettings();
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
     _controller.clear();
     FocusScope.of(context).unfocus();
+    
+    await _loadSettings();
+    
     if (_currentChatId == null) {
       _currentChatId = await ChatHistory.createChat(
         text.length > 30 ? text.substring(0, 30) + '...' : text
@@ -111,15 +112,24 @@ class _ChatScreenState extends State<ChatScreen> {
       final resp = await _client.streamChat(messages: _messages, model: _model);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
+      
+      String currentMessage = '';
       await for (final chunk in resp.stream.transform(utf8.decoder)) {
-        if (chunk.isNotEmpty && chunk != '[DONE]') {
-          setState(() {
-            _messages.last['content'] = (_messages.last['content'] ?? '') + chunk;
-          });
+        // Parse SSE format
+        for (final line in chunk.split('\n')) {
+          if (line.startsWith('data: ')) {
+            final data = line.substring(6);
+            if (data == '[DONE]') break;
+            currentMessage += data;
+            setState(() {
+              _messages.last['content'] = currentMessage;
+            });
+          }
         }
       }
+      
       if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, 'assistant', _messages.last['content'] ?? '');
+        await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
       }
       await _loadChats();
     } catch (e) {
