@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
@@ -19,7 +20,27 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Map<String, String>> _messages = [];
   final _client = ApiClient();
   bool _loading = false;
-  String _model = 'openrouter/auto';
+  String _model = "openrouter/auto";
+
+  @override
+  void initState() {
+    super.initState();
+    _currentChatId = widget.chatId;
+    _loadSettings();
+    _loadChats();
+    if (_currentChatId != null) {
+      _loadChat(_currentChatId!);
+    }
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _model = prefs.getString("model") ?? "openrouter/auto";
+      _client.apiKey = prefs.getString("api_key") ?? "";
+      _client.baseUrl = prefs.getString("base_url") ?? "http://127.0.0.1:8765";
+    });
+  }
   int? _currentChatId;
   List<Map<String, dynamic>> _chats = [];
   Timer? _thinkingTimer;
