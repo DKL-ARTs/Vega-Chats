@@ -1,11 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -16,46 +17,44 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
-  final _messages = <Map<String, String>>[];
+  final List<Map<String, String>> _messages = [];
   final _client = ApiClient();
   bool _loading = false;
-  bool _typing = false;
-  String _model = 'openrouter/auto';
+  String _model = 'owl-alpha';
   int? _currentChatId;
-  bool _hasMessages = false;
   List<Map<String, dynamic>> _chats = [];
+  Timer? _thinkingTimer;
+  int _thinkingDots = 0;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     super.initState();
     _currentChatId = widget.chatId;
-    _hasMessages = _currentChatId != null;
     _loadSettings();
+    _loadChats();
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
     }
-    _loadChats();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _thinkingTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
+      _model = prefs.getString('model') ?? 'owl-alpha';
       _client.apiKey = prefs.getString('api_key') ?? '';
       _client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
-      _model = prefs.getString('model') ?? 'openrouter/auto';
     });
   }
 
   Future<void> _loadChats() async {
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _model = prefs.getString("model") ?? "openrouter/auto";
-      _client.apiKey = prefs.getString("api_key") ?? "";
-      _client.baseUrl = prefs.getString("base_url") ?? "http://127.0.0.1:8765";
-    });
-  }
-
     final chats = await ChatHistory.getChats();
     setState(() => _chats = chats);
   }
@@ -67,9 +66,28 @@ class _ChatScreenState extends State<ChatScreen> {
       for (final msg in messages) {
         _messages.add({'role': msg['role'], 'content': msg['content']});
       }
-      _hasMessages = _messages.isNotEmpty;
     });
   }
+
+  void _startThinking() {
+    _thinkingTimer?.cancel();
+    _thinkingDots = 0;
+    _thinkingTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (mounted) {
+        setState(() {
+          _thinkingDots = (_thinkingDots + 1) % 4;
+        });
+      }
+    });
+  }
+
+  void _stopThinking() {
+    _thinkingTimer?.cancel();
+    _thinkingTimer = null;
+    _thinkingDots = 0;
+  }
+
+  String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
 
   Future<void> _send() async {
     final text = _controller.text.trim();
@@ -85,31 +103,28 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.add({'role': 'user', 'content': text});
       _loading = true;
-      _typing = true;
-      _hasMessages = true;
     });
+    _startThinking();
     try {
       final resp = await _client.streamChat(messages: _messages, model: _model);
-      final buffer = StringBuffer();
+      _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       await for (final chunk in resp.stream.transform(utf8.decoder)) {
-        for (final line in chunk.split('\n')) {
-          if (line.startsWith('data: ') && line != 'data: [DONE]') {
-            final data = line.substring(6);
-            buffer.write(data);
-            setState(() { _messages.last['content'] = buffer.toString(); });
-          }
+        if (chunk.isNotEmpty && chunk != '[DONE]') {
+          setState(() {
+            _messages.last['content'] = (_messages.last['content'] ?? '') + chunk;
+          });
         }
       }
-      _loadSettings();
-    if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, 'assistant', buffer.toString());
+      if (_currentChatId != null) {
+        await ChatHistory.addMessage(_currentChatId!, 'assistant', _messages.last['content'] ?? '');
       }
       await _loadChats();
     } catch (e) {
+      _stopThinking();
       setState(() { _messages.add({'role': 'assistant', 'content': 'Error: $e'}); });
     } finally {
-      setState(() { _loading = false; _typing = false; });
+      if (mounted) setState(() { _loading = false; });
     }
   }
 
@@ -119,29 +134,37 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startNewChat() {
-    Scaffold.of(context).closeDrawer();
+    if (_scaffoldKey.currentState?.isDrawerOpen == true) {
+      _scaffoldKey.currentState?.closeDrawer();
+    }
+    _stopThinking();
+    _controller.clear();
     setState(() {
       _currentChatId = null;
       _messages.clear();
-      _hasMessages = false;
+      _loading = false;
     });
   }
 
   void _openChat(int chatId) {
-    Scaffold.of(context).closeDrawer();
+    _scaffoldKey.currentState?.closeDrawer();
+    _stopThinking();
     setState(() {
       _currentChatId = chatId;
-      _hasMessages = true;
+      _loading = false;
     });
     _loadChat(chatId);
   }
 
+  bool get _showNewChatScreen => _messages.isEmpty && !_loading;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: VegaTheme.dark,
       drawer: Drawer(
-        width: MediaQuery.of(context).size.width * 0.7,
+        width: MediaQuery.of(context).size.width * 0.75,
         backgroundColor: VegaTheme.surface,
         child: SafeArea(
           child: Column(
@@ -189,17 +212,17 @@ class _ChatScreenState extends State<ChatScreen> {
               ListTile(
                 leading: Icon(Icons.folder_outlined, color: VegaTheme.accent),
                 title: Text('Files', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { context.push('/ide'); },
+                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/ide'); },
               ),
               ListTile(
                 leading: Icon(Icons.terminal, color: VegaTheme.accent),
                 title: Text('Terminal', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { context.push('/terminal'); },
+                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/terminal'); },
               ),
               ListTile(
                 leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
                 title: Text('Settings', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { context.push('/settings'); },
+                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/settings'); },
               ),
               const SizedBox(height: 16),
             ],
@@ -212,11 +235,11 @@ class _ChatScreenState extends State<ChatScreen> {
         leading: Builder(
           builder: (ctx) => IconButton(
             icon: Icon(Icons.menu, color: VegaTheme.textSecondary),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
           ),
         ),
         actions: [
-          if (_hasMessages)
+          if (!_showNewChatScreen)
             IconButton(
               icon: Icon(Icons.add, color: VegaTheme.textSecondary),
               onPressed: _startNewChat,
@@ -226,15 +249,22 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _messages.isEmpty && !_typing
+            child: _showNewChatScreen
                 ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + (_typing ? 1 : 0),
+                    itemCount: _messages.length + (_loading ? 1 : 0),
                     itemBuilder: (ctx, i) {
-                      if (_typing && i == _messages.length) {
-                        return Align(alignment: Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Row(mainAxisSize: MainAxisSize.min, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(VegaTheme.accent))), const SizedBox(width: 8), Text('Thinking...', style: TextStyle(color: VegaTheme.textSecondary))])));
+                      if (_loading && i == _messages.length) {
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 12, top: 4),
+                            child: Text(_thinkingText, style: TextStyle(color: VegaTheme.textSecondary, fontSize: 15, fontStyle: FontStyle.italic)),
+                          ),
+                        );
                       }
+                      if (i >= _messages.length) return const SizedBox.shrink();
                       final msg = _messages[i];
                       final isUser = msg['role'] == 'user';
                       return GestureDetector(
@@ -257,7 +287,4 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
-  @override
-  void dispose() { _controller.dispose(); super.dispose(); }
 }
