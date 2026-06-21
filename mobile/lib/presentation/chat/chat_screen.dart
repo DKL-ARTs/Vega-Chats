@@ -24,7 +24,6 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _chats = [];
   Timer? _thinkingTimer;
   int _thinkingDots = 0;
-  String _assistantBuffer = '';
 
   @override
   void initState() {
@@ -61,7 +60,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _startThinking() {
     _thinkingTimer?.cancel();
     _thinkingDots = 0;
-    _thinkingTimer = Timer.periodic(const Duration(milliseconds: 400), (timer) {
+    _thinkingTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (mounted) {
         setState(() {
           _thinkingDots = (_thinkingDots + 1) % 4;
@@ -73,12 +72,10 @@ class _ChatScreenState extends State<ChatScreen> {
   void _stopThinking() {
     _thinkingTimer?.cancel();
     _thinkingTimer = null;
+    _thinkingDots = 0;
   }
 
-  String get _thinkingText {
-    if (_assistantBuffer.isNotEmpty) return _assistantBuffer;
-    return 'Thinking' + '.' * _thinkingDots;
-  }
+  String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
 
   Future<void> _send() async {
     final text = _controller.text.trim();
@@ -94,7 +91,6 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.add({'role': 'user', 'content': text});
       _loading = true;
-      _assistantBuffer = '';
     });
     _startThinking();
     try {
@@ -126,7 +122,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _stopThinking();
       setState(() { _messages.add({'role': 'assistant', 'content': 'Error: $e'}); });
     } finally {
-      setState(() { _loading = false; });
+      if (mounted) setState(() { _loading = false; });
     }
   }
 
@@ -137,13 +133,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startNewChat() {
     Navigator.pop(context);
+    _stopThinking();
     setState(() {
       _currentChatId = null;
       _messages.clear();
       _loading = false;
-      _assistantBuffer = '';
     });
-    _stopThinking();
   }
 
   void _openChat(int chatId) {
@@ -154,7 +149,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadChat(chatId);
   }
 
-  bool get _isNewChat => _currentChatId == null && _messages.isEmpty;
+  bool get _isNewChat => _currentChatId == null && _messages.isEmpty && !_loading;
 
   @override
   Widget build(BuildContext context) {
@@ -250,17 +245,18 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + (_loading ? 1 : 0),
+                    itemCount: _messages.length + (_loading && _thinkingTimer != null ? 1 : 0),
                     itemBuilder: (ctx, i) {
-                      if (_loading && i == _messages.length) {
+                      if (_loading && _thinkingTimer != null && i == _messages.length) {
                         return Align(
                           alignment: Alignment.centerLeft,
                           child: Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.only(bottom: 12, top: 4),
                             child: Text(_thinkingText, style: TextStyle(color: VegaTheme.textSecondary, fontSize: 15, fontStyle: FontStyle.italic)),
                           ),
                         );
                       }
+                      if (i >= _messages.length) return const SizedBox.shrink();
                       final msg = _messages[i];
                       final isUser = msg['role'] == 'user';
                       return GestureDetector(
