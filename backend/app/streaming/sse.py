@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from app.providers import get_provider
@@ -11,14 +12,21 @@ async def chat_stream(request: Request):
     model = body.get('model', 'openrouter/auto')
     provider_name = body.get('provider', 'openrouter')
     
+    print(f'[DEBUG] Stream request: model={model}, messages_count={len(messages)}')
+    
     provider = get_provider(provider_name)
     
     async def event_generator():
+        chunk_count = 0
         try:
             async for chunk in provider.stream(messages, model):
-                yield f'data: {chunk}\n\n'
+                chunk_count += 1
+                print(f'[DEBUG] Chunk {chunk_count}: {chunk[:50]}...')
+                yield f'data: {json.dumps({"choices": [{"delta": {"content": chunk}}])}\n\n'
+            print(f'[DEBUG] Stream complete: {chunk_count} chunks')
         except Exception as e:
-            yield f'data: Error: {str(e)}\n\n'
+            print(f'[DEBUG] Error: {e}')
+            yield f'data: {json.dumps({"error": str(e)})}\n\n'
         yield 'data: [DONE]\n\n'
     
     return StreamingResponse(
