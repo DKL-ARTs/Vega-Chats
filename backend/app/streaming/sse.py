@@ -22,13 +22,12 @@ async def chat_stream(request: Request):
             async for chunk in provider.stream(messages, model):
                 chunk_count += 1
                 print(f'[DEBUG] Chunk {chunk_count}: {chunk[:50]}...')
-                data = json.dumps({'choices': [{'delta': {'content': chunk}}]})
-                yield f'data: {data}\n\n'
+                # Отправляем чистый текст, не JSON
+                yield f'data: {chunk}\n\n'
             print(f'[DEBUG] Stream complete: {chunk_count} chunks')
         except Exception as e:
             print(f'[DEBUG] Error: {e}')
-            error_data = json.dumps({'error': str(e)})
-            yield f'data: {error_data}\n\n'
+            yield f'data: Error: {str(e)}\n\n'
         yield 'data: [DONE]\n\n'
     
     return StreamingResponse(
