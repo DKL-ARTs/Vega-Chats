@@ -89,6 +89,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
 
+    await _loadSettings(); // Reload settings before each message
+
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
