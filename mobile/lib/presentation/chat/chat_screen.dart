@@ -24,6 +24,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _chats = [];
   Timer? _thinkingTimer;
   int _thinkingDots = 0;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -132,7 +133,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startNewChat() {
-    Navigator.pop(context);
+    // Закрываем шторку если открыта
+    if (_scaffoldKey.currentState?.isDrawerOpen == true) {
+      _scaffoldKey.currentState?.closeDrawer();
+    }
     _stopThinking();
     _controller.clear();
     setState(() {
@@ -143,7 +147,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _openChat(int chatId) {
-    Navigator.pop(context);
+    _scaffoldKey.currentState?.closeDrawer();
     _stopThinking();
     setState(() {
       _currentChatId = chatId;
@@ -157,6 +161,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: VegaTheme.dark,
       drawer: Drawer(
         width: MediaQuery.of(context).size.width * 0.75,
@@ -172,10 +177,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     Text('Chats', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
                     IconButton(
                       icon: Icon(Icons.add, color: VegaTheme.accent),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _startNewChat();
-                      },
+                      onPressed: _startNewChat,
                     ),
                   ],
                 ),
@@ -210,17 +212,17 @@ class _ChatScreenState extends State<ChatScreen> {
               ListTile(
                 leading: Icon(Icons.folder_outlined, color: VegaTheme.accent),
                 title: Text('Files', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { Navigator.pop(context); context.push('/ide'); },
+                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/ide'); },
               ),
               ListTile(
                 leading: Icon(Icons.terminal, color: VegaTheme.accent),
                 title: Text('Terminal', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { Navigator.pop(context); context.push('/terminal'); },
+                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/terminal'); },
               ),
               ListTile(
                 leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
                 title: Text('Settings', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { Navigator.pop(context); context.push('/settings'); },
+                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/settings'); },
               ),
               const SizedBox(height: 16),
             ],
@@ -233,7 +235,7 @@ class _ChatScreenState extends State<ChatScreen> {
         leading: Builder(
           builder: (ctx) => IconButton(
             icon: Icon(Icons.menu, color: VegaTheme.textSecondary),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
           ),
         ),
         actions: [
