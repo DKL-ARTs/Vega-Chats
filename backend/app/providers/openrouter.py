@@ -27,33 +27,6 @@ class OpenRouterProvider(BaseProvider):
         data = resp.json()
         return data['choices'][0]['message']['content']
     
-    def _extract_content(self, data):
-        try:
-            choices = data.get('choices', [])
-            if not choices:
-                return ''
-            delta = choices[0].get('delta', {})
-            content = delta.get('content', '')
-            if not isinstance(content, str):
-                return ''
-            if content.startswith('{'):
-                try:
-                    parsed = json.loads(content)
-                    if 'choices' in parsed:
-                        inner_delta = parsed['choices'][0].get('delta', {})
-                        inner_content = inner_delta.get('content', '')
-                        if inner_content:
-                            return inner_content
-                    if 'content' in parsed:
-                        return parsed['content']
-                    if 'text' in parsed:
-                        return parsed['text']
-                except:
-                    pass
-            return content
-        except:
-            return ''
-    
     async def stream(self, messages: list[dict], model: str = None, **kwargs):
         model = model or settings.default_model
         print(f'[OpenRouter] Using model: {model}')
@@ -75,10 +48,11 @@ class OpenRouterProvider(BaseProvider):
                             return
                         try:
                             data = json.loads(chunk)
-                            content = self._extract_content(data)
+                            delta = data['choices'][0].get('delta', {})
+                            content = delta.get('content', '')
                             if content:
                                 yield content
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, KeyError, IndexError):
                             continue
         except Exception as e:
             yield f'Error: {str(e)}'
