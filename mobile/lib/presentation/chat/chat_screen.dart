@@ -115,7 +115,6 @@ class _ChatScreenState extends State<ChatScreen> {
       
       String currentMessage = '';
       await for (final chunk in resp.stream.transform(utf8.decoder)) {
-        // Parse SSE format
         for (final line in chunk.split('\n')) {
           if (line.startsWith('data: ')) {
             final data = line.substring(6);
@@ -142,7 +141,49 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _copyMessage(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface),
+    );
+  }
+
+  void _showMessageMenu(BuildContext context, Map<String, String> message, int index) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (message['role'] == 'user')
+              ListTile(
+                leading: Icon(Icons.edit, color: VegaTheme.accent),
+                title: Text('Edit', style: TextStyle(color: VegaTheme.textPrimary)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _editMessage(index, message['content'] ?? '');
+                },
+              ),
+            ListTile(
+              leading: Icon(Icons.copy, color: VegaTheme.accent),
+              title: Text('Copy', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _copyMessage(message['content'] ?? '');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _editMessage(int index, String currentText) {
+    _controller.text = currentText;
+    // TODO: Implement edit mode
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Edit mode - type new message'), duration: Duration(seconds: 2)),
+    );
   }
 
   void _startNewChat() {
@@ -187,9 +228,19 @@ class _ChatScreenState extends State<ChatScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text('Chats', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-                    IconButton(
-                      icon: Icon(Icons.add, color: VegaTheme.accent),
-                      onPressed: _startNewChat,
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.search, color: VegaTheme.textSecondary, size: 22),
+                          onPressed: () {
+                            // TODO: Search
+                          },
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.add, color: VegaTheme.accent),
+                          onPressed: _startNewChat,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -279,9 +330,41 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (i >= _messages.length) return const SizedBox.shrink();
                       final msg = _messages[i];
                       final isUser = msg['role'] == 'user';
-                      return GestureDetector(
-                        onLongPress: () => _copyMessage(msg['content'] ?? ''),
-                        child: Align(alignment: isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8), decoration: BoxDecoration(color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15)))),
+                      return Column(
+                        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          GestureDetector(
+                            onLongPress: () => _showMessageMenu(context, msg, i),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 4),
+                              padding: const EdgeInsets.all(12),
+                              constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8),
+                              decoration: BoxDecoration(
+                                color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: VegaTheme.border),
+                              ),
+                              child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                            ),
+                          ),
+                          if (!isUser && msg['content']?.isNotEmpty == true)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12, left: 4),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  InkWell(
+                                    onTap: () => _copyMessage(msg['content'] ?? ''),
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                       );
                     },
                   ),
