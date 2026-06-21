@@ -16,7 +16,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
-  final _messages = <Map<String, String>>[];
+  final List<Map<String, String>> _messages = [];
   final _client = ApiClient();
   bool _loading = false;
   String _model = 'openrouter/auto';
@@ -132,8 +132,13 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startNewChat() {
-    Navigator.pop(context);
+    // Закрываем шторку если открыта
+    if (Scaffold.of(context).isDrawerOpen) {
+      Navigator.pop(context);
+    }
+    // Сбрасываем состояние
     _stopThinking();
+    _controller.clear();
     setState(() {
       _currentChatId = null;
       _messages.clear();
@@ -142,14 +147,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _openChat(int chatId) {
-    Navigator.pop(context);
+    Navigator.pop(context); // Закрываем шторку
+    _stopThinking();
     setState(() {
       _currentChatId = chatId;
+      _loading = false;
     });
     _loadChat(chatId);
   }
 
-  bool get _isNewChat => _currentChatId == null && _messages.isEmpty && !_loading;
+  bool get _showNewChatScreen => _messages.isEmpty && !_loading;
 
   @override
   Widget build(BuildContext context) {
@@ -231,7 +238,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
-          if (!_isNewChat)
+          if (!_showNewChatScreen)
             IconButton(
               icon: Icon(Icons.add, color: VegaTheme.textSecondary),
               onPressed: _startNewChat,
@@ -241,13 +248,13 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _messages.isEmpty && !_loading
+            child: _showNewChatScreen
                 ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + (_loading && _thinkingTimer != null ? 1 : 0),
+                    itemCount: _messages.length + (_loading ? 1 : 0),
                     itemBuilder: (ctx, i) {
-                      if (_loading && _thinkingTimer != null && i == _messages.length) {
+                      if (_loading && i == _messages.length) {
                         return Align(
                           alignment: Alignment.centerLeft,
                           child: Padding(
