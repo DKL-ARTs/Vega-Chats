@@ -449,7 +449,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: VegaTheme.border),
                               ),
-                              child: SelectableText(
+                              child: Text(
                                 msg['content'] ?? '',
                                 style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
                               ),
