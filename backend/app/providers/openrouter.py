@@ -16,8 +16,18 @@ class OpenRouterProvider(BaseProvider):
             timeout=120.0,
         )
     
+    async def chat(self, messages: list[dict], model: str = None, **kwargs) -> str:
+        model = model or settings.default_model
+        resp = await self.client.post('/chat/completions', json={
+            'model': model,
+            'messages': messages,
+            **kwargs,
+        })
+        resp.raise_for_status()
+        data = resp.json()
+        return data['choices'][0]['message']['content']
+    
     def _extract_content(self, data):
-        """Extract text content from various response formats"""
         try:
             choices = data.get('choices', [])
             if not choices:
@@ -26,17 +36,14 @@ class OpenRouterProvider(BaseProvider):
             content = delta.get('content', '')
             if not isinstance(content, str):
                 return ''
-            # Try to parse as JSON (Gemini returns JSON string in content)
             if content.startswith('{'):
                 try:
                     parsed = json.loads(content)
-                    # Try nested structure
                     if 'choices' in parsed:
                         inner_delta = parsed['choices'][0].get('delta', {})
                         inner_content = inner_delta.get('content', '')
                         if inner_content:
                             return inner_content
-                    # Try direct content
                     if 'content' in parsed:
                         return parsed['content']
                     if 'text' in parsed:
