@@ -132,11 +132,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startNewChat() {
-    // Закрываем шторку если открыта
-    if (Scaffold.of(context).isDrawerOpen) {
-      Navigator.pop(context);
-    }
-    // Сбрасываем состояние
+    Navigator.pop(context);
     _stopThinking();
     _controller.clear();
     setState(() {
@@ -147,7 +143,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _openChat(int chatId) {
-    Navigator.pop(context); // Закрываем шторку
+    Navigator.pop(context);
     _stopThinking();
     setState(() {
       _currentChatId = chatId;
@@ -176,7 +172,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     Text('Chats', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
                     IconButton(
                       icon: Icon(Icons.add, color: VegaTheme.accent),
-                      onPressed: _startNewChat,
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _startNewChat();
+                      },
                     ),
                   ],
                 ),
