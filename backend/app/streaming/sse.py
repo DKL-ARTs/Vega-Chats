@@ -4,25 +4,28 @@ from app.providers import get_provider
 
 router = APIRouter()
 
-@router.post("/chat/stream")
+@router.post('/chat/stream')
 async def chat_stream(request: Request):
     body = await request.json()
-    messages = body.get("messages", [])
-    model = body.get("model", "openrouter/auto")
-    provider_name = body.get("provider", "openrouter")
+    messages = body.get('messages', [])
+    model = body.get('model', 'openrouter/auto')
+    provider_name = body.get('provider', 'openrouter')
     
     provider = get_provider(provider_name)
     
     async def event_generator():
-        async for chunk in provider.stream(messages, model):
-            yield f"data: {chunk}\n\n"
-        yield "data: [DONE]\n\n"
+        try:
+            async for chunk in provider.stream(messages, model):
+                yield f'data: {chunk}\n\n'
+        except Exception as e:
+            yield f'data: Error: {str(e)}\n\n'
+        yield 'data: [DONE]\n\n'
     
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type='text/event-stream',
         headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
         },
     )
