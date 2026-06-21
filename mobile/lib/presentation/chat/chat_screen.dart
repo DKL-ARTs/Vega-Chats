@@ -76,7 +76,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _thinkingDots = 0;
   }
 
-  String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
+  String get _thinkingText => 'Thinking...';
 
   Future<void> _send() async {
     final text = _controller.text.trim();

@@ -12,6 +12,8 @@ class OpenRouterProvider(BaseProvider):
             headers={
                 'Authorization': f'Bearer {settings.openrouter_api_key}',
                 'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://vega-chat.app',
+                'X-Title': 'Vega Chat',
             },
             timeout=120.0,
         )
@@ -29,6 +31,7 @@ class OpenRouterProvider(BaseProvider):
     
     async def stream(self, messages: list[dict], model: str = None, **kwargs):
         model = model or settings.default_model
+        print(f'[OpenRouter] Using model: {model}')
         try:
             async with self.client.stream('POST', '/chat/completions', json={
                 'model': model,
@@ -47,6 +50,9 @@ class OpenRouterProvider(BaseProvider):
                             return
                         try:
                             data = json.loads(chunk)
+                            # Debug: print actual model used
+                            if 'model' in data:
+                                print(f'[OpenRouter] Response from model: {data["model"]}')
                             delta = data['choices'][0].get('delta', {})
                             content = delta.get('content', '')
                             if content:
@@ -54,7 +60,7 @@ class OpenRouterProvider(BaseProvider):
                         except (json.JSONDecodeError, KeyError, IndexError):
                             continue
         except httpx.ConnectError as e:
-            yield f'Error: Cannot connect to {settings.openrouter_base_url}. Check your internet connection.'
+            yield f'Error: Cannot connect to OpenRouter. Check your internet connection.'
         except httpx.TimeoutException:
             yield 'Error: Request timed out. Please try again.'
         except Exception as e:
