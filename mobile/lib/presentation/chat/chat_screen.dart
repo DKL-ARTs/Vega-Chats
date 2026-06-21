@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -22,28 +21,16 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _typing = false;
   String _model = 'openrouter/auto';
   int? _currentChatId;
-  bool _hasMessages = false;
   List<Map<String, dynamic>> _chats = [];
 
   @override
   void initState() {
     super.initState();
     _currentChatId = widget.chatId;
-    _hasMessages = _currentChatId != null;
-    _loadSettings();
+    _loadChats();
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
     }
-    _loadChats();
-  }
-
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _client.apiKey = prefs.getString('api_key') ?? '';
-      _client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
-      _model = prefs.getString('model') ?? 'openrouter/auto';
-    });
   }
 
   Future<void> _loadChats() async {
@@ -58,7 +45,6 @@ class _ChatScreenState extends State<ChatScreen> {
       for (final msg in messages) {
         _messages.add({'role': msg['role'], 'content': msg['content']});
       }
-      _hasMessages = _messages.isNotEmpty;
     });
   }
 
@@ -77,7 +63,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.add({'role': 'user', 'content': text});
       _loading = true;
       _typing = true;
-      _hasMessages = true;
     });
     try {
       final resp = await _client.streamChat(messages: _messages, model: _model);
@@ -92,8 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       }
-      _loadSettings();
-    if (_currentChatId != null) {
+      if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', buffer.toString());
       }
       await _loadChats();
@@ -110,19 +94,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startNewChat() {
-    Scaffold.of(context).closeDrawer();
+    Navigator.pop(context); // Закрываем шторку
     setState(() {
       _currentChatId = null;
       _messages.clear();
-      _hasMessages = false;
     });
   }
 
   void _openChat(int chatId) {
-    Scaffold.of(context).closeDrawer();
+    Navigator.pop(context); // Закрываем шторку
     setState(() {
       _currentChatId = chatId;
-      _hasMessages = true;
     });
     _loadChat(chatId);
   }
@@ -132,7 +114,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       backgroundColor: VegaTheme.dark,
       drawer: Drawer(
-        width: MediaQuery.of(context).size.width * 0.7,
+        width: MediaQuery.of(context).size.width * 0.75,
         backgroundColor: VegaTheme.surface,
         child: SafeArea(
           child: Column(
@@ -180,17 +162,17 @@ class _ChatScreenState extends State<ChatScreen> {
               ListTile(
                 leading: Icon(Icons.folder_outlined, color: VegaTheme.accent),
                 title: Text('Files', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { context.push('/ide'); },
+                onTap: () { Navigator.pop(context); context.push('/ide'); },
               ),
               ListTile(
                 leading: Icon(Icons.terminal, color: VegaTheme.accent),
                 title: Text('Terminal', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { context.push('/terminal'); },
+                onTap: () { Navigator.pop(context); context.push('/terminal'); },
               ),
               ListTile(
                 leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
                 title: Text('Settings', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { context.push('/settings'); },
+                onTap: () { Navigator.pop(context); context.push('/settings'); },
               ),
               const SizedBox(height: 16),
             ],
@@ -207,11 +189,10 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
-          if (_hasMessages)
-            IconButton(
-              icon: Icon(Icons.add, color: VegaTheme.textSecondary),
-              onPressed: _startNewChat,
-            ),
+          IconButton(
+            icon: Icon(Icons.add, color: VegaTheme.textSecondary),
+            onPressed: _startNewChat,
+          ),
         ],
       ),
       body: Column(
