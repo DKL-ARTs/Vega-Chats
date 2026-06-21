@@ -17,7 +17,7 @@ class ApiClient {
 
   Future<http.StreamedResponse> streamChat({
     required List<Map<String, String>> messages,
-    String model = 'openrouter/auto',
+    String model = 'owl-alpha',
   }) async {
     final request = http.Request(
       'POST',

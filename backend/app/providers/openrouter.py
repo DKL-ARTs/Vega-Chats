@@ -57,6 +57,7 @@ class OpenRouterProvider(BaseProvider):
     async def stream(self, messages: list[dict], model: str = None, **kwargs):
         model = model or settings.default_model
         print(f'[OpenRouter] Using model: {model}')
+        buffer = ''
         try:
             async with self.client.stream('POST', '/chat/completions', json={
                 'model': model,
@@ -72,13 +73,21 @@ class OpenRouterProvider(BaseProvider):
                     if line.startswith('data: '):
                         chunk = line[6:]
                         if chunk == '[DONE]':
+                            if buffer:
+                                yield buffer
                             return
                         try:
                             data = json.loads(chunk)
                             content = self._extract_content(data)
                             if content:
-                                yield content
+                                buffer += content
+                                # Send when we have a word or punctuation
+                                if content.endswith(' ') or content.endswith('\n') or content.endswith('.') or content.endswith('!') or content.endswith('?'):
+                                    yield buffer
+                                    buffer = ''
                         except json.JSONDecodeError:
                             continue
+                if buffer:
+                    yield buffer
         except Exception as e:
             yield f'Error: {str(e)}'
