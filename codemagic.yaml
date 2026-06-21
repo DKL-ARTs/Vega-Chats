@@ -1,0 +1,17 @@
+workflows:
+  android-debug:
+    name: Android Debug Build
+    environment:
+      flutter: stable
+      java: 17
+    scripts:
+      - name: Get dependencies
+        script: |
+          cd mobile
+          flutter pub get
+      - name: Build APK
+        script: |
+          cd mobile
+          flutter build apk --debug --split-per-abi
+    artifacts:
+      - mobile/build/app/outputs/flutter-apk/*.apk
