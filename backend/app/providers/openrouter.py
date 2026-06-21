@@ -12,22 +12,9 @@ class OpenRouterProvider(BaseProvider):
             headers={
                 'Authorization': f'Bearer {settings.openrouter_api_key}',
                 'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://vega-chat.app',
-                'X-Title': 'Vega Chat',
             },
             timeout=120.0,
         )
-    
-    async def chat(self, messages: list[dict], model: str = None, **kwargs) -> str:
-        model = model or settings.default_model
-        resp = await self.client.post('/chat/completions', json={
-            'model': model,
-            'messages': messages,
-            **kwargs,
-        })
-        resp.raise_for_status()
-        data = resp.json()
-        return data['choices'][0]['message']['content']
     
     async def stream(self, messages: list[dict], model: str = None, **kwargs):
         model = model or settings.default_model
@@ -41,7 +28,7 @@ class OpenRouterProvider(BaseProvider):
             }) as resp:
                 if resp.status_code != 200:
                     error_text = await resp.aread()
-                    yield f'Error: HTTP {resp.status_code}: {error_text.decode()[:200]}'
+                    yield f'Error: HTTP {resp.status_code}'
                     return
                 async for line in resp.aiter_lines():
                     if line.startswith('data: '):
@@ -50,18 +37,11 @@ class OpenRouterProvider(BaseProvider):
                             return
                         try:
                             data = json.loads(chunk)
-                            # Debug: print actual model used
-                            if 'model' in data:
-                                print(f'[OpenRouter] Response from model: {data["model"]}')
                             delta = data['choices'][0].get('delta', {})
                             content = delta.get('content', '')
                             if content:
                                 yield content
                         except (json.JSONDecodeError, KeyError, IndexError):
                             continue
-        except httpx.ConnectError as e:
-            yield f'Error: Cannot connect to OpenRouter. Check your internet connection.'
-        except httpx.TimeoutException:
-            yield 'Error: Request timed out. Please try again.'
         except Exception as e:
             yield f'Error: {str(e)}'

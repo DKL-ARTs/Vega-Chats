@@ -22,7 +22,7 @@ async def chat_stream(request: Request):
             async for chunk in provider.stream(messages, model):
                 chunk_count += 1
                 print(f'[DEBUG] Chunk {chunk_count}: {chunk[:50]}...')
-                # Отправляем чистый текст, не JSON
+                # Отправляем чистый текст
                 yield f'data: {chunk}\n\n'
             print(f'[DEBUG] Stream complete: {chunk_count} chunks')
         except Exception as e:
