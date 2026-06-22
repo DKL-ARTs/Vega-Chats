@@ -11,30 +11,28 @@ async def chat_stream(request: Request):
     messages = body.get('messages', [])
     model = body.get('model', 'openrouter/auto')
     provider_name = body.get('provider', 'openrouter')
+    files = body.get('files', [])
     
-    print(f'[DEBUG] Stream request: model={model}, messages_count={len(messages)}')
+    print(f'[DEBUG] model={model}, messages={len(messages)}, files={len(files)}')
+    
+    # Add file info to last user message
+    if files and messages:
+        for f in files:
+            name = f.get('name', 'file')
+            messages[-1]['content'] += f'\n[File: {name}]'
     
     provider = get_provider(provider_name)
     
     async def event_generator():
-        chunk_count = 0
         try:
             async for chunk in provider.stream(messages, model):
-                chunk_count += 1
-                print(f'[DEBUG] Chunk {chunk_count}: {chunk[:50]}...')
-                # Отправляем чистый текст
                 yield f'data: {chunk}\n\n'
-            print(f'[DEBUG] Stream complete: {chunk_count} chunks')
         except Exception as e:
-            print(f'[DEBUG] Error: {e}')
             yield f'data: Error: {str(e)}\n\n'
         yield 'data: [DONE]\n\n'
     
     return StreamingResponse(
         event_generator(),
         media_type='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-        },
+        headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'},
     )

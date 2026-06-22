@@ -178,7 +178,13 @@ class _ChatScreenState extends State<ChatScreen> {
     
     _startThinking();
     try {
-      final resp = await _client.streamChat(messages: _messages, model: _model);
+    // Prepare files
+    List<Map<String, String>>? files;
+    if (fileToSend != null) {
+      final bytes = await File(fileToSend).readAsBytes();
+      files = [{"name": fileName ?? "file", "content": base64Encode(bytes)}];
+    }
+      final resp = await _client.streamChat(messages: _messages, model: _model, files: files);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       String currentMessage = '';
