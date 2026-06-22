@@ -452,25 +452,25 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
+          // Attachment preview
+          if (_attachedFile != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              color: VegaTheme.surface,
+              child: Row(children: [
+                if (_attachedIsImage)
+                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 40, height: 40, fit: BoxFit.cover))
+                else
+                  Container(width: 40, height: 40, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 20)),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 12), overflow: TextOverflow.ellipsis)),
+                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 16), onPressed: _removeAttachment, constraints: BoxConstraints(), padding: EdgeInsets.zero),
+              ]),
+            ),
           Container(
             padding: const EdgeInsets.all(12),
             color: VegaTheme.dark,
             child: Row(children: [
-          // Attachment preview
-          if (_attachedFile != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: VegaTheme.surface,
-              child: Row(children: [
-                if (_attachedIsImage)
-                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
-                else
-                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
-              ]),
-            ),
               IconButton(
                 icon: Icon(Icons.attach_file, color: _attachedFile != null ? VegaTheme.accent : VegaTheme.textSecondary),
                 onPressed: _showAttachMenu,
