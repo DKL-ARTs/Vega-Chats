@@ -444,9 +444,41 @@ class _ChatScreenState extends State<ChatScreen> {
                                 borderRadius: BorderRadius.circular(12),
                                 border: (msg["filePath"]?.isEmpty ?? true) ? Border.all(color: VegaTheme.border) : null,
                               ),
-                              child: SelectableText(
-                                msg['content'] ?? '',
-                                style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (msg['filePath']?.isNotEmpty == true && msg['isImage'] == 'true')
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        File(msg['filePath']!),
+                                        width: 200,
+                                        height: 200,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (ctx, err, stack) => Container(
+                                          width: 200,
+                                          height: 100,
+                                          color: VegaTheme.card,
+                                          child: Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+                                        ),
+                                      ),
+                                    ),
+                                  if (msg['filePath']?.isNotEmpty == true && msg['isImage'] != 'true')
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 20),
+                                        const SizedBox(width: 6),
+                                        Text(msg['fileName'] ?? 'File', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                      ],
+                                    ),
+                                  if (msg['content']?.isNotEmpty == true && !(msg['content']?.startsWith('[FILE:') ?? false))
+                                    Padding(
+                                      padding: EdgeInsets.only(top: (msg['filePath']?.isNotEmpty == true) ? 8 : 0),
+                                      child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                                    ),
+                                ],
                               ),
                             ),
                           ),

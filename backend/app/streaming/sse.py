@@ -18,23 +18,18 @@ async def chat_stream(request: Request):
     
     # Add file content to messages for AI context
     if files:
-        file_context = '\n\n[Attached files:]\n'
+        file_context = '\n\n[User attached files:]\n'
         for f in files:
             name = f.get('name', 'file')
             content = f.get('content', '')
-            mime = f.get('mimeType', '')
             
-            if mime.startswith('image/'):
-                # For images, note that it's an image
-                file_context += f'- {name} (image file, base64 length: {len(content)} chars)\n'
-            else:
-                # For other files, try to decode and show content
-                try:
-                    decoded = base64.b64decode(content).decode('utf-8', errors='ignore')
-                    preview = decoded[:500] + ('...' if len(decoded) > 500 else '')
-                    file_context += f'- {name} (content: {preview})\n'
-                except:
-                    file_context += f'- {name} (binary file, {len(content)} chars base64)\n'
+            # Try to decode and show text content
+            try:
+                decoded = base64.b64decode(content).decode('utf-8', errors='ignore')
+                preview = decoded[:1000] + ('...' if len(decoded) > 1000 else '')
+                file_context += f'\n--- File: {name} ---\n{preview}\n--- End ---\n'
+            except:
+                file_context += f'\n--- File: {name} ({len(content)} chars) ---\n'
         
         # Add to last user message
         for msg in reversed(messages):
