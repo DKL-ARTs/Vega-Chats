@@ -163,8 +163,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Build message content
     String messageContent = text;
     if (_attachedFile != null && _attachedFileName != null) {
-      messageContent = text.isEmpty ? '[FILE:$_attachedFileName]' : '$text
-[FILE:$_attachedFileName]';
+      messageContent = text.isEmpty ? "[FILE:" + _attachedFileName + "]" : text + "\n[FILE:" + _attachedFileName + "]";
     }
     
     await ChatHistory.addMessage(_currentChatId!, 'user', messageContent);
