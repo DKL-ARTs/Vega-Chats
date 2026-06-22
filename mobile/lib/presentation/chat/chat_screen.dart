@@ -70,7 +70,13 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.clear();
       for (final msg in messages) {
-        _messages.add({'role': msg['role'], 'content': msg['content']});
+        _messages.add({
+          'role': msg['role'],
+          'content': msg['content'],
+          'filePath': msg['filePath'] ?? '',
+          'fileName': msg['fileName'] ?? '',
+          'isImage': msg['isImage'] ?? 'false',
+        });
       }
     });
   }
@@ -161,10 +167,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     
     // Build message content
-    String messageContent = text;
-    if (_attachedFile != null && _attachedFileName != null) {
-      messageContent = text.isEmpty ? "[FILE:" + (_attachedFileName ?? "file") + "]" : text + "\n[FILE:" + (_attachedFileName ?? "file") + "]";
-    }
+    String messageContent = text.isEmpty ? '' : text;
     
     await ChatHistory.addMessage(_currentChatId!, 'user', messageContent);
     setState(() {

@@ -23,18 +23,36 @@ async def chat_stream(request: Request):
             name = f.get('name', 'file')
             content = f.get('content', '')
             
-            # Try to decode and show text content
-            try:
-                decoded = base64.b64decode(content).decode('utf-8', errors='ignore')
-                preview = decoded[:1000] + ('...' if len(decoded) > 1000 else '')
-                file_context += f'\n--- File: {name} ---\n{preview}\n--- End ---\n'
-            except:
-                file_context += f'\n--- File: {name} ({len(content)} chars) ---\n'
+            if name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                file_context += f'\n- Image: {name} (attached for vision analysis)\n'
+            else:
+                try:
+                    decoded = base64.b64decode(content).decode('utf-8', errors='ignore')
+                    preview = decoded[:1500] + ('...' if len(decoded) > 1500 else '')
+                    file_context += f'\n--- File: {name} ---\n{preview}\n--- End ---\n'
+                except:
+                    file_context += f'\n- File: {name} (binary)\n'
         
-        # Add to last user message
         for msg in reversed(messages):
             if msg.get('role') == 'user':
                 msg['content'] = msg.get('content', '') + file_context
+                break
+    
+    # If image files attached, use vision format for supported models
+    has_images = any(f.get('name', '').lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')) for f in files)
+    if has_images and messages:
+        # Convert last user message to vision format
+        for msg in reversed(messages):
+            if msg.get('role') == 'user':
+                text_content = msg.get('content', '')
+                images = []
+                for f in files:
+                    if f.get('name', '').lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                        images.append({
+                            'type': 'image_url',
+                            'image_url': {'url': f'data:image/jpeg;base64,{f.get("content", "")}'}
+                        })
+                msg['content'] = [{'type': 'text', 'text': text_content}] + images
                 break
     
     provider = get_provider(provider_name)
