@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
@@ -29,6 +31,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _thinkingTimer;
   int _thinkingDots = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  String? _attachedFile;
+  String? _attachedFileName;
+  bool _attachedIsImage = false;
   String? _attachedFile;
   String? _attachedFileName;
   bool _attachedIsImage = false;
@@ -70,7 +75,13 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.clear();
       for (final msg in messages) {
-        _messages.add({'role': msg['role'], 'content': msg['content']});
+        _messages.add({
+          'role': msg['role'] ?? '',
+          'content': msg['content'] ?? '',
+          'filePath': msg['filePath'] ?? '',
+          'fileName': msg['fileName'] ?? '',
+          'isImage': msg['isImage'] ?? false,
+        });
       }
     });
   }
@@ -148,6 +159,54 @@ class _ChatScreenState extends State<ChatScreen> {
       _attachedFileName = null;
       _attachedIsImage = false;
     });
+  }
+
+  Future<String> _copyFileToAppDir(String sourcePath, String fileName) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final filesDir = Directory(p.join(appDir.path, 'chat_files'));
+    if (!await filesDir.exists()) await filesDir.create(recursive: true);
+    final ext = p.extension(fileName);
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final newPath = p.join(filesDir.path, '$ts$ext');
+    await File(sourcePath).copy(newPath);
+    return newPath;
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.any);
+    if (result != null && result.files.isNotEmpty) {
+      final sourcePath = result.files.first.path!;
+      final fileName = result.files.first.name;
+      final savedPath = await _copyFileToAppDir(sourcePath, fileName);
+      setState(() { _attachedFile = savedPath; _attachedFileName = fileName; _attachedIsImage = false; });
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      final savedPath = await _copyFileToAppDir(image.path, image.name);
+      setState(() { _attachedFile = savedPath; _attachedFileName = image.name; _attachedIsImage = true; });
+    }
+  }
+
+  void _showAttachMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: Icon(Icons.image, color: VegaTheme.accent), title: Text('Photo', style: TextStyle(color: VegaTheme.textPrimary)), onTap: () { Navigator.pop(ctx); _pickImage(); }),
+          ListTile(leading: Icon(Icons.attach_file, color: VegaTheme.accent), title: Text('File', style: TextStyle(color: VegaTheme.textPrimary)), onTap: () { Navigator.pop(ctx); _pickFile(); }),
+        ]),
+      ),
+    );
+  }
+
+  void _removeAttachment() {
+    setState(() { _attachedFile = null; _attachedFileName = null; _attachedIsImage = false; });
   }
 
   Future<void> _send() async {

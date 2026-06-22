@@ -22,48 +22,31 @@ class ChatHistory {
     chats.insert(0, {
       'id': id,
       'title': title,
-      'messages': <Map<String, dynamic>>[],
+      'messages': [],
       'createdAt': DateTime.now().toIso8601String(),
     });
     await saveChats(chats);
     return id;
   }
 
-  static Future<void> addMessage(
-    int chatId,
-    String role,
-    String content, {
-    String filePath = '',
-    String fileName = '',
-    bool isImage = false,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString(_key);
-    if (data == null) return;
-    final chats = List<Map<String, dynamic>>.from(jsonDecode(data));
-    final idx = chats.indexWhere((c) => c['id'] == chatId);
-    if (idx == -1) return;
-    final messages = List<Map<String, dynamic>>.from(chats[idx]['messages'] ?? []);
-    messages.add({
-      'role': role,
-      'content': content,
-      'filePath': filePath,
-      'fileName': fileName,
-      'isImage': isImage,
-      'createdAt': DateTime.now().toIso8601String(),
-    });
-    chats[idx]['messages'] = messages;
-    await prefs.setString(_key, jsonEncode(chats));
+  static Future<void> addMessage(int chatId, String role, String content) async {
+    final chats = await getChats();
+    final chat = chats.firstWhere((c) => c['id'] == chatId, orElse: () => {});
+    if (chat.isNotEmpty) {
+      chat['messages'].add({
+        'role': role,
+        'content': content,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      await saveChats(chats);
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getMessages(int chatId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString(_key);
-    if (data == null) return [];
-    final chats = List<Map<String, dynamic>>.from(jsonDecode(data));
-    final idx = chats.indexWhere((c) => c['id'] == chatId);
-    if (idx == -1) return [];
-    return List<Map<String, dynamic>>.from(chats[idx]['messages'] ?? []);
+    final chats = await getChats();
+    final chat = chats.firstWhere((c) => c['id'] == chatId, orElse: () => {});
+    if (chat.isEmpty) return [];
+    return List<Map<String, dynamic>>.from(chat['messages'] ?? []);
   }
 
   static Future<void> deleteChat(int chatId) async {
