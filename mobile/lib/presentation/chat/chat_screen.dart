@@ -31,7 +31,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _attachedFile;
   String? _attachedFileName;
-  bool _attachedIsImage = false;
 
   @override
   void initState() {
@@ -112,7 +111,6 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _attachedFile = image.path;
         _attachedFileName = image.name;
-        _attachedIsImage = true;
       });
     }
   }
@@ -146,7 +144,6 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _attachedFile = null;
       _attachedFileName = null;
-      _attachedIsImage = false;
     });
   }
 
@@ -349,39 +346,9 @@ class _ChatScreenState extends State<ChatScreen> {
           // Attachment preview
           if (_attachedFile != null)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: VegaTheme.surface,
-              child: Row(children: [
-                if (_attachedIsImage)
-                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
-                else
-                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_attachedFileName ?? "File", style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
-              ]),
-            ),
-          // Attachment preview
-          if (_attachedFile != null)
-            Container(
               padding: const EdgeInsets.all(12),
               color: VegaTheme.surface,
               child: Row(children: [
-          // Attachment preview
-          if (_attachedFile != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: VegaTheme.surface,
-              child: Row(children: [
-                if (_attachedIsImage)
-                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
-                else
-                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_attachedFileName ?? "File", style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
-              ]),
-            ),
                 Icon(Icons.attach_file, color: VegaTheme.accent, size: 20),
                 const SizedBox(width: 8),
                 Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary), overflow: TextOverflow.ellipsis)),
@@ -404,21 +371,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       return Column(
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
-          // Attachment preview
-          if (_attachedFile != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: VegaTheme.surface,
-              child: Row(children: [
-                if (_attachedIsImage)
-                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
-                else
-                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_attachedFileName ?? "File", style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
-              ]),
-            ),
                           GestureDetector(
                             onLongPress: () { if (isUser) _showUserMessageMenu(context, msg, i); },
                             child: Container(margin: const EdgeInsets.only(bottom: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8), decoration: BoxDecoration(color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15))),
@@ -437,37 +389,7 @@ class _ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.all(12),
             color: VegaTheme.dark,
             child: Row(children: [
-          // Attachment preview
-          if (_attachedFile != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: VegaTheme.surface,
-              child: Row(children: [
-                if (_attachedIsImage)
-                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
-                else
-                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_attachedFileName ?? "File", style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
-              ]),
-            ),
               IconButton(icon: Icon(Icons.attach_file, color: VegaTheme.textSecondary), onPressed: _showAttachMenu),
-          // Attachment preview
-          if (_attachedFile != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: VegaTheme.surface,
-              child: Row(children: [
-                if (_attachedIsImage)
-                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
-                else
-                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_attachedFileName ?? "File", style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
-              ]),
-            ),
               Expanded(child: TextField(controller: _controller, style: TextStyle(color: VegaTheme.textPrimary), decoration: InputDecoration(hintText: 'Message...', hintStyle: TextStyle(color: VegaTheme.textSecondary), filled: true, fillColor: VegaTheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)), onSubmitted: (_) => _send())),
               const SizedBox(width: 8),
               IconButton(onPressed: _loading ? null : _send, icon: Icon(Icons.send, color: VegaTheme.accent)),
