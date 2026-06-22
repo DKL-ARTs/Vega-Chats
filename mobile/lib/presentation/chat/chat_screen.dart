@@ -398,70 +398,23 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          // Attachment preview above input
+          Container(
+            padding: const EdgeInsets.all(12),
+          // Attachment preview
           if (_attachedFile != null)
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               color: VegaTheme.surface,
               child: Row(children: [
                 if (_attachedIsImage)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(File(_attachedFile!), width: 60, height: 60, fit: BoxFit.cover),
-                  )
+                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
                 else
-                  Container(
-                    width: 60, height: 60,
-                    decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)),
-                    child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 30),
-                  ),
+                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
                 const SizedBox(width: 12),
-                Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary), overflow: TextOverflow.ellipsis)),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary), onPressed: _removeAttachment),
+                Expanded(child: Text(_attachedFileName ?? "File", style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
               ]),
             ),
-          Expanded(
-            child: _showNewChatScreen
-                ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + (_loading ? 1 : 0),
-                    itemBuilder: (ctx, i) {
-                      if (_loading && i == _messages.length) {
-                        return Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom: 12, top: 4), child: Text(_thinkingText, style: TextStyle(color: VegaTheme.textSecondary, fontSize: 15, fontStyle: FontStyle.italic))));
-                      }
-                      if (i >= _messages.length) return const SizedBox.shrink();
-                      final msg = _messages[i];
-                      final isUser = msg['role'] == 'user';
-                      return Column(
-                        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            onLongPress: () { if (isUser) _showUserMessageMenu(context, msg, i); },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 4),
-                              padding: const EdgeInsets.all(12),
-                              constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8),
-                              decoration: BoxDecoration(
-                                color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
-                                borderRadius: BorderRadius.circular(12),
-                                border: (msg['filePath']?.isEmpty ?? true) ? Border.all(color: VegaTheme.border) : null,
-                              ),
-                              child: _buildMessageContent(msg),
-                            ),
-                          ),
-                          if (!isUser && msg['content']?.isNotEmpty == true)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12, left: 4),
-                              child: InkWell(onTap: () => _copyMessage(msg['content'] ?? ''), borderRadius: BorderRadius.circular(4), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary))),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(12),
             color: VegaTheme.dark,
             child: Row(children: [
               IconButton(icon: Icon(Icons.attach_file, color: _attachedFile != null ? VegaTheme.accent : VegaTheme.textSecondary), onPressed: _showAttachMenu),
