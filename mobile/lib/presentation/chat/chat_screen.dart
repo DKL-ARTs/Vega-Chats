@@ -156,17 +156,38 @@ class _ChatScreenState extends State<ChatScreen> {
     await _loadSettings();
     if (_currentChatId == null) {
       _currentChatId = await ChatHistory.createChat(
-        text.length > 30 ? text.substring(0, 30) + '...' : text
+        _attachedFile != null ? 'File: $_attachedFileName' : (text.length > 30 ? text.substring(0, 30) + '...' : text)
       );
     }
-    await ChatHistory.addMessage(_currentChatId!, 'user', text);
+    
+    // Build message content
+    String messageContent = text;
+    if (_attachedFile != null && _attachedFileName != null) {
+      messageContent = text.isEmpty ? '[FILE:$_attachedFileName]' : '$text
+[FILE:$_attachedFileName]';
+    }
+    
+    await ChatHistory.addMessage(_currentChatId!, 'user', messageContent);
     setState(() {
-      _messages.add({'role': 'user', 'content': text});
+      _messages.add({'role': 'user', 'content': messageContent, 'filePath': _attachedFile ?? '', 'fileName': _attachedFileName ?? '', 'isImage': _attachedIsImage ? 'true' : 'false'});
       _loading = true;
     });
+    
+    final fileToSend = _attachedFile;
+    final fileName = _attachedFileName;
+    final isImage = _attachedIsImage;
+    _removeAttachment();
+    
     _startThinking();
     try {
-      final resp = await _client.streamChat(messages: _messages, model: _model);
+      // Prepare files for backend
+      List<Map<String, String>>? files;
+      if (fileToSend != null) {
+        final bytes = await File(fileToSend).readAsBytes();
+        files = [{'name': fileName ?? 'file', 'content': base64Encode(bytes)}];
+      }
+      
+      final resp = await _client.streamChat(messages: _messages, model: _model, files: files);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       String currentMessage = '';
@@ -461,7 +482,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (_attachedIsImage)
                   ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(_attachedFile!), width: 80, height: 80, fit: BoxFit.cover))
                 else
-                  Container(width: 80, height: 80, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 40)),
+                  Container(width: 80, height: 80, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 32), const SizedBox(height: 4), Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 10), overflow: TextOverflow.ellipsis, maxLines: 1))])),
                 const Spacer(),
                 IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 20), onPressed: _removeAttachment),
               ]),
