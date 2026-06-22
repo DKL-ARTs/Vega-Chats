@@ -402,8 +402,6 @@ class _ChatScreenState extends State<ChatScreen> {
           if (_attachedFile != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               color: VegaTheme.surface,
               child: Row(children: [
                 if (_attachedIsImage)
