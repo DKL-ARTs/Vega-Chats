@@ -461,11 +461,12 @@ class _ChatScreenState extends State<ChatScreen> {
                             },
                             child: Container(
                               margin: const EdgeInsets.only(bottom: 4),
-                              padding: msg['filePath']?.isNotEmpty == true ? EdgeInsets.zero : const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(12),
                               constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8),
-                              decoration: msg['filePath']?.isNotEmpty == true ? null : BoxDecoration(
+                              decoration: BoxDecoration(
                                 color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
                                 borderRadius: BorderRadius.circular(12),
+                                border: msg['filePath']?.isNotEmpty == true ? null : Border.all(color: VegaTheme.border),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
