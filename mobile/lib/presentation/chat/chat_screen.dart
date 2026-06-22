@@ -64,7 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadChats() async {
     final chats = await ChatHistory.getChats();
-    setState(() => _chats = chats);
+    if (mounted) setState(() => _chats = chats);
   }
 
   Future<void> _loadChat(int chatId) async {
@@ -462,7 +462,6 @@ class _ChatScreenState extends State<ChatScreen> {
                               decoration: BoxDecoration(
                                 color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
                                 borderRadius: BorderRadius.circular(12),
-                                border: null,
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
