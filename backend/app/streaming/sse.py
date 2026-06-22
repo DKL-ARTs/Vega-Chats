@@ -14,12 +14,25 @@ async def chat_stream(request: Request):
     files = body.get('files', [])
     
     print(f'[DEBUG] model={model}, messages={len(messages)}, files={len(files)}')
+    for f in files:
+        print(f'[DEBUG] File: {f.get("name")}, size={len(f.get("content", ""))}')
     
-    # Add file info to last user message
-    if files and messages:
+    # Add file info to messages for AI context
+    if files:
+        file_context = '\n\n[Attached files:]\n'
         for f in files:
             name = f.get('name', 'file')
-            messages[-1]['content'] += f'\n[File: {name}]'
+            is_image = f.get('mimeType', '').startswith('image/')
+            if is_image:
+                file_context += f'- {name} (image)\n'
+            else:
+                file_context += f'- {name} (file)\n'
+        
+        # Add to last user message
+        for msg in reversed(messages):
+            if msg.get('role') == 'user':
+                msg['content'] = msg.get('content', '') + file_context
+                break
     
     provider = get_provider(provider_name)
     
