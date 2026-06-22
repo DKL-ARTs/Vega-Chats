@@ -25,6 +25,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Map<String, String>> _messages = [];
   final _client = ApiClient();
   bool _loading = false;
+  bool _loadingChat = false;
   String _model = 'owl-alpha';
   int? _currentChatId;
   List<Map<String, dynamic>> _chats = [];
@@ -326,11 +327,14 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _currentChatId = chatId;
       _loading = false;
+      _loadingChat = true;
     });
-    _loadChat(chatId);
+    _loadChat(chatId).then((_) {
+      if (mounted) setState(() => _loadingChat = false);
+    });
   }
 
-  bool get _showNewChatScreen => _messages.isEmpty && !_loading;
+  bool get _showNewChatScreen => _messages.isEmpty && !_loading && !_loadingChat;
 
   @override
   Widget build(BuildContext context) {
@@ -457,9 +461,9 @@ class _ChatScreenState extends State<ChatScreen> {
                             },
                             child: Container(
                               margin: const EdgeInsets.only(bottom: 4),
-                              padding: const EdgeInsets.all(12),
+                              padding: msg['filePath']?.isNotEmpty == true ? EdgeInsets.zero : const EdgeInsets.all(12),
                               constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8),
-                              decoration: BoxDecoration(
+                              decoration: msg['filePath']?.isNotEmpty == true ? null : BoxDecoration(
                                 color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
                                 borderRadius: BorderRadius.circular(12),
                               ),
