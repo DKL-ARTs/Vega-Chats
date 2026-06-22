@@ -65,7 +65,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadChats() async {
     final chats = await ChatHistory.getChats();
-    if (mounted) setState(() => _chats = chats);
+    if (mounted) {
+      setState(() {
+        _chats = chats;
+        // Don't reset current chat if we're loading
+        if (_loadingChat) return;
+      });
+    }
   }
 
   Future<void> _loadChat(int chatId) async {
