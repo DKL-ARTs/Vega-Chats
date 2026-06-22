@@ -15,10 +15,8 @@ dependencies:
   shared_preferences: ^2.2.0
   file_picker: ^8.0.0
   image_picker: ^1.0.0
-  image_picker: ^1.0.0
   path: ^1.9.0
   web_socket_channel: ^2.4.0
-  image_picker: ^1.0.0
 
 dev_dependencies:
   flutter_test:
