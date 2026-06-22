@@ -466,7 +466,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     borderRadius: BorderRadius.circular(4),
                                     child: Padding(
                                       padding: const EdgeInsets.all(4),
-                                      icon: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary),
+                                      child: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary),
                                     ),
                                   ),
                                 ],
