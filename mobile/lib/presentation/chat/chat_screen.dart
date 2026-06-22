@@ -398,10 +398,10 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
           // Attachment preview
           if (_attachedFile != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               color: VegaTheme.surface,
