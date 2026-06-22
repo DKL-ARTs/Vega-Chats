@@ -150,7 +150,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _loading) return;
+    if ((text.isEmpty && _attachedFile == null) || _loading) return;
     _controller.clear();
     FocusScope.of(context).unfocus();
     await _loadSettings();
