@@ -472,7 +472,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (msg['filePath']?.isNotEmpty == true && msg['isImage'] == 'true')
+                                  if ((msg['filePath']?.toString().isNotEmpty ?? false) && msg['isImage'].toString() == 'true')
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
                                       child: Image.file(
@@ -488,7 +488,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                         ),
                                       ),
                                     ),
-                                  if (msg['filePath']?.isNotEmpty == true && msg['isImage'] != 'true')
+                                  if ((msg['filePath']?.toString().isNotEmpty ?? false) && msg['isImage'] != 'true')
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
@@ -499,7 +499,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                                   if (msg['content']?.isNotEmpty == true && !(msg['content']?.startsWith('[FILE:') ?? false))
                                     Padding(
-                                      padding: EdgeInsets.only(top: (msg['filePath']?.isNotEmpty == true) ? 8 : 0),
+                                      padding: EdgeInsets.only(top: ((msg['filePath']?.toString().isNotEmpty ?? false)) ? 8 : 0),
                                       child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
                                     ),
                                 ],
