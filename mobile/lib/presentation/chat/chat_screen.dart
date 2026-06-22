@@ -413,6 +413,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
               ]),
             ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(12),
             color: VegaTheme.dark,
             child: Row(children: [
               IconButton(icon: Icon(Icons.attach_file, color: _attachedFile != null ? VegaTheme.accent : VegaTheme.textSecondary), onPressed: _showAttachMenu),
