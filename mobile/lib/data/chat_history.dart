@@ -30,10 +30,13 @@ class ChatHistory {
   }
 
   static Future<void> addMessage(int chatId, String role, String content, {String? filePath, String? fileName, bool isImage = false}) async {
-    final chats = await getChats();
-    final chat = chats.firstWhere((c) => c['id'] == chatId, orElse: () => {});
-    if (chat.isNotEmpty) {
-      final messages = List<Map<String, dynamic>>.from(chat['messages'] ?? []);
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString(_key);
+    if (data == null) return;
+    final chats = List<Map<String, dynamic>>.from(jsonDecode(data));
+    final chatIndex = chats.indexWhere((c) => c['id'] == chatId);
+    if (chatIndex != -1) {
+      final messages = List<Map<String, dynamic>>.from(chats[chatIndex]['messages'] ?? []);
       messages.add({
         'role': role,
         'content': content,
@@ -42,16 +45,19 @@ class ChatHistory {
         'isImage': isImage,
         'createdAt': DateTime.now().toIso8601String(),
       });
-      chat['messages'] = messages;
-      await saveChats(chats);
+      chats[chatIndex]['messages'] = messages;
+      await prefs.setString(_key, jsonEncode(chats));
     }
   }
 
   static Future<List<Map<String, dynamic>>> getMessages(int chatId) async {
-    final chats = await getChats();
-    final chat = chats.firstWhere((c) => c['id'] == chatId, orElse: () => {});
-    if (chat.isEmpty) return [];
-    return List<Map<String, dynamic>>.from(chat['messages'] ?? []);
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString(_key);
+    if (data == null) return [];
+    final chats = List<Map<String, dynamic>>.from(jsonDecode(data));
+    final chatIndex = chats.indexWhere((c) => c['id'] == chatId);
+    if (chatIndex == -1) return [];
+    return List<Map<String, dynamic>>.from(chats[chatIndex]['messages'] ?? []);
   }
 
   static Future<void> deleteChat(int chatId) async {

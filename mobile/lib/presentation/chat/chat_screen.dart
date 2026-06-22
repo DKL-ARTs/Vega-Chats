@@ -466,7 +466,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               decoration: BoxDecoration(
                                 color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
                                 borderRadius: BorderRadius.circular(12),
-                                border: msg['filePath']?.isNotEmpty == true ? null : Border.all(color: VegaTheme.border),
+                                border: (msg['filePath']?.isNotEmpty ?? false) ? null : Border.all(color: VegaTheme.border),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
