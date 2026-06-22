@@ -39,7 +39,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _currentChatId = widget.chatId;
     _loadSettings();
     _loadChats();
-    if (_currentChatId != null) _loadChat(_currentChatId!);
+    if (_currentChatId != null) {
+      _loadChat(_currentChatId!);
+    }
   }
 
   @override
@@ -77,7 +79,11 @@ class _ChatScreenState extends State<ChatScreen> {
     _thinkingTimer?.cancel();
     _thinkingDots = 0;
     _thinkingTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      if (mounted) setState(() => _thinkingDots = (_thinkingDots + 1) % 4);
+      if (mounted) {
+        setState(() {
+          _thinkingDots = (_thinkingDots + 1) % 4;
+        });
+      }
     });
   }
 
@@ -95,7 +101,6 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _attachedFile = result.files.first.path;
         _attachedFileName = result.files.first.name;
-        _attachedIsImage = false;
       });
     }
   }
@@ -138,7 +143,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _removeAttachment() {
-    setState(() { _attachedFile = null; _attachedFileName = null; _attachedIsImage = false; });
+    setState(() {
+      _attachedFile = null;
+      _attachedFileName = null;
+      _attachedIsImage = false;
+    });
   }
 
   Future<void> _send() async {
@@ -153,41 +162,26 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
     
-    // Build message with file reference
+    // Build message content
     String messageContent = text;
-    if (_attachedFile != null && _attachedFileName != null) {
-      messageContent = text.isEmpty ? '[FILE:$_attachedFileName]' : '$text\n[FILE:$_attachedFileName]';
+    if (_attachedFile != null) {
+      messageContent = text.isEmpty ? '📎 $_attachedFileName' : '$text\n📎 $_attachedFileName';
     }
     
     await ChatHistory.addMessage(_currentChatId!, 'user', messageContent);
-    
-    // Add message to UI with preview
     setState(() {
-      _messages.add({
-        'role': 'user',
-        'content': messageContent,
-        'filePath': _attachedFile ?? '',
-        'fileName': _attachedFileName ?? '',
-        'isImage': _attachedIsImage ? 'true' : 'false'
-      });
+      _messages.add({'role': 'user', 'content': messageContent});
       _loading = true;
     });
     
+    // Clear attachment after sending
     final fileToSend = _attachedFile;
     final fileName = _attachedFileName;
-    final isImage = _attachedIsImage;
     _removeAttachment();
     
     _startThinking();
     try {
-      // Prepare files for backend
-      List<Map<String, String>>? files;
-      if (fileToSend != null) {
-        final bytes = await File(fileToSend).readAsBytes();
-        files = [{'name': fileName ?? 'file', 'content': base64Encode(bytes), 'mimeType': isImage ? 'image/jpeg' : 'application/octet-stream'}];
-      }
-      
-      final resp = await _client.streamChat(messages: _messages, model: _model, files: files);
+      final resp = await _client.streamChat(messages: _messages, model: _model);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       String currentMessage = '';
@@ -201,7 +195,9 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       }
-      if (_currentChatId != null) await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
+      if (_currentChatId != null) {
+        await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
+      }
       await _loadChats();
     } catch (e) {
       _stopThinking();
@@ -213,7 +209,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _copyMessage(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface),
+    );
   }
 
   void _showUserMessageMenu(BuildContext context, Map<String, String> message, int index) {
@@ -243,7 +241,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _editMessage(int index, String currentText) {
     _controller.text = currentText;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Edit mode'), duration: Duration(seconds: 2)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Edit mode - type new message'), duration: Duration(seconds: 2)),
+    );
   }
 
   Future<void> _deleteChat(int chatId) async {
@@ -282,60 +282,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool get _showNewChatScreen => _messages.isEmpty && !_loading;
-
-  Widget _buildMessageContent(Map<String, String> msg) {
-    final isUser = msg['role'] == 'user';
-    final filePath = msg['filePath'] ?? '';
-    final fileName = msg['fileName'] ?? '';
-    final isImage = msg['isImage'] == 'true';
-    final text = msg['content'] ?? '';
-    
-    // Check if message has file
-    if (filePath.isNotEmpty && fileName.isNotEmpty) {
-      if (isImage) {
-        // Show image without border - floating over text
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.file(
-                File(filePath),
-                width: 250,
-                height: 250,
-                fit: BoxFit.cover,
-                errorBuilder: (ctx, err, stack) => Container(
-                  width: 250,
-                  height: 100,
-                  decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(12)),
-                  child: Center(child: Icon(Icons.broken_image, color: VegaTheme.textSecondary, size: 40)),
-                ),
-              ),
-            ),
-            if (text.isNotEmpty && !text.startsWith('[FILE:'))
-              Padding(padding: const EdgeInsets.only(top: 8), child: Text(text, style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15))),
-          ],
-        );
-      } else {
-        // Show file icon without border
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: VegaTheme.card.withOpacity(0.5), borderRadius: BorderRadius.circular(12)),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 32),
-              const SizedBox(width: 12),
-              Flexible(child: Text(fileName, style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15))),
-            ],
-          ),
-        );
-      }
-    }
-    
-    // Regular text message
-    return Text(text, style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15));
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -394,7 +340,9 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: VegaTheme.dark,
         elevation: 0,
         leading: Builder(builder: (ctx) => IconButton(icon: Icon(Icons.menu, color: VegaTheme.textSecondary), onPressed: () => Scaffold.of(ctx).openDrawer())),
-        actions: [if (!_showNewChatScreen) IconButton(icon: Icon(Icons.add, color: VegaTheme.textSecondary), onPressed: _startNewChat)],
+        actions: [
+          if (!_showNewChatScreen) IconButton(icon: Icon(Icons.add, color: VegaTheme.textSecondary), onPressed: _startNewChat),
+        ],
       ),
       body: Column(
         children: [
@@ -413,12 +361,98 @@ class _ChatScreenState extends State<ChatScreen> {
                 IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
               ]),
             ),
+          // Attachment preview
+          if (_attachedFile != null)
+            Container(
+              padding: const EdgeInsets.all(12),
+              color: VegaTheme.surface,
+              child: Row(children: [
+          // Attachment preview
+          if (_attachedFile != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              color: VegaTheme.surface,
+              child: Row(children: [
+                if (_attachedIsImage)
+                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
+                else
+                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
+                const SizedBox(width: 12),
+                Expanded(child: Text(_attachedFileName ?? "File", style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
+              ]),
+            ),
+                Icon(Icons.attach_file, color: VegaTheme.accent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary), overflow: TextOverflow.ellipsis)),
+                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 20), onPressed: _removeAttachment),
+              ]),
+            ),
+          Expanded(
+            child: _showNewChatScreen
+                ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _messages.length + (_loading ? 1 : 0),
+                    itemBuilder: (ctx, i) {
+                      if (_loading && i == _messages.length) {
+                        return Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom: 12, top: 4), child: Text(_thinkingText, style: TextStyle(color: VegaTheme.textSecondary, fontSize: 15, fontStyle: FontStyle.italic))));
+                      }
+                      if (i >= _messages.length) return const SizedBox.shrink();
+                      final msg = _messages[i];
+                      final isUser = msg['role'] == 'user';
+                      return Column(
+                        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+          // Attachment preview
+          if (_attachedFile != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              color: VegaTheme.surface,
+              child: Row(children: [
+                if (_attachedIsImage)
+                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
+                else
+                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
+                const SizedBox(width: 12),
+                Expanded(child: Text(_attachedFileName ?? "File", style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
+              ]),
+            ),
+                          GestureDetector(
+                            onLongPress: () { if (isUser) _showUserMessageMenu(context, msg, i); },
+                            child: Container(margin: const EdgeInsets.only(bottom: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8), decoration: BoxDecoration(color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15))),
+                          ),
+                          if (!isUser && msg['content']?.isNotEmpty == true)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12, left: 4),
+                              child: InkWell(onTap: () => _copyMessage(msg['content'] ?? ''), borderRadius: BorderRadius.circular(4), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary))),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
           ),
           Container(
             padding: const EdgeInsets.all(12),
             color: VegaTheme.dark,
             child: Row(children: [
-              IconButton(icon: Icon(Icons.attach_file, color: _attachedFile != null ? VegaTheme.accent : VegaTheme.textSecondary), onPressed: _showAttachMenu),
+          // Attachment preview
+          if (_attachedFile != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              color: VegaTheme.surface,
+              child: Row(children: [
+                if (_attachedIsImage)
+                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 50, height: 50, fit: BoxFit.cover))
+                else
+                  Container(width: 50, height: 50, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24)),
+                const SizedBox(width: 12),
+                Expanded(child: Text(_attachedFileName ?? "File", style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
+              ]),
+            ),
+              IconButton(icon: Icon(Icons.attach_file, color: VegaTheme.textSecondary), onPressed: _showAttachMenu),
               Expanded(child: TextField(controller: _controller, style: TextStyle(color: VegaTheme.textPrimary), decoration: InputDecoration(hintText: 'Message...', hintStyle: TextStyle(color: VegaTheme.textSecondary), filled: true, fillColor: VegaTheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)), onSubmitted: (_) => _send())),
               const SizedBox(width: 8),
               IconButton(onPressed: _loading ? null : _send, icon: Icon(Icons.send, color: VegaTheme.accent)),
