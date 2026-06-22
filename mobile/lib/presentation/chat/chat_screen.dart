@@ -455,16 +455,15 @@ class _ChatScreenState extends State<ChatScreen> {
           // Attachment preview
           if (_attachedFile != null)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.all(8),
               color: VegaTheme.surface,
               child: Row(children: [
                 if (_attachedIsImage)
-                  ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_attachedFile!), width: 40, height: 40, fit: BoxFit.cover))
+                  ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(_attachedFile!), width: 80, height: 80, fit: BoxFit.cover))
                 else
-                  Container(width: 40, height: 40, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(6)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 20)),
-                const SizedBox(width: 8),
-                Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 12), overflow: TextOverflow.ellipsis)),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 16), onPressed: _removeAttachment, constraints: BoxConstraints(), padding: EdgeInsets.zero),
+                  Container(width: 80, height: 80, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 40)),
+                const Spacer(),
+                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 20), onPressed: _removeAttachment),
               ]),
             ),
           Container(
