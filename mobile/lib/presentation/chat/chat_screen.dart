@@ -31,6 +31,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _attachedFile;
   String? _attachedFileName;
+  bool _attachedIsImage = false;
 
   @override
   void initState() {
@@ -38,9 +39,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _currentChatId = widget.chatId;
     _loadSettings();
     _loadChats();
-    if (_currentChatId != null) {
-      _loadChat(_currentChatId!);
-    }
+    if (_currentChatId != null) _loadChat(_currentChatId!);
   }
 
   @override
@@ -78,11 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _thinkingTimer?.cancel();
     _thinkingDots = 0;
     _thinkingTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      if (mounted) {
-        setState(() {
-          _thinkingDots = (_thinkingDots + 1) % 4;
-        });
-      }
+      if (mounted) setState(() => _thinkingDots = (_thinkingDots + 1) % 4);
     });
   }
 
@@ -100,6 +95,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _attachedFile = result.files.first.path;
         _attachedFileName = result.files.first.name;
+        _attachedIsImage = false;
       });
     }
   }
@@ -111,6 +107,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _attachedFile = image.path;
         _attachedFileName = image.name;
+        _attachedIsImage = true;
       });
     }
   }
@@ -141,10 +138,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _removeAttachment() {
-    setState(() {
-      _attachedFile = null;
-      _attachedFileName = null;
-    });
+    setState(() { _attachedFile = null; _attachedFileName = null; _attachedIsImage = false; });
   }
 
   Future<void> _send() async {
@@ -159,31 +153,34 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
     
-    // Build message content
+    // Build message with file reference
     String messageContent = text;
-    if (_attachedFile != null) {
-      messageContent = text.isEmpty ? '📎 $_attachedFileName' : '$text\n📎 $_attachedFileName';
+    if (_attachedFile != null && _attachedFileName != null) {
+      messageContent = text.isEmpty ? '[FILE:$_attachedFileName]' : '$text\n[FILE:$_attachedFileName]';
     }
     
     await ChatHistory.addMessage(_currentChatId!, 'user', messageContent);
+    
+    // Add message to UI with preview
     setState(() {
-      _messages.add({'role': 'user', 'content': messageContent});
+      _messages.add({'role': 'user', 'content': messageContent, 'filePath': _attachedFile ?? '', 'fileName': _attachedFileName ?? '', 'isImage': _attachedIsImage ? 'true' : 'false'});
       _loading = true;
     });
     
-    // Clear attachment after sending
     final fileToSend = _attachedFile;
     final fileName = _attachedFileName;
+    final isImage = _attachedIsImage;
     _removeAttachment();
     
     _startThinking();
     try {
-    // Prepare files
-    List<Map<String, String>>? files;
-    if (fileToSend != null) {
-      final bytes = await File(fileToSend).readAsBytes();
-      files = [{"name": fileName ?? "file", "content": base64Encode(bytes)}];
-    }
+      // Prepare files for backend
+      List<Map<String, String>>? files;
+      if (fileToSend != null) {
+        final bytes = await File(fileToSend).readAsBytes();
+        files = [{'name': fileName ?? 'file', 'content': base64Encode(bytes), 'isImage': isImage ? 'true' : 'false'}];
+      }
+      
       final resp = await _client.streamChat(messages: _messages, model: _model, files: files);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
@@ -198,9 +195,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       }
-      if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
-      }
+      if (_currentChatId != null) await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
       await _loadChats();
     } catch (e) {
       _stopThinking();
@@ -212,9 +207,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _copyMessage(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface));
   }
 
   void _showUserMessageMenu(BuildContext context, Map<String, String> message, int index) {
@@ -244,9 +237,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _editMessage(int index, String currentText) {
     _controller.text = currentText;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Edit mode - type new message'), duration: Duration(seconds: 2)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Edit mode'), duration: Duration(seconds: 2)));
   }
 
   Future<void> _deleteChat(int chatId) async {
@@ -285,6 +276,56 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool get _showNewChatScreen => _messages.isEmpty && !_loading;
+
+  Widget _buildMessageContent(Map<String, String> msg) {
+    final isUser = msg['role'] == 'user';
+    final filePath = msg['filePath'] ?? '';
+    final fileName = msg['fileName'] ?? '';
+    final isImage = msg['isImage'] == 'true';
+    final text = msg['content'] ?? '';
+    
+    // Check if message has file
+    if (filePath.isNotEmpty && fileName.isNotEmpty) {
+      if (isImage) {
+        // Show image preview
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.file(
+                File(filePath),
+                width: 200,
+                height: 200,
+                fit: BoxFit.cover,
+                errorBuilder: (ctx, err, stack) => Container(
+                  width: 200,
+                  height: 100,
+                  color: VegaTheme.card,
+                  child: Center(child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+                ),
+              ),
+            ),
+            if (text.isNotEmpty && !text.startsWith('[FILE:'))
+              Padding(padding: const EdgeInsets.only(top: 8), child: Text(text, style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15))),
+          ],
+        );
+      } else {
+        // Show file icon
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24),
+            const SizedBox(width: 8),
+            Flexible(child: Text(fileName, style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15))),
+          ],
+        );
+      }
+    }
+    
+    // Regular text message
+    return Text(text, style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -343,24 +384,10 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: VegaTheme.dark,
         elevation: 0,
         leading: Builder(builder: (ctx) => IconButton(icon: Icon(Icons.menu, color: VegaTheme.textSecondary), onPressed: () => Scaffold.of(ctx).openDrawer())),
-        actions: [
-          if (!_showNewChatScreen) IconButton(icon: Icon(Icons.add, color: VegaTheme.textSecondary), onPressed: _startNewChat),
-        ],
+        actions: [if (!_showNewChatScreen) IconButton(icon: Icon(Icons.add, color: VegaTheme.textSecondary), onPressed: _startNewChat)],
       ),
       body: Column(
         children: [
-          // Attachment preview
-          if (_attachedFile != null)
-            Container(
-              padding: const EdgeInsets.all(12),
-              color: VegaTheme.surface,
-              child: Row(children: [
-                Icon(Icons.attach_file, color: VegaTheme.accent, size: 20),
-                const SizedBox(width: 8),
-                Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary), overflow: TextOverflow.ellipsis)),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 20), onPressed: _removeAttachment),
-              ]),
-            ),
           Expanded(
             child: _showNewChatScreen
                 ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
@@ -379,7 +406,13 @@ class _ChatScreenState extends State<ChatScreen> {
                         children: [
                           GestureDetector(
                             onLongPress: () { if (isUser) _showUserMessageMenu(context, msg, i); },
-                            child: Container(margin: const EdgeInsets.only(bottom: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8), decoration: BoxDecoration(color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)), child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15))),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 4),
+                              padding: const EdgeInsets.all(12),
+                              constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8),
+                              decoration: BoxDecoration(color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble, borderRadius: BorderRadius.circular(12), border: Border.all(color: VegaTheme.border)),
+                              child: _buildMessageContent(msg),
+                            ),
                           ),
                           if (!isUser && msg['content']?.isNotEmpty == true)
                             Padding(
@@ -395,7 +428,7 @@ class _ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.all(12),
             color: VegaTheme.dark,
             child: Row(children: [
-              IconButton(icon: Icon(Icons.attach_file, color: VegaTheme.textSecondary), onPressed: _showAttachMenu),
+              IconButton(icon: Icon(Icons.attach_file, color: _attachedFile != null ? VegaTheme.accent : VegaTheme.textSecondary), onPressed: _showAttachMenu),
               Expanded(child: TextField(controller: _controller, style: TextStyle(color: VegaTheme.textPrimary), decoration: InputDecoration(hintText: 'Message...', hintStyle: TextStyle(color: VegaTheme.textSecondary), filled: true, fillColor: VegaTheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)), onSubmitted: (_) => _send())),
               const SizedBox(width: 8),
               IconButton(onPressed: _loading ? null : _send, icon: Icon(Icons.send, color: VegaTheme.accent)),
