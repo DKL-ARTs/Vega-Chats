@@ -29,15 +29,20 @@ class ChatHistory {
     return id;
   }
 
-  static Future<void> addMessage(int chatId, String role, String content) async {
+  static Future<void> addMessage(int chatId, String role, String content, {String? filePath, String? fileName, bool isImage = false}) async {
     final chats = await getChats();
     final chat = chats.firstWhere((c) => c['id'] == chatId, orElse: () => {});
     if (chat.isNotEmpty) {
-      chat['messages'].add({
+      final messages = List<Map<String, dynamic>>.from(chat['messages'] ?? []);
+      messages.add({
         'role': role,
         'content': content,
+        'filePath': filePath ?? '',
+        'fileName': fileName ?? '',
+        'isImage': isImage,
         'createdAt': DateTime.now().toIso8601String(),
       });
+      chat['messages'] = messages;
       await saveChats(chats);
     }
   }

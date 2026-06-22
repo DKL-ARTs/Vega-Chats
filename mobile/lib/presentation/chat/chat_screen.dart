@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+nimport 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
@@ -102,12 +104,26 @@ class _ChatScreenState extends State<ChatScreen> {
   String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
 
 
+  Future<String> _copyFileToAppDir(String sourcePath, String fileName) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final filesDir = Directory(p.join(appDir.path, 'chat_files'));
+    if (!await filesDir.exists()) await filesDir.create(recursive: true);
+    final ext = p.extension(fileName);
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final newPath = p.join(filesDir.path, '$timestamp$ext');
+    await File(sourcePath).copy(newPath);
+    return newPath;
+  }
+
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.any);
     if (result != null && result.files.isNotEmpty) {
+      final sourcePath = result.files.first.path!;
+      final fileName = result.files.first.name;
+      final savedPath = await _copyFileToAppDir(sourcePath, fileName);
       setState(() {
-        _attachedFile = result.files.first.path;
-        _attachedFileName = result.files.first.name;
+        _attachedFile = savedPath;
+        _attachedFileName = fileName;
         _attachedIsImage = false;
       });
     }
@@ -117,8 +133,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final picker = ImagePicker();
     final image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
+      final savedPath = await _copyFileToAppDir(image.path, image.name);
       setState(() {
-        _attachedFile = image.path;
+        _attachedFile = savedPath;
         _attachedFileName = image.name;
         _attachedIsImage = true;
       });
@@ -169,7 +186,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Build message content
     String messageContent = text.isEmpty ? '' : text;
     
-    await ChatHistory.addMessage(_currentChatId!, 'user', messageContent);
+    await ChatHistory.addMessage(_currentChatId!, 'user', messageContent, filePath: _attachedFile, fileName: _attachedFileName, isImage: _attachedIsImage);
     setState(() {
       _messages.add({'role': 'user', 'content': messageContent, 'filePath': _attachedFile ?? '', 'fileName': _attachedFileName ?? '', 'isImage': _attachedIsImage ? 'true' : 'false'});
       _loading = true;
