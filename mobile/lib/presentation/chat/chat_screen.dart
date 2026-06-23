@@ -151,22 +151,29 @@ class _ChatScreenState extends State<ChatScreen> {
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      String currentMessage = '';
+      final buffer = StringBuffer();
+      String sseBuf = '';
       await for (final chunk in resp.stream.transform(utf8.decoder)) {
-        for (final line in chunk.split('\n')) {
-          if (line.startsWith('data: ')) {
-            final data = line.substring(6);
-            if (data == '[DONE]') break;
-            currentMessage += data;
-            setState(() { _messages.last['content'] = currentMessage; });
+        sseBuf += chunk;
+        while (true) {
+          final sepIdx = sseBuf.indexOf('\n\n');
+          if (sepIdx == -1) break;
+          final event = sseBuf.substring(0, sepIdx);
+          sseBuf = sseBuf.substring(sepIdx + 2);
+          for (final line in event.split('\n')) {
+            if (line.startsWith('data: ')) {
+              final data = line.substring(6);
+              if (data == '[DONE]') continue;
+              buffer.write(data);
+              if (mounted) setState(() { _messages.last['content'] = buffer.toString(); });
+            }
           }
         }
       }
-      print('DEBUG RAW STREAM: ' + currentMessage.substring(0, currentMessage.length.clamp(0, 200)));
+      final currentMessage = buffer.toString();
       if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
       }
-      print('DEBUG BEFORE DB: ' + currentMessage.substring(0, currentMessage.length.clamp(0, 200)));
       await _loadChats();
     } catch (e) {
       _stopThinking();
@@ -492,7 +499,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                         )
                                       : Container(
                                           width: double.infinity,
-                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                           child: MarkdownBody(
                                             data: msg['content'] ?? '',
                                             selectable: true,
