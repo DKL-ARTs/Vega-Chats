@@ -143,7 +143,11 @@ class _ChatScreenState extends State<ChatScreen> {
         final bytes = await File(fileToSend).readAsBytes();
         files = [{'name': fileNameToSend ?? 'file', 'content': base64Encode(bytes)}];
       }
-      final resp = await _client.streamChat(messages: _messages, model: _model, files: files);
+      final messagesForBackend = _messages.map((m) => {
+        'role': m['role'].toString(),
+        'content': m['content'].toString(),
+      }).toList();
+      final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       String currentMessage = '';
@@ -176,7 +180,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _showUserMessageMenu(BuildContext context, Map<String, String> message, int index) {
+  void _showUserMessageMenu(BuildContext context, Map<String, dynamic> message, int index) {
     showModalBottomSheet(
       context: context,
       backgroundColor: VegaTheme.surface,

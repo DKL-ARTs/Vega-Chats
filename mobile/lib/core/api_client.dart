@@ -15,7 +15,7 @@ class ApiClient {
   }
 
   Future<http.StreamedResponse> streamChat({
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     String model = 'owl-alpha',
     List<Map<String, String>>? files,
   }) async {
