@@ -99,23 +99,39 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _loading) return;
+    if ((text.isEmpty && _attachedFile == null) || _loading) return;
+    final fileToSend = _attachedFile;
+    final fileNameToSend = _attachedFileName;
+    final isImageToSend = _attachedIsImage;
     _controller.clear();
     FocusScope.of(context).unfocus();
     await _loadSettings();
+    final msgContent = text.isEmpty
+        ? '[FILE:' + (fileNameToSend ?? 'file') + ']'
+        : text + '\n[FILE:' + (fileNameToSend ?? 'file') + ']';
+    final displayText = text.isEmpty
+        ? (isImageToSend ? '📷 Photo' : '📎 ' + (fileNameToSend ?? 'File'))
+        : text;
     if (_currentChatId == null) {
-      _currentChatId = await ChatHistory.createChat(
-        text.length > 30 ? text.substring(0, 30) + '...' : text
-      );
+      _currentChatId = await ChatHistory.createChat(displayText.length > 30 ? displayText.substring(0, 30) + '...' : displayText);
     }
-    await ChatHistory.addMessage(_currentChatId!, 'user', text);
+    await ChatHistory.addMessage(_currentChatId!, 'user', msgContent, filePath: fileToSend ?? '', fileName: fileNameToSend ?? '', isImage: isImageToSend);
     setState(() {
-      _messages.add({'role': 'user', 'content': text});
+      _messages.add({'role': 'user', 'content': msgContent, 'filePath': fileToSend ?? '', 'fileName': fileNameToSend ?? '', 'isImage': isImageToSend ? 'true' : 'false'});
+      _attachedFile = null;
+      _attachedFileName = null;
+      _attachedIsImage = false;
       _loading = true;
     });
     _startThinking();
     try {
-      final resp = await _client.streamChat(messages: _messages, model: _model);
+      // Prepare files for backend
+      List<Map<String, String>>? files;
+      if (fileToSend != null) {
+        final bytes = await File(fileToSend).readAsBytes();
+        files = [{'name': fileNameToSend ?? 'file', 'content': base64Encode(bytes)}];
+      }
+      final resp = await _client.streamChat(messages: _messages, model: _model, files: files);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       String currentMessage = '';
