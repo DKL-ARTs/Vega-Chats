@@ -534,14 +534,26 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
+          // Attachment preview
+                  Container(width: 80, height: 80, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 32), const SizedBox(height: 4), Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 10), overflow: TextOverflow.ellipsis, maxLines: 1))])),
+                const Spacer(),
+                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 20), onPressed: _removeAttachment),
+              ]),
+            ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            color: VegaTheme.dark,
+            child: Row(children: [
               IconButton(
                 icon: Icon(Icons.attach_file, color: _attachedFile != null ? VegaTheme.accent : VegaTheme.textSecondary),
                 onPressed: _showAttachMenu,
               ),
+              Expanded(child: TextField(controller: _controller, style: TextStyle(color: VegaTheme.textPrimary), decoration: InputDecoration(hintText: 'Message...', hintStyle: TextStyle(color: VegaTheme.textSecondary), filled: true, fillColor: VegaTheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)), onSubmitted: (_) => _send())),
               const SizedBox(width: 8),
               IconButton(onPressed: _loading ? null : _send, icon: Icon(Icons.send, color: VegaTheme.accent)),
             ]),
           ),
+        ],
       ),
     );
   }
