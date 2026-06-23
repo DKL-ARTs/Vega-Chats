@@ -127,8 +127,9 @@ class _ChatScreenState extends State<ChatScreen> {
       fileName: fileNameToSend ?? '',
       isImage: isImageToSend,
     );
+    await _loadChats();
     setState(() {
-      _messages.add({'role': 'user', 'content': msgContent, 'filePath': fileToSend ?? '', 'fileName': fileNameToSend ?? '', 'isImage': isImageToSend ? 'true' : 'false'});
+      _messages.add({'role': 'user', 'content': msgContent, 'filePath': fileToSend ?? '', 'fileName': fileNameToSend ?? '', 'isImage': isImageToSend});
       _attachedFile = null;
       _attachedFileName = null;
       _attachedIsImage = false;
