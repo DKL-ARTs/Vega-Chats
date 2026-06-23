@@ -31,8 +31,6 @@ class OpenRouterProvider(BaseProvider):
     async def stream(self, messages: list[dict], model: str = None, **kwargs):
         model = model or settings.default_model
         print(f'[OpenRouter] Using model: {model}')
-        buffer = ''
-        last_send = asyncio.get_event_loop().time()
         try:
             async with self.client.stream('POST', '/chat/completions', json={
                 'model': model,
@@ -48,24 +46,15 @@ class OpenRouterProvider(BaseProvider):
                     if line.startswith('data: '):
                         chunk = line[6:]
                         if chunk == '[DONE]':
-                            if buffer:
-                                yield buffer
                             return
                         try:
                             data = json.loads(chunk)
                             delta = data['choices'][0].get('delta', {})
                             content = delta.get('content', '')
                             if content:
-                                buffer += content
-                                now = asyncio.get_event_loop().time()
-                                # Send if buffer is large enough or enough time passed
-                                if len(buffer) > 50 or (now - last_send) > 0.5:
-                                    yield buffer
-                                    buffer = ''
-                                    last_send = now
+                                yield content
                         except (json.JSONDecodeError, KeyError, IndexError):
                             continue
-                if buffer:
-                    yield buffer
         except Exception as e:
             yield f'Error: {str(e)}'
+
