@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
@@ -485,7 +486,26 @@ class _ChatScreenState extends State<ChatScreen> {
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(color: VegaTheme.border),
                                     ),
-                                    child: SelectableText(msg['content'] ?? '', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                                    child: isUser
+                                        ? SelectableText(msg['content'] ?? '', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15))
+                                        : MarkdownBody(
+                                            data: msg['content'] ?? '',
+                                            selectable: true,
+                                            shrinkWrap: true,
+                                            styleSheet: MarkdownStyleSheet(
+                                              p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.5),
+                                              h1: const TextStyle(color: VegaTheme.textPrimary, fontSize: 24, fontWeight: FontWeight.bold),
+                                              h2: const TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
+                                              h3: const TextStyle(color: VegaTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                                              strong: const TextStyle(color: VegaTheme.textPrimary, fontWeight: FontWeight.bold),
+                                              em: const TextStyle(color: VegaTheme.textPrimary, fontStyle: FontStyle.italic),
+                                              code: TextStyle(color: VegaTheme.accent, backgroundColor: VegaTheme.surface, fontFamily: 'monospace', fontSize: 13),
+                                              codeblockDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: VegaTheme.border)),
+                                              blockquoteDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(4)),
+                                              listBullet: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
+                                              a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
+                                            ),
+                                          ),
                                   ),
                               ],
                             ),
