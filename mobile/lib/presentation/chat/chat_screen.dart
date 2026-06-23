@@ -497,15 +497,14 @@ class _ChatScreenState extends State<ChatScreen> {
                                           ),
                                           child: SelectableText(msg['content'] ?? '', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
                                         )
-                                      : Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                      : Padding(
+                                          padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
                                           child: MarkdownBody(
                                             data: msg['content'] ?? '',
                                             selectable: true,
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
-                                              p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.6),
+                                              p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.4),
                                               h1: const TextStyle(color: VegaTheme.textPrimary, fontSize: 26, fontWeight: FontWeight.bold, height: 1.4),
                                               h2: const TextStyle(color: VegaTheme.textPrimary, fontSize: 22, fontWeight: FontWeight.bold, height: 1.4),
                                               h3: const TextStyle(color: VegaTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold, height: 1.4),
