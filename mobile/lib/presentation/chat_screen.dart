@@ -1,14 +1,9 @@
-import "dart:io";
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
@@ -25,16 +20,15 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Map<String, String>> _messages = [];
   final _client = ApiClient();
   bool _loading = false;
-  bool _loadingChat = false;
+  String? _attachedFile;
+  String? _attachedFileName;
+  bool _attachedIsImage = false;
   String _model = 'owl-alpha';
   int? _currentChatId;
   List<Map<String, dynamic>> _chats = [];
   Timer? _thinkingTimer;
   int _thinkingDots = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  String? _attachedFile;
-  String? _attachedFileName;
-  bool _attachedIsImage = false;
 
   @override
   void initState() {
@@ -65,13 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadChats() async {
     final chats = await ChatHistory.getChats();
-    if (mounted) {
-      setState(() {
-        _chats = chats;
-        // Don't reset current chat if we're loading
-        if (_loadingChat) return;
-      });
-    }
+    setState(() => _chats = chats);
   }
 
   Future<void> _loadChat(int chatId) async {
@@ -79,13 +67,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.clear();
       for (final msg in messages) {
-        _messages.add({
-          'role': msg['role'],
-          'content': msg['content'],
-          'filePath': msg['filePath'] ?? '',
-          'fileName': msg['fileName'] ?? '',
-          'isImage': msg['isImage'] ?? 'false',
-        });
+        _messages.add({'role': msg['role'], 'content': msg['content']});
       }
     });
   }
@@ -110,110 +92,25 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
 
-
-  Future<String> _copyFileToAppDir(String sourcePath, String fileName) async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final filesDir = Directory(p.join(appDir.path, 'chat_files'));
-    if (!await filesDir.exists()) await filesDir.create(recursive: true);
-    final ext = p.extension(fileName);
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final newPath = p.join(filesDir.path, '$timestamp$ext');
-    await File(sourcePath).copy(newPath);
-    return newPath;
-  }
-
-  Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.any);
-    if (result != null && result.files.isNotEmpty) {
-      final sourcePath = result.files.first.path!;
-      final fileName = result.files.first.name;
-      final savedPath = await _copyFileToAppDir(sourcePath, fileName);
-      setState(() {
-        _attachedFile = savedPath;
-        _attachedFileName = fileName;
-        _attachedIsImage = false;
-      });
-    }
-  }
-
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      final savedPath = await _copyFileToAppDir(image.path, image.name);
-      setState(() {
-        _attachedFile = savedPath;
-        _attachedFileName = image.name;
-        _attachedIsImage = true;
-      });
-    }
-  }
-
-  void _showAttachMenu() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: VegaTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(Icons.image, color: VegaTheme.accent),
-              title: Text('Photo', style: TextStyle(color: VegaTheme.textPrimary)),
-              onTap: () { Navigator.pop(ctx); _pickImage(); },
-            ),
-            ListTile(
-              leading: Icon(Icons.attach_file, color: VegaTheme.accent),
-              title: Text('File', style: TextStyle(color: VegaTheme.textPrimary)),
-              onTap: () { Navigator.pop(ctx); _pickFile(); },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _removeAttachment() {
-    setState(() { _attachedFile = null; _attachedFileName = null; _attachedIsImage = false; });
-  }
-
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if ((text.isEmpty && _attachedFile == null) || _loading) return;
+    if (text.isEmpty || _loading) return;
     _controller.clear();
     FocusScope.of(context).unfocus();
     await _loadSettings();
     if (_currentChatId == null) {
       _currentChatId = await ChatHistory.createChat(
-        _attachedFile != null ? 'File: $_attachedFileName' : (text.length > 30 ? text.substring(0, 30) + '...' : text)
+        text.length > 30 ? text.substring(0, 30) + '...' : text
       );
     }
-    
-    // Build message content
-    String messageContent = text.isEmpty ? '' : text;
-    
-    await ChatHistory.addMessage(_currentChatId!, 'user', messageContent, filePath: _attachedFile, fileName: _attachedFileName, isImage: _attachedIsImage);
+    await ChatHistory.addMessage(_currentChatId!, 'user', text);
     setState(() {
-      _messages.add({'role': 'user', 'content': messageContent, 'filePath': _attachedFile ?? '', 'fileName': _attachedFileName ?? '', 'isImage': _attachedIsImage ? 'true' : 'false'});
+      _messages.add({'role': 'user', 'content': text});
       _loading = true;
     });
-    
-    final fileToSend = _attachedFile;
-    final fileName = _attachedFileName;
-    final isImage = _attachedIsImage;
-    _removeAttachment();
-    
     _startThinking();
     try {
-      // Prepare files for backend
-      List<Map<String, String>>? files;
-      if (fileToSend != null) {
-        final bytes = await File(fileToSend).readAsBytes();
-        files = [{'name': fileName ?? 'file', 'content': base64Encode(bytes)}];
-      }
-      
-      final resp = await _client.streamChat(messages: _messages, model: _model, files: files);
+      final resp = await _client.streamChat(messages: _messages, model: _model);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       String currentMessage = '';
@@ -314,6 +211,51 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<String> _copyFileToAppDir(String sourcePath, String fileName) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final filesDir = Directory(p.join(appDir.path, 'chat_files'));
+    if (!await filesDir.exists()) await filesDir.create(recursive: true);
+    final ext = p.extension(fileName);
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final newPath = p.join(filesDir.path, '$ts$ext');
+    await File(sourcePath).copy(newPath);
+    return newPath;
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.any);
+    if (result != null && result.files.isNotEmpty) {
+      final savedPath = await _copyFileToAppDir(result.files.first.path!, result.files.first.name);
+      setState(() { _attachedFile = savedPath; _attachedFileName = result.files.first.name; _attachedIsImage = false; });
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      final savedPath = await _copyFileToAppDir(image.path, image.name);
+      setState(() { _attachedFile = savedPath; _attachedFileName = image.name; _attachedIsImage = true; });
+    }
+  }
+
+  void _showAttachMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.surface,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: Icon(Icons.image, color: VegaTheme.accent), title: Text('Photo'), onTap: () { Navigator.pop(ctx); _pickImage(); }),
+          ListTile(leading: Icon(Icons.attach_file, color: VegaTheme.accent), title: Text('File'), onTap: () { Navigator.pop(ctx); _pickFile(); }),
+        ]),
+      ),
+    );
+  }
+
+  void _removeAttachment() {
+    setState(() { _attachedFile = null; _attachedFileName = null; _attachedIsImage = false; });
+  }
+
   void _startNewChat() {
     if (_scaffoldKey.currentState?.isDrawerOpen == true) {
       _scaffoldKey.currentState?.closeDrawer();
@@ -333,14 +275,11 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _currentChatId = chatId;
       _loading = false;
-      _loadingChat = true;
     });
-    _loadChat(chatId).then((_) {
-      if (mounted) setState(() => _loadingChat = false);
-    });
+    _loadChat(chatId);
   }
 
-  bool get _showNewChatScreen => _messages.isEmpty && !_loading && !_loadingChat;
+  bool get _showNewChatScreen => _messages.isEmpty && !_loading;
 
   @override
   Widget build(BuildContext context) {
@@ -472,43 +411,11 @@ class _ChatScreenState extends State<ChatScreen> {
                               decoration: BoxDecoration(
                                 color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
                                 borderRadius: BorderRadius.circular(12),
-                                border: (msg['filePath']?.isNotEmpty ?? false) ? null : Border.all(color: VegaTheme.border),
+                                border: Border.all(color: VegaTheme.border),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if ((msg['filePath']?.toString().isNotEmpty ?? false) && msg['isImage'].toString() == 'true')
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.file(
-                                        File(msg['filePath']!),
-                                        width: 200,
-                                        height: 200,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (ctx, err, stack) => Container(
-                                          width: 200,
-                                          height: 100,
-                                          color: VegaTheme.card,
-                                          child: Icon(Icons.broken_image, color: VegaTheme.textSecondary),
-                                        ),
-                                      ),
-                                    ),
-                                  if ((msg['filePath']?.toString().isNotEmpty ?? false) && msg['isImage'] != 'true')
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 20),
-                                        const SizedBox(width: 6),
-                                        Text(msg['fileName'] ?? 'File', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                      ],
-                                    ),
-                                  if (msg['content']?.isNotEmpty == true && !(msg['content']?.startsWith('[FILE:') ?? false))
-                                    Padding(
-                                      padding: EdgeInsets.only(top: ((msg['filePath']?.toString().isNotEmpty ?? false)) ? 8 : 0),
-                                      child: Text(msg['content'] ?? '', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
-                                    ),
-                                ],
+                              child: SelectableText(
+                                msg['content'] ?? '',
+                                style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
                               ),
                             ),
                           ),
@@ -534,12 +441,25 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
+          if (_attachedFile != null)
+            Container(
+              padding: const EdgeInsets.all(8),
+              color: VegaTheme.surface,
+              child: Row(children: [
+                if (_attachedIsImage)
+                  ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(_attachedFile!), width: 60, height: 60, fit: BoxFit.cover))
+                else
+                  Container(width: 60, height: 60, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 32)),
+                const SizedBox(width: 12),
+                Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 20), onPressed: _removeAttachment),
+              ]),
+            ),
+          Container(
+            padding: const EdgeInsets.all(12),
             color: VegaTheme.dark,
             child: Row(children: [
-              IconButton(
-                icon: Icon(Icons.attach_file, color: _attachedFile != null ? VegaTheme.accent : VegaTheme.textSecondary),
-                onPressed: _showAttachMenu,
-              ),
+              IconButton(icon: Icon(Icons.attach_file, color: VegaTheme.textSecondary), onPressed: _showAttachMenu),
               Expanded(child: TextField(controller: _controller, style: TextStyle(color: VegaTheme.textPrimary), decoration: InputDecoration(hintText: 'Message...', hintStyle: TextStyle(color: VegaTheme.textSecondary), filled: true, fillColor: VegaTheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)), onSubmitted: (_) => _send())),
               const SizedBox(width: 8),
               IconButton(onPressed: _loading ? null : _send, icon: Icon(Icons.send, color: VegaTheme.accent)),
