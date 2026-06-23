@@ -22,7 +22,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
-  final List<Map<String, String>> _messages = [];
+  final List<Map<String, dynamic>> _messages = [];
   final _client = ApiClient();
   bool _loading = false;
   String? _attachedFile;
