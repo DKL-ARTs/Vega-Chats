@@ -119,8 +119,14 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_currentChatId == null) {
       _currentChatId = await ChatHistory.createChat(displayText.length > 30 ? displayText.substring(0, 30) + '...' : displayText);
     }
-    await ChatHistory.addMessage(_currentChatId!, 'user', msgContent, filePath: fileToSend ?? '', fileName: fileNameToSend ?? '', isImage: isImageToSend);
-    print('DEBUG: saved message with filePath=$fileToSend, fileName=$fileNameToSend, isImage=$isImageToSend, chatId=$_currentChatId');
+    await ChatHistory.addMessage(
+      _currentChatId!,
+      'user',
+      msgContent,
+      filePath: fileToSend ?? '',
+      fileName: fileNameToSend ?? '',
+      isImage: isImageToSend,
+    );
     setState(() {
       _messages.add({'role': 'user', 'content': msgContent, 'filePath': fileToSend ?? '', 'fileName': fileNameToSend ?? '', 'isImage': isImageToSend ? 'true' : 'false'});
       _attachedFile = null;
