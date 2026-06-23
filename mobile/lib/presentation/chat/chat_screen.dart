@@ -425,19 +425,53 @@ class _ChatScreenState extends State<ChatScreen> {
                                 _showUserMessageMenu(context, msg, i);
                               }
                             },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 4),
-                              padding: const EdgeInsets.all(12),
-                              constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8),
-                              decoration: BoxDecoration(
-                                color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: VegaTheme.border),
-                              ),
-                              child: SelectableText(
-                                msg['content'] ?? '',
-                                style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
-                              ),
+                            child: Column(
+                              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // File/image preview (no border)
+                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] == 'true')
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Image.file(
+                                        File(msg['filePath']!),
+                                        width: 250,
+                                        height: 250,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          width: 250, height: 100,
+                                          decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(12)),
+                                          child: const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != 'true')
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(color: VegaTheme.card.withOpacity(0.3), borderRadius: BorderRadius.circular(12)),
+                                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                      const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24),
+                                      const SizedBox(width: 8),
+                                      Text(msg['fileName'] ?? 'File', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
+                                    ]),
+                                  ),
+                                // Text message (with border, only if no file or text is not just [FILE:...])
+                                if ((msg['content'] ?? '').isNotEmpty && !(msg['content']?.startsWith('[FILE:') ?? true))
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8),
+                                    decoration: BoxDecoration(
+                                      color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: VegaTheme.border),
+                                    ),
+                                    child: SelectableText(msg['content'] ?? '', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                                  ),
+                              ],
                             ),
                           ),
                           if (!isUser && msg['content']?.isNotEmpty == true)
