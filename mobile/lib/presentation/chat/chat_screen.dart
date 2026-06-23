@@ -478,37 +478,40 @@ class _ChatScreenState extends State<ChatScreen> {
                                       Text(msg['fileName'] ?? 'File', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
                                     ]),
                                   ),
-                                // Text message (with border, only if no file or text is not just [FILE:...])
+                                // Text message
                                 if ((msg['content'] ?? '').isNotEmpty && !(msg['content']?.startsWith('[FILE:') ?? true))
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8),
-                                    decoration: BoxDecoration(
-                                      color: isUser ? VegaTheme.userBubble : VegaTheme.assistantBubble,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: VegaTheme.border),
-                                    ),
-                                    child: isUser
-                                        ? SelectableText(msg['content'] ?? '', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15))
-                                        : MarkdownBody(
+                                  isUser
+                                      ? Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          margin: const EdgeInsets.symmetric(horizontal: 12),
+                                          decoration: BoxDecoration(
+                                            color: VegaTheme.userBubble,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: SelectableText(msg['content'] ?? '', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                                        )
+                                      : Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          child: MarkdownBody(
                                             data: msg['content'] ?? '',
                                             selectable: true,
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
-                                              p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.5),
-                                              h1: const TextStyle(color: VegaTheme.textPrimary, fontSize: 24, fontWeight: FontWeight.bold),
-                                              h2: const TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
-                                              h3: const TextStyle(color: VegaTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                                              p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.6),
+                                              h1: const TextStyle(color: VegaTheme.textPrimary, fontSize: 26, fontWeight: FontWeight.bold, height: 1.4),
+                                              h2: const TextStyle(color: VegaTheme.textPrimary, fontSize: 22, fontWeight: FontWeight.bold, height: 1.4),
+                                              h3: const TextStyle(color: VegaTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold, height: 1.4),
                                               strong: const TextStyle(color: VegaTheme.textPrimary, fontWeight: FontWeight.bold),
                                               em: const TextStyle(color: VegaTheme.textPrimary, fontStyle: FontStyle.italic),
                                               code: TextStyle(color: VegaTheme.accent, backgroundColor: VegaTheme.surface, fontFamily: 'monospace', fontSize: 13),
                                               codeblockDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: VegaTheme.border)),
-                                              blockquoteDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(4)),
+                                              blockquoteDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(4), border: Border(left: BorderSide(color: VegaTheme.accent, width: 3))),
                                               listBullet: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
                                               a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
                                             ),
                                           ),
-                                  ),
+                                        ),
                               ],
                             ),
                           ),
