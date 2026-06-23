@@ -162,9 +162,11 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       }
+      print('DEBUG RAW STREAM: ' + currentMessage.substring(0, currentMessage.length.clamp(0, 200)));
       if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
       }
+      print('DEBUG BEFORE DB: ' + currentMessage.substring(0, currentMessage.length.clamp(0, 200)));
       await _loadChats();
     } catch (e) {
       _stopThinking();
