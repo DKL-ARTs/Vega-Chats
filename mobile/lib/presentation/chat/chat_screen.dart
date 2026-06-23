@@ -72,7 +72,13 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.clear();
       for (final msg in messages) {
-        _messages.add({'role': msg['role'], 'content': msg['content']});
+        _messages.add({
+          'role': msg['role'] ?? '',
+          'content': msg['content'] ?? '',
+          'filePath': msg['filePath'] ?? '',
+          'fileName': msg['fileName'] ?? '',
+          'isImage': msg['isImage'] ?? false,
+        });
       }
     });
   }
@@ -106,9 +112,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
     FocusScope.of(context).unfocus();
     await _loadSettings();
-    final msgContent = text.isEmpty
-        ? '[FILE:' + (fileNameToSend ?? 'file') + ']'
-        : text + '\n[FILE:' + (fileNameToSend ?? 'file') + ']';
+    final msgContent = text;
     final displayText = text.isEmpty
         ? (isImageToSend ? '📷 Photo' : '📎 ' + (fileNameToSend ?? 'File'))
         : text;
@@ -505,8 +509,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(_attachedFile!), width: 60, height: 60, fit: BoxFit.cover))
                 else
                   Container(width: 60, height: 60, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 32)),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                if (!_attachedIsImage) ...[
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(_attachedFileName ?? 'File', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                ] else
+                  const Spacer(),
                 IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 20), onPressed: _removeAttachment),
               ]),
             ),
