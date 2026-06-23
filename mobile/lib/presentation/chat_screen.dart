@@ -534,6 +534,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
+          // Attachment preview
+          if (_attachedFile != null)
+            Container(
               padding: const EdgeInsets.all(8),
               color: VegaTheme.surface,
               child: Row(children: [
