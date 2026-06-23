@@ -534,20 +534,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
-          if (_attachedFile != null)
-              padding: const EdgeInsets.all(8),
-              color: VegaTheme.surface,
-              child: Row(children: [
-                if (_attachedIsImage)
-                  ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(_attachedFile!), width: 80, height: 80, fit: BoxFit.cover))
-                else
-                const Spacer(),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 20), onPressed: _removeAttachment),
-              ]),
-            ),
-            padding: const EdgeInsets.all(12),
-            color: VegaTheme.dark,
-            child: Row(children: [
               IconButton(
                 icon: Icon(Icons.attach_file, color: _attachedFile != null ? VegaTheme.accent : VegaTheme.textSecondary),
                 onPressed: _showAttachMenu,
