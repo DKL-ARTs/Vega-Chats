@@ -18,16 +18,18 @@ async def chat_stream(request: Request):
     api_key = None
     auth_header = request.headers.get('authorization', '')
     if auth_header.startswith('Bearer '):
-        api_key = auth_header[7:].strip().replace('
-', '').replace('
-', '').replace('	', '')
+        api_key = auth_header[7:].strip()
+        if len(api_key) < 10:
+            api_key = None
     elif 'api_key' in body:
         api_key = body['api_key']
-    # If client key is too short/empty, fallback to env
-    if (api_key is None or len(api_key) < 10) and settings.openrouter_api_key:
+    
+    # Fallback to env if no valid key from client
+    if not api_key:
+        from app.config import settings
         api_key = settings.openrouter_api_key
     
-    print(f'[DEBUG] model={model}, messages={len(messages)}, files={len(files)}, api_key_len={len(api_key) if api_key else 0}, api_key_start={repr(api_key[:10]) if api_key else None}'),
+    print(f'[DEBUG] model={model}, msg_count={len(messages)}, files={len(files)}, key_len={len(api_key) if api_key else 0}')
     
     # Add file content to messages for AI context
     if files:
@@ -54,7 +56,6 @@ async def chat_stream(request: Request):
     # If image files attached, use vision format for supported models
     has_images = any(f.get('name', '').lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')) for f in files)
     if has_images and messages:
-        # Convert last user message to vision format
         for msg in reversed(messages):
             if msg.get('role') == 'user':
                 text_content = msg.get('content', '')
@@ -63,7 +64,7 @@ async def chat_stream(request: Request):
                     if f.get('name', '').lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
                         images.append({
                             'type': 'image_url',
-                            'image_url': {'url': f'data:image/jpeg;base64,{f.get("content", "")}'}
+                            'image_url': {'url': f'data:image/jpeg;base64,{f.get(content, )}'}
                         })
                 msg['content'] = [{'type': 'text', 'text': text_content}] + images
                 break
