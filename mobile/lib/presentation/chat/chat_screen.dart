@@ -113,6 +113,20 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
     FocusScope.of(context).unfocus();
     await _loadSettings();
+    // Debug: show what we're sending
+    final debugKey = _client.apiKey;
+    final debugKeyLen = debugKey.length;
+    final debugTrimmedLen = debugKey.trim().length;
+    final debugBytes = debugKey.codeUnits.take(5).toList();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('API_KEY: len=$debugKeyLen, trimmed=$debugTrimmedLen, bytes=$debugBytes', style: TextStyle(fontSize: 10)),
+          duration: Duration(seconds: 3),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
     final msgContent = text;
     final displayText = text.isEmpty
         ? (isImageToSend ? '📷 Photo' : '📎 ' + (fileNameToSend ?? 'File'))
