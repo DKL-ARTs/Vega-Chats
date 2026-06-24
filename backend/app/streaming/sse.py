@@ -18,14 +18,16 @@ async def chat_stream(request: Request):
     api_key = None
     auth_header = request.headers.get('authorization', '')
     if auth_header.startswith('Bearer '):
-        api_key = auth_header[7:].strip()
+        api_key = auth_header[7:].strip().replace('
+', '').replace('
+', '').replace('	', '')
     elif 'api_key' in body:
         api_key = body['api_key']
     # If client key is too short/empty, fallback to env
     if (api_key is None or len(api_key) < 10) and settings.openrouter_api_key:
         api_key = settings.openrouter_api_key
     
-    print(f'[DEBUG] model={model}, messages={len(messages)}, files={len(files)}, has_api_key={bool(api_key)}')
+    print(f'[DEBUG] model={model}, messages={len(messages)}, files={len(files)}, api_key_len={len(api_key) if api_key else 0}, api_key_start={repr(api_key[:10]) if api_key else None}'),
     
     # Add file content to messages for AI context
     if files:
