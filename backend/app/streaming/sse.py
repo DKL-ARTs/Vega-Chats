@@ -14,13 +14,16 @@ async def chat_stream(request: Request):
     provider_name = body.get('provider', 'openrouter')
     files = body.get('files', [])
     
-    # Get API key from Authorization header or body
+    # Get API key from Authorization header, body, or env
     api_key = None
     auth_header = request.headers.get('authorization', '')
     if auth_header.startswith('Bearer '):
-        api_key = auth_header[7:]
+        api_key = auth_header[7:].strip()
     elif 'api_key' in body:
         api_key = body['api_key']
+    # If client key is too short/empty, fallback to env
+    if (api_key is None or len(api_key) < 10) and settings.openrouter_api_key:
+        api_key = settings.openrouter_api_key
     
     print(f'[DEBUG] model={model}, messages={len(messages)}, files={len(files)}, has_api_key={bool(api_key)}')
     
