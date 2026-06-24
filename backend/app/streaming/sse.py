@@ -18,9 +18,11 @@ async def chat_stream(request: Request):
     api_key = None
     auth_header = request.headers.get('authorization', '')
     if auth_header.startswith('Bearer '):
-        api_key = auth_header[7:].strip()
-        if len(api_key) < 10:
-            api_key = None
+        raw_key = auth_header[7:]
+        # Remove all whitespace and control chars
+        cleaned = raw_key.strip().replace(' ', '').replace('	', '').replace('', '').replace('
+', '')
+        api_key = cleaned if len(cleaned) >= 20 else None
     elif 'api_key' in body:
         api_key = body['api_key']
     
