@@ -117,11 +117,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final debugKey = _client.apiKey;
     final debugKeyLen = debugKey.length;
     final debugTrimmedLen = debugKey.trim().length;
-    final debugBytes = debugKey.codeUnits.take(5).toList();
+    final debugBytes = debugKey.codeUnits.toList();
+    final nonAscii = debugKey.codeUnits.where((b) => b > 127 || b < 32).toList();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('API_KEY: len=$debugKeyLen, trimmed=$debugTrimmedLen, bytes=$debugBytes', style: TextStyle(fontSize: 10)),
+          content: Text('len=$debugKeyLen trimmed=$debugTrimmedLen nonAscii=$nonAscii ALL=${debugBytes.length}bytes', style: TextStyle(fontSize: 9)),
           duration: Duration(seconds: 3),
           backgroundColor: Colors.red,
         ),
