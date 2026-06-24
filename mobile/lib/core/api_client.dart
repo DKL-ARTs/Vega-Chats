@@ -11,7 +11,7 @@ class ApiClient {
   Map<String, String> get _headers {
     final headers = <String, String>{'Content-Type': 'application/json'};
     final trimmed = apiKey.trim();
-    if (trimmed.isNotEmpty) headers['Authorization'] = 'Bearer ';
+    if (trimmed.isNotEmpty) headers['Authorization'] = 'Bearer $trimmed';
     return headers;
   }
 
