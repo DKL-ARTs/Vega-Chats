@@ -7,11 +7,12 @@ from app.config import settings
 class OpenRouterProvider(BaseProvider):
     name = 'openrouter'
     
-    def __init__(self):
+    def __init__(self, api_key: str = None):
+        key = api_key or settings.openrouter_api_key
         self.client = httpx.AsyncClient(
             base_url=settings.openrouter_base_url,
             headers={
-                'Authorization': f'Bearer {settings.openrouter_api_key}',
+                'Authorization': f'Bearer {key}',
                 'Content-Type': 'application/json',
             },
             timeout=120.0,
@@ -28,7 +29,7 @@ class OpenRouterProvider(BaseProvider):
         data = resp.json()
         return data['choices'][0]['message']['content']
     
-    async def stream(self, messages: list[dict], model: str = None, **kwargs):
+    async def stream(self, messages: list[dict], model: str = None, api_key: str = None, **kwargs):
         model = model or settings.default_model
         print(f'[OpenRouter] Using model: {model}')
         import asyncio

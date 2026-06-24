@@ -14,7 +14,15 @@ async def chat_stream(request: Request):
     provider_name = body.get('provider', 'openrouter')
     files = body.get('files', [])
     
-    print(f'[DEBUG] model={model}, messages={len(messages)}, files={len(files)}')
+    # Get API key from Authorization header or body
+    api_key = None
+    auth_header = request.headers.get('authorization', '')
+    if auth_header.startswith('Bearer '):
+        api_key = auth_header[7:]
+    elif 'api_key' in body:
+        api_key = body['api_key']
+    
+    print(f'[DEBUG] model={model}, messages={len(messages)}, files={len(files)}, has_api_key={bool(api_key)}')
     
     # Add file content to messages for AI context
     if files:
@@ -59,7 +67,7 @@ async def chat_stream(request: Request):
     
     async def event_generator():
         try:
-            async for chunk in provider.stream(messages, model):
+            async for chunk in provider.stream(messages, model, api_key=api_key):
                 yield f'data: {chunk}\n\n'
         except Exception as e:
             yield f'data: Error: {str(e)}\n\n'
