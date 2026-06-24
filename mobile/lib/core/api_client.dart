@@ -11,7 +11,14 @@ class ApiClient {
   Map<String, String> get _headers {
     final headers = <String, String>{'Content-Type': 'application/json'};
     final trimmed = apiKey.trim();
-    if (trimmed.isNotEmpty) headers['Authorization'] = 'Bearer $trimmed';
+    final keyLen = trimmed.length;
+    print('[API_KEY] length=$keyLen, isEmpty=${trimmed.isEmpty}, bytes=${trimmed.codeUnits}');
+    if (trimmed.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $trimmed';
+      print('[AUTH] Set header: Bearer [${trimmed.substring(0, 7)}...]');
+    } else {
+      print('[AUTH] No header set - key is empty');
+    }
     return headers;
   }
 
