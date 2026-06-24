@@ -24,12 +24,9 @@ async def chat_stream(request: Request):
     elif 'api_key' in body:
         api_key = body['api_key']
     
-    # Fallback to env if no valid key from client
-    if not api_key:
-        from app.config import settings
-        api_key = settings.openrouter_api_key
+    # No fallback - key must come from client
     
-    print(f'[DEBUG] model={model}, msg_count={len(messages)}, files={len(files)}, key_len={len(api_key) if api_key else 0}')
+    print(f'[DEBUG] model={model}, msg_count={len(messages)}, files={len(files)}, key_len={len(api_key) if api_key else 0}, auth_header_len={len(auth_header)}')
     
     # Add file content to messages for AI context
     if files:
