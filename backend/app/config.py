@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     default_model: str = "openrouter/auto"
     host: str = "0.0.0.0"
     port: int = 8765
-    workspace_root: str = "/root/workspace"
+    workspace_root: str = "/tmp/workspace"
     
     class Config:
         env_file = ".env"

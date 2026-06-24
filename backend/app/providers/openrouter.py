@@ -31,6 +31,19 @@ class OpenRouterProvider(BaseProvider):
     async def stream(self, messages: list[dict], model: str = None, **kwargs):
         model = model or settings.default_model
         print(f'[OpenRouter] Using model: {model}')
+        import asyncio
+        buffer = []
+        buffer_len = 0
+        last_flush = asyncio.get_event_loop().time()
+        FLUSH_SIZE = 40
+        FLUSH_INTERVAL = 0.15
+        async def flush():
+            nonlocal buffer, buffer_len, last_flush
+            if buffer:
+                yield ''.join(buffer)
+                buffer = []
+                buffer_len = 0
+                last_flush = asyncio.get_event_loop().time()
         try:
             async with self.client.stream('POST', '/chat/completions', json={
                 'model': model,
@@ -46,15 +59,26 @@ class OpenRouterProvider(BaseProvider):
                     if line.startswith('data: '):
                         chunk = line[6:]
                         if chunk == '[DONE]':
+                            if buffer:
+                                yield ''.join(buffer)
                             return
                         try:
                             data = json.loads(chunk)
                             delta = data['choices'][0].get('delta', {})
-                            content = delta.get('content', '')
-                            if content:
-                                yield content
+                            content_delta = delta.get('content', '')
+                            if content_delta:
+                                buffer.append(content_delta)
+                                buffer_len += len(content_delta)
+                                now = asyncio.get_event_loop().time()
+                                # Flush if buffer is large enough or enough time passed
+                                if buffer_len >= FLUSH_SIZE or (now - last_flush) >= FLUSH_INTERVAL:
+                                    yield ''.join(buffer)
+                                    buffer = []
+                                    buffer_len = 0
+                                    last_flush = now
                         except (json.JSONDecodeError, KeyError, IndexError):
                             continue
         except Exception as e:
             yield f'Error: {str(e)}'
+
 
