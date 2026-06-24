@@ -10,7 +10,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _apiKeyController = TextEditingController();
-  final _baseUrlController = TextEditingController(text: 'http://127.0.0.1:8765');
+  final _baseUrlController = TextEditingController(text: 'https://vega-chat-production.up.railway.app');
   String _selectedModel = 'openrouter/auto';
 
   final _models = [
@@ -33,7 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _apiKeyController.text = prefs.getString('api_key') ?? '';
-      _baseUrlController.text = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+      _baseUrlController.text = prefs.getString('base_url') ?? 'https://vega-chat-production.up.railway.app';
       _selectedModel = prefs.getString('model') ?? 'owl-alpha';
     });
   }

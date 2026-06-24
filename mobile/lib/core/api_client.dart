@@ -6,7 +6,7 @@ class ApiClient {
   String baseUrl;
   String apiKey;
 
-  ApiClient({this.baseUrl = 'http://127.0.0.1:8765', this.apiKey = ''});
+  ApiClient({this.baseUrl = '', this.apiKey = ''});
 
   Map<String, String> get _headers {
     final headers = <String, String>{'Content-Type': 'application/json'};
