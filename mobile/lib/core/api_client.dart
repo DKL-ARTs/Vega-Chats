@@ -7,18 +7,6 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
-  String _cleanKey() {
-    // Only keep printable ASCII chars that are safe for HTTP headers
-    final result = StringBuffer();
-    for (int i = 0; i < apiKey.length; i++) {
-      final code = apiKey.codeUnitAt(i);
-      if (code >= 33 && code <= 126) {
-        result.writeCharCode(code);
-      }
-    }
-    return result.toString();
-  }
-
   Future<http.StreamedResponse> streamChat({
     required List<Map<String, dynamic>> messages,
     String model = 'owl-alpha',
@@ -26,13 +14,9 @@ class ApiClient {
   }) async {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
-    final cleaned = _cleanKey();
     final uri = Uri.parse('$baseUrl/api/chat/stream');
     final req = http.Request('POST', uri);
     req.headers['Content-Type'] = 'application/json';
-    if (cleaned.isNotEmpty) {
-      req.headers['Authorization'] = 'Bearer $cleaned';
-    }
     req.body = jsonEncode(body);
     return req.send();
   }
