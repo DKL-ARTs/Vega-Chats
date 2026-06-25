@@ -9,13 +9,16 @@ class ApiClient {
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
   void _log(String msg) {
-    File('/data/data/com.termux/files/home/vega_debug.txt').writeAsStringSync(msg + '\n', mode: FileMode.append);
+    final ts = DateTime.now().toIso8601String();
+    final dir = Directory('/sdcard/Download');
+    if (dir.existsSync()) {
+      File('${dir.path}/vega_debug.txt').writeAsStringSync('[$ts] $msg\n', mode: FileMode.append);
+    }
   }
 
   String _cleanKey() {
-    _log('=== _cleanKey called ===');
-    _log('apiKey raw: "$apiKey"');
-    _log('apiKey length: ${apiKey.length}');
+    _log('=== _cleanKey ===');
+    _log('apiKey: $apiKey len=${apiKey.length}');
     _log('apiKey bytes: ${apiKey.codeUnits}');
     
     final result = StringBuffer();
@@ -26,7 +29,7 @@ class ApiClient {
       }
     }
     final cleaned = result.toString();
-    _log('cleaned: "$cleaned" len=${cleaned.length}');
+    _log('cleaned: $cleaned len=${cleaned.length}');
     return cleaned;
   }
 
@@ -35,7 +38,7 @@ class ApiClient {
     String model = 'owl-alpha',
     List<Map<String, String>>? files,
   }) async {
-    _log('=== streamChat called ===');
+    _log('=== streamChat ===');
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
     final uri = Uri.parse('$baseUrl/api/chat/stream');
@@ -50,10 +53,9 @@ class ApiClient {
     final req = http.Request('POST', uri);
     req.headers.addAll(headers);
     req.body = jsonEncode(body);
-    _log('sending request...');
     try {
       final resp = await req.send();
-      _log('response status: ${resp.statusCode}');
+      _log('status: ${resp.statusCode}');
       return resp;
     } catch (e) {
       _log('ERROR: $e');
