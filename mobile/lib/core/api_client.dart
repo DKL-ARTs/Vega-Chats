@@ -1,6 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
-import 'dart:async';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
@@ -10,7 +8,6 @@ class ApiClient {
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
   String _cleanKey() {
-    // Remove ALL whitespace characters (space, tab, nbsp, etc.)
     return apiKey.replaceAll(RegExp(r'\s+'), '');
   }
 
@@ -22,27 +19,15 @@ class ApiClient {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
     final uri = Uri.parse('$baseUrl/api/chat/stream');
-    final bodyStr = jsonEncode(body);
-    
-    final client = HttpClient();
-    client.connectionTimeout = Duration(seconds: 30);
-    
-    final request = await client.postUrl(uri);
     final cleanKey = _cleanKey();
-    if (cleanKey.isNotEmpty) {
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $cleanKey');
-    }
-    request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-    request.add(utf8.encode(bodyStr));
-    await request.flush();
-    
-    final response = await request.close();
-    client.close();
-    
-    return http.StreamedResponse(
-      response,
-      response.statusCode,
-    );
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      if (cleanKey.isNotEmpty) 'Authorization': 'Bearer $cleanKey',
+    };
+    final req = http.Request('POST', uri);
+    req.headers.addAll(headers);
+    req.body = jsonEncode(body);
+    return req.send();
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
