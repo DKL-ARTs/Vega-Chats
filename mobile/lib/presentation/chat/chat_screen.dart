@@ -168,25 +168,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Status: " + resp.statusCode.toString(), style: TextStyle(fontSize: 10)), duration: Duration(seconds: 2)));
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      final buffer = StringBuffer();
-      String sseBuf = '';
-      await for (final chunk in resp.stream.transform(utf8.decoder)) {
-        sseBuf += chunk;
-        while (true) {
-          final sepIdx = sseBuf.indexOf('\n\n');
-          if (sepIdx == -1) break;
-          final event = sseBuf.substring(0, sepIdx);
-          sseBuf = sseBuf.substring(sepIdx + 2);
-          for (final line in event.split('\n')) {
-            if (line.startsWith('data: ')) {
-              final data = line.substring(6);
-              if (data == '[DONE]') continue;
-              buffer.write(data);
-              if (mounted) setState(() { _messages.last['content'] = buffer.toString(); });
-            }
-          }
-        }
-      }
+      if (mounted) setState(() { _messages.last["content"] = resp.body; });
       final currentMessage = buffer.toString();
       if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
