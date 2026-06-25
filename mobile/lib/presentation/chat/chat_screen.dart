@@ -163,9 +163,9 @@ class _ChatScreenState extends State<ChatScreen> {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
       }).toList();
-      print("[CHAT] Before streamChat");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sending...", style: TextStyle(fontSize: 10)), duration: Duration(seconds: 2)));
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
-      print("[CHAT] After streamChat, status: " + resp.statusCode.toString());
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Status: " + resp.statusCode.toString(), style: TextStyle(fontSize: 10)), duration: Duration(seconds: 2)));
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       final buffer = StringBuffer();
@@ -194,7 +194,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await _loadChats();
     } catch (e) {
       _stopThinking();
-      final err = e.toString(); setState(() { _messages.add({"role": "assistant", "content": "DEBUG: " + err}); });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), style: TextStyle(fontSize: 9)), duration: Duration(seconds: 5)));
     } finally {
       if (mounted) setState(() { _loading = false; });
     }
