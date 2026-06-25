@@ -18,7 +18,11 @@ class ApiClient {
     final req = http.Request('POST', uri);
     req.headers['Content-Type'] = 'application/json';
     req.body = jsonEncode(body);
-    return req.send();
+    try {
+      return await req.send();
+    } catch (e) {
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
