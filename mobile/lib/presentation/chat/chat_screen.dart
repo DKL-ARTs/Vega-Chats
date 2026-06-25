@@ -192,7 +192,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await _loadChats();
     } catch (e) {
       _stopThinking();
-      final err = e.toString(); setState(() { _messages.add({"role": "assistant", "content": err}); });
+      final err = e.toString(); setState(() { _messages.add({"role": "assistant", "content": "DEBUG: " + err}); });
     } finally {
       if (mounted) setState(() { _loading = false; });
     }

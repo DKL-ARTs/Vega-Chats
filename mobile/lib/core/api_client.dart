@@ -36,6 +36,7 @@ class ApiClient {
     socket.write(sb.toString());
     socket.add(bodyBytes);
     await socket.flush();
+    print("[SOCKET] Request sent, waiting for response...");
     return http.StreamedResponse(socket, 200);
   }
 
