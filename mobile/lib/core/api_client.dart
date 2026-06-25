@@ -16,7 +16,10 @@ class ApiClient {
     if (files != null && files.isNotEmpty) body['files'] = files;
     final cleaned = apiKey.replaceAll(RegExp(r'[^a-zA-Z0-9\-_.]'), '');
     final headers = <String, String>{'Content-Type': 'application/json'};
-    if (cleaned.isNotEmpty) headers['Authorization'] = 'Bearer $cleaned';
+    if (cleaned.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $cleaned';
+    }
+    print('[API] key_len=${cleaned.length} auth=${headers["Authorization"]}');
     final resp = await http.post(
       Uri.parse('$baseUrl/api/chat/stream'),
       headers: headers,
