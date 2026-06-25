@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
   String baseUrl;
@@ -8,19 +8,15 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
-  void _log(String msg) {
-    final ts = DateTime.now().toIso8601String();
-    final dir = Directory('/sdcard/Download');
-    if (dir.existsSync()) {
-      File('${dir.path}/vega_debug.txt').writeAsStringSync('[$ts] $msg\n', mode: FileMode.append);
-    }
+  Future<void> _log(String msg) async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString('debug_log') ?? '';
+    final ts = DateTime.now().toIso8601String().substring(11, 19);
+    final newLog = existing + '[$ts] $msg\n';
+    await prefs.setString('debug_log', newLog.length > 3000 ? newLog.substring(newLog.length - 3000) : newLog);
   }
 
   String _cleanKey() {
-    _log('=== _cleanKey ===');
-    _log('apiKey: $apiKey len=${apiKey.length}');
-    _log('apiKey bytes: ${apiKey.codeUnits}');
-    
     final result = StringBuffer();
     for (int i = 0; i < apiKey.length; i++) {
       final ch = apiKey[i];
@@ -28,9 +24,12 @@ class ApiClient {
         result.write(ch);
       }
     }
-    final cleaned = result.toString();
-    _log('cleaned: $cleaned len=${cleaned.length}');
-    return cleaned;
+    return result.toString();
+  }
+
+  Future<String> getDebugLog() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('debug_log') ?? '(empty)';
   }
 
   Future<http.StreamedResponse> streamChat({
@@ -38,27 +37,32 @@ class ApiClient {
     String model = 'owl-alpha',
     List<Map<String, String>>? files,
   }) async {
-    _log('=== streamChat ===');
+    await _log('--- streamChat ---');
+    await _log('apiKey raw: $apiKey len=${apiKey.length}');
+    
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
     final uri = Uri.parse('$baseUrl/api/chat/stream');
     final cleanKey = _cleanKey();
+    await _log('cleanKey: $cleanKey len=${cleanKey.length}');
+    
     final headers = <String, String>{
       'Content-Type': 'application/json',
     };
     if (cleanKey.isNotEmpty) {
       headers['Authorization'] = 'Bearer $cleanKey';
     }
-    _log('headers: $headers');
+    await _log('headers: $headers');
+    
     final req = http.Request('POST', uri);
     req.headers.addAll(headers);
     req.body = jsonEncode(body);
     try {
       final resp = await req.send();
-      _log('status: ${resp.statusCode}');
+      await _log('status: ${resp.statusCode}');
       return resp;
     } catch (e) {
-      _log('ERROR: $e');
+      await _log('ERROR: $e');
       rethrow;
     }
   }
