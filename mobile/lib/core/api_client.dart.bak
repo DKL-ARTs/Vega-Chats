@@ -8,11 +8,7 @@ class ApiClient {
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
   String _cleanKey() {
-    final cleaned = apiKey.replaceAll(RegExp(r'\s+'), '');
-    final bytes = cleaned.codeUnits;
-    final nonPrint = bytes.where((b) => b < 32 || b > 126).toList();
-    print('[CLEAN_KEY] input_len=${apiKey.length} output_len=${cleaned.length} nonPrint=$nonPrint first5=${bytes.take(5).toList()}');
-    return cleaned;
+    return apiKey.replaceAll(RegExp(r'\s+'), '');
   }
 
   Future<http.StreamedResponse> streamChat({
@@ -26,13 +22,8 @@ class ApiClient {
     final cleanKey = _cleanKey();
     final headers = <String, String>{
       'Content-Type': 'application/json',
+      if (cleanKey.isNotEmpty) 'Authorization': 'Bearer $cleanKey',
     };
-    if (cleanKey.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $cleanKey';
-      print('[AUTH] Setting header with key of length ${cleanKey.length}');
-    } else {
-      print('[AUTH] Key is empty, NOT setting header');
-    }
     final req = http.Request('POST', uri);
     req.headers.addAll(headers);
     req.body = jsonEncode(body);
