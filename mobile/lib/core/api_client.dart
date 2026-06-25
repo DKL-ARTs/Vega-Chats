@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
@@ -6,13 +8,6 @@ class ApiClient {
   String apiKey;
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
-
-  Map<String, String> _hdrs() {
-    final h = <String, String>{'Content-Type': 'application/json'};
-    final t = apiKey.trim();
-    if (t.isNotEmpty) h['Authorization'] = 'Bearer $t';
-    return h;
-  }
 
   Future<http.StreamedResponse> streamChat({
     required List<Map<String, dynamic>> messages,
@@ -22,10 +17,29 @@ class ApiClient {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
     final uri = Uri.parse('$baseUrl/api/chat/stream');
-    final req = http.Request('POST', uri);
-    req.headers.addAll(_hdrs());
-    req.body = jsonEncode(body);
-    return req.send();
+    final bodyBytes = utf8.encode(jsonEncode(body));
+    
+    final client = HttpClient();
+    client.connectionTimeout = Duration(seconds: 30);
+    
+    final request = await client.postUrl(uri);
+    final t = apiKey.trim();
+    if (t.isNotEmpty) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $t');
+    }
+    request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+    request.contentLength = bodyBytes.length;
+    request.add(bodyBytes);
+    
+    final response = await request.close();
+    client.close();
+    
+    return http.StreamedResponse(
+      response,
+      response.statusCode,
+      contentLength: response.contentLength,
+      headers: {},
+    );
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
@@ -41,5 +55,13 @@ class ApiClient {
   Future<Map<String, dynamic>> listFiles(String path) async {
     final resp = await http.post(Uri.parse('$baseUrl/api/files/list'), headers: _hdrs(), body: jsonEncode({'path': path}));
     return jsonDecode(resp.body);
+  }
+
+  Map<String, String> _hdrs() {
+    final t = apiKey.trim();
+    return {
+      'Content-Type': 'application/json',
+      if (t.isNotEmpty) 'Authorization': 'Bearer $t',
+    };
   }
 }
