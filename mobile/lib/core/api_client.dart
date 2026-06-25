@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
@@ -7,8 +8,16 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
+  void _log(String msg) {
+    File('/data/data/com.termux/files/home/vega_debug.txt').writeAsStringSync(msg + '\n', mode: FileMode.append);
+  }
+
   String _cleanKey() {
-    // Only keep alphanumeric, dash, underscore, dot
+    _log('=== _cleanKey called ===');
+    _log('apiKey raw: "$apiKey"');
+    _log('apiKey length: ${apiKey.length}');
+    _log('apiKey bytes: ${apiKey.codeUnits}');
+    
     final result = StringBuffer();
     for (int i = 0; i < apiKey.length; i++) {
       final ch = apiKey[i];
@@ -17,7 +26,7 @@ class ApiClient {
       }
     }
     final cleaned = result.toString();
-    print('[CLEAN_KEY] input="$apiKey" output="$cleaned" in_len=${apiKey.length} out_len=${cleaned.length}');
+    _log('cleaned: "$cleaned" len=${cleaned.length}');
     return cleaned;
   }
 
@@ -26,6 +35,7 @@ class ApiClient {
     String model = 'owl-alpha',
     List<Map<String, String>>? files,
   }) async {
+    _log('=== streamChat called ===');
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
     final uri = Uri.parse('$baseUrl/api/chat/stream');
@@ -36,11 +46,19 @@ class ApiClient {
     if (cleanKey.isNotEmpty) {
       headers['Authorization'] = 'Bearer $cleanKey';
     }
-    print('[AUTH] headers=$headers');
+    _log('headers: $headers');
     final req = http.Request('POST', uri);
     req.headers.addAll(headers);
     req.body = jsonEncode(body);
-    return req.send();
+    _log('sending request...');
+    try {
+      final resp = await req.send();
+      _log('response status: ${resp.statusCode}');
+      return resp;
+    } catch (e) {
+      _log('ERROR: $e');
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
