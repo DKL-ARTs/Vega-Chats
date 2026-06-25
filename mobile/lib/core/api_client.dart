@@ -30,7 +30,7 @@ class ApiClient {
     sb.writeln('Content-Type: application/json');
     sb.writeln('Content-Length: ' + bodyBytes.length.toString());
     if (cleaned.isNotEmpty) {
-      sb.writeln('Authorization: Bearer $cleaned);
+      sb.writeln('Authorization: Bearer ${cleaned});
     }
     sb.writeln();
     socket.write(sb.toString());
