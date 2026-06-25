@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
@@ -7,7 +8,7 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
-  Future<http.Response> streamChat({
+  Future<http.StreamedResponse> streamChat({
     required List<Map<String, dynamic>> messages,
     String model = 'owl-alpha',
     List<Map<String, String>>? files,
@@ -15,12 +16,28 @@ class ApiClient {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
     final cleaned = apiKey.replaceAll(RegExp(r'[^a-zA-Z0-9\-_.]'), '');
-    final resp = await http.post(
-      Uri.parse('$baseUrl/api/chat/stream'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
-    return resp;
+    final url = Uri.parse('$baseUrl/api/chat/stream');
+    final bodyStr = jsonEncode(body);
+    final bodyBytes = utf8.encode(bodyStr);
+    
+    final port = url.port != 0 ? url.port : (url.scheme == 'https' ? 443 : 80);
+    final socket = await Socket.connect(url.host, port);
+    
+    final sb = StringBuffer();
+    sb.writeln('POST ${url.path} HTTP/1.1');
+    sb.writeln('Host: ${url.host}:$port');
+    sb.writeln('Content-Type: application/json');
+    sb.writeln('Content-Length: ${bodyBytes.length}');
+    if (cleaned.isNotEmpty) {
+      sb.writeln('Authorization: Bearer $cleaned');
+    }
+    sb.writeln();
+    
+    socket.write(sb.toString());
+    socket.add(bodyBytes);
+    await socket.flush();
+    
+    return http.StreamedResponse(socket, 200);
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
