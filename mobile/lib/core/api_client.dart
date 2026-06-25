@@ -8,10 +8,16 @@ class ApiClient {
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
   String _cleanKey() {
-    final cleaned = apiKey.replaceAll(RegExp(r'\s+'), '');
-    final bytes = cleaned.codeUnits;
-    final nonPrint = bytes.where((b) => b < 32 || b > 126).toList();
-    print('[CLEAN_KEY] input_len=${apiKey.length} output_len=${cleaned.length} nonPrint=$nonPrint first5=${bytes.take(5).toList()}');
+    // Only keep alphanumeric, dash, underscore, dot
+    final result = StringBuffer();
+    for (int i = 0; i < apiKey.length; i++) {
+      final ch = apiKey[i];
+      if (RegExp(r'[a-zA-Z0-9\-_.]').hasMatch(ch)) {
+        result.write(ch);
+      }
+    }
+    final cleaned = result.toString();
+    print('[CLEAN_KEY] input="$apiKey" output="$cleaned" in_len=${apiKey.length} out_len=${cleaned.length}');
     return cleaned;
   }
 
@@ -29,10 +35,8 @@ class ApiClient {
     };
     if (cleanKey.isNotEmpty) {
       headers['Authorization'] = 'Bearer $cleanKey';
-      print('[AUTH] Setting header with key of length ${cleanKey.length}');
-    } else {
-      print('[AUTH] Key is empty, NOT setting header');
     }
+    print('[AUTH] headers=$headers');
     final req = http.Request('POST', uri);
     req.headers.addAll(headers);
     req.body = jsonEncode(body);
