@@ -192,7 +192,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await _loadChats();
     } catch (e) {
       _stopThinking();
-      final dbg = await _client.getDebugLog(); setState(() { _messages.add({"role": "assistant", "content": "$dbg"); });
+      final dbg = await _client.getDebugLog(); final msg = dbg; setState(() { _messages.add({"role": "assistant", "content": msg}); });
     } finally {
       if (mounted) setState(() { _loading = false; });
     }
