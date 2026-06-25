@@ -169,7 +169,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       if (mounted) setState(() { _messages.last["content"] = resp.body; });
-      final currentMessage = buffer.toString();
+      final currentMessage = resp.body;
       if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
       }
