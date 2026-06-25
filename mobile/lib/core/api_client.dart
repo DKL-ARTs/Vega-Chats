@@ -14,13 +14,9 @@ class ApiClient {
   }) async {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
-    final cleaned = apiKey.replaceAll(RegExp(r'[^a-zA-Z0-9\-_.]'), '');
     final uri = Uri.parse('$baseUrl/api/chat/stream');
     final req = http.Request('POST', uri);
-    req.headers.set('Content-Type', 'application/json');
-    if (cleaned.isNotEmpty) {
-      req.headers.set('Authorization', 'Bearer $cleaned');
-    }
+    req.headers['Content-Type'] = 'application/json';
     req.body = jsonEncode(body);
     return req.send();
   }
