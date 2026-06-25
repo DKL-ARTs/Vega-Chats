@@ -8,20 +8,6 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
-  Map<String, String> get _headers {
-    final headers = <String, String>{'Content-Type': 'application/json'};
-    final trimmed = apiKey.trim();
-    final keyLen = trimmed.length;
-    print('[API_KEY] length=$keyLen, isEmpty=${trimmed.isEmpty}, bytes=${trimmed.codeUnits}');
-    if (trimmed.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $trimmed';
-      print('[AUTH] Set header: Bearer [${trimmed.substring(0, 7)}...]');
-    } else {
-      print('[AUTH] No header set - key is empty');
-    }
-    return headers;
-  }
-
   Future<http.StreamedResponse> streamChat({
     required List<Map<String, dynamic>> messages,
     String model = 'owl-alpha',
@@ -29,24 +15,47 @@ class ApiClient {
   }) async {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
-    final request = http.Request('POST', Uri.parse('$baseUrl/api/chat/stream'));
-    request.headers.addAll(_headers);
-    request.body = jsonEncode(body);
-    return request.send();
+    final uri = Uri.parse('$baseUrl/api/chat/stream');
+    
+    // Use dart:io HttpClient directly to avoid http package header validation issues
+    final client = HttpClient();
+    final request = await client.postUrl(uri);
+    final trimmed = apiKey.trim();
+    if (trimmed.isNotEmpty) {
+      request.headers.set('Authorization', 'Bearer $trimmed');
+    }
+    request.headers.set('Content-Type', 'application/json');
+    request.add(utf8.encode(jsonEncode(body)));
+    final response = await request.close();
+    client.close();
+    
+    // Convert to http.StreamedResponse for compatibility
+    return http.StreamedResponse(
+      response.transform(utf8.decoder).transform(jsonDecoder),
+      response.statusCode,
+      headers: response.headers.toString(),
+    );
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
-    final resp = await http.post(Uri.parse('$baseUrl/api/files/read'), headers: _headers, body: jsonEncode({'path': path}));
+    final resp = await http.post(Uri.parse('$baseUrl/api/files/read'), headers: _simpleHeaders(), body: jsonEncode({'path': path}));
     return jsonDecode(resp.body);
   }
 
   Future<Map<String, dynamic>> writeFile(String path, String content) async {
-    final resp = await http.post(Uri.parse('$baseUrl/api/files/write'), headers: _headers, body: jsonEncode({'path': path, 'content': content}));
+    final resp = await http.post(Uri.parse('$baseUrl/api/files/write'), headers: _simpleHeaders(), body: jsonEncode({'path': path, 'content': content}));
     return jsonDecode(resp.body);
   }
 
   Future<Map<String, dynamic>> listFiles(String path) async {
-    final resp = await http.post(Uri.parse('$baseUrl/api/files/list'), headers: _headers, body: jsonEncode({'path': path}));
+    final resp = await http.post(Uri.parse('$baseUrl/api/files/list'), headers: _simpleHeaders(), body: jsonEncode({'path': path}));
     return jsonDecode(resp.body);
+  }
+
+  Map<String, String> _simpleHeaders() {
+    final h = <String, String>{'Content-Type': 'application/json'};
+    final t = apiKey.trim();
+    if (t.isNotEmpty) h['Authorization'] = 'Bearer $t';
+    return h;
   }
 }
