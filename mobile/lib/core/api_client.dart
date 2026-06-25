@@ -20,8 +20,12 @@ class ApiClient {
     final bodyStr = jsonEncode(body);
     final bodyBytes = utf8.encode(bodyStr);
     
-    final port = url.port != 0 ? url.port : (url.scheme == 'https' ? 443 : 80);
-    final socket = await Socket.connect(url.host, port);
+    final isHttps = url.scheme == 'https';
+    final port = url.port != 0 ? url.port : (isHttps ? 443 : 80);
+    
+    final socket = isHttps
+        ? await SecureSocket.connect(url.host, port)
+        : await Socket.connect(url.host, port);
     
     final sb = StringBuffer();
     sb.writeln('POST ${url.path} HTTP/1.1');
@@ -29,8 +33,7 @@ class ApiClient {
     sb.writeln('Content-Type: application/json');
     sb.writeln('Content-Length: ${bodyBytes.length}');
     if (cleaned.isNotEmpty) {
-      sb.writeln('Authorization: Bearer $cleaned');
-    }
+      sb.writeln('Authorization: Bearer ***    }
     sb.writeln();
     
     socket.write(sb.toString());
