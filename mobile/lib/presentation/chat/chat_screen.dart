@@ -163,7 +163,9 @@ class _ChatScreenState extends State<ChatScreen> {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
       }).toList();
+      print("[CHAT] Before streamChat");
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
+      print("[CHAT] After streamChat, status: " + resp.statusCode.toString());
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       final buffer = StringBuffer();
