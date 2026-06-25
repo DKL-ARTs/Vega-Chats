@@ -9,6 +9,11 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
+  String _cleanKey() {
+    // Remove ALL whitespace characters (space, tab, nbsp, etc.)
+    return apiKey.replaceAll(RegExp(r'\s+'), '');
+  }
+
   Future<http.StreamedResponse> streamChat({
     required List<Map<String, dynamic>> messages,
     String model = 'owl-alpha',
@@ -17,19 +22,18 @@ class ApiClient {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
     final uri = Uri.parse('$baseUrl/api/chat/stream');
-    final bodyBytes = utf8.encode(jsonEncode(body));
+    final bodyStr = jsonEncode(body);
     
     final client = HttpClient();
     client.connectionTimeout = Duration(seconds: 30);
     
     final request = await client.postUrl(uri);
-    final t = apiKey.trim();
-    if (t.isNotEmpty) {
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $t');
+    final cleanKey = _cleanKey();
+    if (cleanKey.isNotEmpty) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $cleanKey');
     }
     request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-    request.contentLength = bodyBytes.length;
-    request.add(bodyBytes);
+    request.body = bodyStr;
     
     final response = await request.close();
     client.close();
@@ -37,8 +41,6 @@ class ApiClient {
     return http.StreamedResponse(
       response,
       response.statusCode,
-      
-      headers: {},
     );
   }
 
@@ -58,10 +60,10 @@ class ApiClient {
   }
 
   Map<String, String> _hdrs() {
-    final t = apiKey.trim();
+    final k = _cleanKey();
     return {
       'Content-Type': 'application/json',
-      if (t.isNotEmpty) 'Authorization': 'Bearer $t',
+      if (k.isNotEmpty) 'Authorization': 'Bearer $k',
     };
   }
 }
