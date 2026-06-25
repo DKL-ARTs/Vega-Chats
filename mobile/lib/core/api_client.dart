@@ -33,7 +33,7 @@ class ApiClient {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $cleanKey');
     }
     request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-    request.body = bodyStr;
+    request.write(bodyStr);
     
     final response = await request.close();
     client.close();
