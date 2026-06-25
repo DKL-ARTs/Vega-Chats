@@ -1,6 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
-import 'dart:async';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
@@ -9,11 +7,10 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
-  http.Headers _hdrs() {
-    final h = http.Headers();
-    h.set('Content-Type', 'application/json');
+  Map<String, String> _hdrs() {
+    final h = <String, String>{'Content-Type': 'application/json'};
     final t = apiKey.trim();
-    if (t.isNotEmpty) h.set('Authorization', 'Bearer $t');
+    if (t.isNotEmpty) h['Authorization'] = 'Bearer $t';
     return h;
   }
 
@@ -25,14 +22,10 @@ class ApiClient {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
     final uri = Uri.parse('$baseUrl/api/chat/stream');
-    final bodyStr = jsonEncode(body);
-    final response = await http.post(uri, headers: _hdrs(), body: bodyStr);
-    return http.StreamedResponse(
-      Stream.fromIterable(response.bodyBytes),
-      response.statusCode,
-      contentLength: response.contentLength,
-      request: response.request,
-    );
+    final req = http.Request('POST', uri);
+    req.headers.addAll(_hdrs());
+    req.body = jsonEncode(body);
+    return req.send();
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
