@@ -37,7 +37,7 @@ class ApiClient {
     return http.StreamedResponse(
       response,
       response.statusCode,
-      contentLength: response.contentLength,
+      
       headers: {},
     );
   }
