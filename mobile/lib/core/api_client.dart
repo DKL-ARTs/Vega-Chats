@@ -17,8 +17,10 @@ class ApiClient {
     final cleaned = apiKey.replaceAll(RegExp(r'[^a-zA-Z0-9\-_.]'), '');
     final uri = Uri.parse('$baseUrl/api/chat/stream');
     final req = http.Request('POST', uri);
-    req.headers['Content-Type'] = 'application/json';
-    if (cleaned.isNotEmpty) req.headers['Authorization'] = 'Bearer $cleaned';
+    req.headers.set('Content-Type', 'application/json');
+    if (cleaned.isNotEmpty) {
+      req.headers.set('Authorization', 'Bearer $cleaned');
+    }
     req.body = jsonEncode(body);
     return req.send();
   }
