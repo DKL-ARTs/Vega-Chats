@@ -7,22 +7,19 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
-  Future<http.StreamedResponse> streamChat({
+  Future<http.Response> streamChat({
     required List<Map<String, dynamic>> messages,
     String model = 'owl-alpha',
     List<Map<String, String>>? files,
   }) async {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
-    final uri = Uri.parse('$baseUrl/api/chat/stream');
-    final req = http.Request('POST', uri);
-    req.headers['Content-Type'] = 'application/json';
-    req.body = jsonEncode(body);
-    try {
-      return await req.send();
-    } catch (e) {
-      rethrow;
-    }
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/chat/stream'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    return resp;
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
