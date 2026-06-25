@@ -16,11 +16,12 @@ class ApiClient {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
     final cleaned = apiKey.replaceAll(RegExp(r'[^a-zA-Z0-9\-_.]'), '');
+    final authValue = 'Bearer $cleaned';
     final headers = <String, String>{'Content-Type': 'application/json'};
     if (cleaned.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $cleaned';
+      headers['Authorization'] = authValue;
     }
-    lastDebugInfo = 'key_len=${cleaned.length} auth_header=${headers["Authorization"]}';
+    lastDebugInfo='key_len=${cleaned.length} auth_len=${authValue.length} auth_bytes=${authValue.codeUnits}';
     final resp = await http.post(
       Uri.parse('$baseUrl/api/chat/stream'),
       headers: headers,
