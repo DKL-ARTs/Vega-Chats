@@ -31,7 +31,18 @@ class OpenRouterProvider(BaseProvider):
     
     async def stream(self, messages: list[dict], model: str = None, api_key: str = None, **kwargs):
         model = model or settings.default_model
-        print(f'[OpenRouter] Using model: {model}')
+        key = api_key or settings.openrouter_api_key
+        client = self.client
+        if api_key and api_key != settings.openrouter_api_key:
+            client = httpx.AsyncClient(
+                base_url=settings.openrouter_base_url,
+                headers={
+                    'Authorization': 'Bearer ' + key,
+                    'Content-Type': 'application/json',
+                },
+                timeout=120.0,
+            )
+        print(f'[OpenRouter] Using model: {model} key_len={len(key) if key else 0}')
         import asyncio
         buffer = []
         buffer_len = 0
