@@ -65,7 +65,8 @@ class OpenRouterProvider(BaseProvider):
         try:
             print(f'[OR] About to call stream POST', file=sys.stderr)
             print("[OR] Stream call started, waiting for response...", file=sys.stderr)
-            async with self.client.stream('POST', '/chat/completions', json={
+            print('[OR] Using POST instead of stream', file=sys.stderr)
+            or_resp = await self.client.post('/chat/completions', json={
                 'model': model,
                 'messages': messages,
                 'stream': True,
