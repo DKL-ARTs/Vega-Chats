@@ -80,6 +80,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'fileName': msg['fileName'] ?? '',
           'isImage': msg['isImage'] ?? false,
         });
+      }
     });
   }
 
@@ -91,6 +92,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _thinkingDots = (_thinkingDots + 1) % 4;
         });
+      }
     });
   }
 
@@ -111,6 +113,21 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
     FocusScope.of(context).unfocus();
     await _loadSettings();
+    // Debug: show what we're sending
+    final debugKey = _client.apiKey;
+    final debugKeyLen = debugKey.length;
+    final debugTrimmedLen = debugKey.trim().length;
+    final debugBytes = debugKey.codeUnits.toList();
+    final nonAscii = debugKey.codeUnits.where((b) => b > 127 || b < 32).toList();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('len=$debugKeyLen trimmed=$debugTrimmedLen nonAscii=$nonAscii ALL=${debugBytes.length}bytes', style: TextStyle(fontSize: 9)),
+          duration: Duration(seconds: 3),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
     final msgContent = text;
     final displayText = text.isEmpty
         ? (isImageToSend ? '📷 Photo' : '📎 ' + (fileNameToSend ?? 'File'))
@@ -136,6 +153,7 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _startThinking();
     try {
+      // Prepare files for backend
       List<Map<String, String>>? files;
       if (fileToSend != null) {
         final bytes = await File(fileToSend).readAsBytes();
@@ -145,18 +163,20 @@ class _ChatScreenState extends State<ChatScreen> {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
       }).toList();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sending...", style: TextStyle(fontSize: 10)), duration: Duration(seconds: 2)));
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Status: " + resp.statusCode.toString(), style: TextStyle(fontSize: 10)), duration: Duration(seconds: 2)));
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      final respBody = await resp.body();
+      if (mounted) setState(() { _messages.last["content"] = "DEBUG: " + _client.lastDebugInfo + "\n\nRESPONSE: " + resp.body; });
+      if (mounted) setState(() { _messages.last["content"] = "DEBUG: " + _client.lastDebugInfo + "\n\nRESPONSE: " + resp.body; });
       if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, 'assistant', respBody);
+        await ChatHistory.addMessage(_currentChatId!, "assistant", resp.body);
       }
-      if (mounted) setState(() { _messages.last['content'] = respBody; });
       await _loadChats();
     } catch (e) {
       _stopThinking();
-      if (mounted) setState(() { _messages.add({'role': 'assistant', 'content': 'Error: '}); });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), style: TextStyle(fontSize: 9)), duration: Duration(seconds: 5)));
     } finally {
       if (mounted) setState(() { _loading = false; });
     }
@@ -229,15 +249,11 @@ class _ChatScreenState extends State<ChatScreen> {
     
     if (confirmed == true) {
       await ChatHistory.deleteChat(chatId);
-      if (mounted) setState(() { _messages.last["content"] = respBody; });
-      if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, "assistant", respBody);
-      }
-      if (mounted) setState(() { _messages.last["content"] = respBody; });
       await _loadChats();
       // If we deleted the current chat, go to new chat screen
       if (_currentChatId == chatId) {
         _startNewChat();
+      }
     }
   }
 
