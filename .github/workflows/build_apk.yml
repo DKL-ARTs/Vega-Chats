@@ -22,19 +22,19 @@ jobs:
           channel: "stable"
           cache: false
 
+      - name: Fix line endings
+        run: |
+          sed -i 's/\r$//' mobile/lib/presentation/chat/chat_screen.dart
+          echo "Line endings fixed"
+          file mobile/lib/presentation/chat/chat_screen.dart
+
       - name: Debug - check file integrity
         run: |
-          echo "=== File info ==="
           wc -l mobile/lib/presentation/chat/chat_screen.dart
-          echo "=== First 5 lines ==="
-          head -5 mobile/lib/presentation/chat/chat_screen.dart
-          echo "=== Line 70-85 ==="
-          sed -n '70,85p' mobile/lib/presentation/chat/chat_screen.dart
-          echo "=== Brace count ==="
+          sha256sum mobile/lib/presentation/chat/chat_screen.dart
           echo -n "Open braces: "; grep -o '{' mobile/lib/presentation/chat/chat_screen.dart | wc -l
           echo -n "Close braces: "; grep -o '}' mobile/lib/presentation/chat/chat_screen.dart | wc -l
-          echo "=== File hash ==="
-          sha256sum mobile/lib/presentation/chat/chat_screen.dart
+          sed -n '70,85p' mobile/lib/presentation/chat/chat_screen.dart
 
       - name: Clean and pub get
         working-directory: ./mobile
