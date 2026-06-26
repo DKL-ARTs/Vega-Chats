@@ -71,8 +71,13 @@ class OpenRouterProvider(BaseProvider):
                 'messages': messages,
                 'stream': True,
                 **kwargs,
-            }) as resp:
-                print(f"[OR] Got response status={resp.status_code}", file=sys.stderr)
+            resp = await self.client.post(/chat/completions, json={
+                model: model,
+                messages: messages,
+                stream: True,
+                **kwargs,
+            })
+            print(f"[OR] Got response status={resp.status_code}", file=sys.stderr)
                 if resp.status_code != 200:
                     error_text = await resp.aread()
                     yield f'Error: HTTP {resp.status_code}'
