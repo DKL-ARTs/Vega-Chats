@@ -166,7 +166,11 @@ class _ChatScreenState extends State<ChatScreen> {
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      final respBody = utf8.decode(resp.body);
+      final bytes = <int>[];
+      await for (final chunk in resp.body) {
+        bytes.addAll(chunk);
+      }
+      final respBody = utf8.decode(bytes);
       if (mounted) setState(() { _messages.last["content"] = respBody; });
       if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, "assistant", respBody);
