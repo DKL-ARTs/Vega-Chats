@@ -22,8 +22,6 @@ class OpenRouterProvider(BaseProvider):
     
     async def chat(self, messages: list[dict], model: str = None, **kwargs) -> str:
         model = model or settings.default_model
-            print(f'[OR] SENDING headers: {dict(self.client.headers)}', file=sys.stderr)
-        resp = await self.client.post('/chat/completions', json={
             'model': model,
             'messages': messages,
             **kwargs,
