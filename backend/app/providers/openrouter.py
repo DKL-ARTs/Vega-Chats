@@ -64,12 +64,14 @@ class OpenRouterProvider(BaseProvider):
                 last_flush = asyncio.get_event_loop().time()
         try:
             print(f'[OR] About to call stream POST', file=sys.stderr)
+            print("[OR] Stream call started, waiting for response...", file=sys.stderr)
             async with self.client.stream('POST', '/chat/completions', json={
                 'model': model,
                 'messages': messages,
                 'stream': True,
                 **kwargs,
             }) as resp:
+                print(f"[OR] Got response status={resp.status_code}", file=sys.stderr)
                 if resp.status_code != 200:
                     error_text = await resp.aread()
                     yield f'Error: HTTP {resp.status_code}'
