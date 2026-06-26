@@ -17,7 +17,6 @@ jobs:
         run: |
           git fetch origin main
           git checkout --force origin/main
-          git status
 
       - uses: actions/setup-java@v4
         with:
@@ -30,12 +29,18 @@ jobs:
           channel: "stable"
           cache: false
 
-      - name: Debug file
+      - name: Full debug
         run: |
-          wc -l mobile/lib/presentation/chat/chat_screen.dart
+          echo "=== Dart version ==="
+          dart --version
+          echo "=== Flutter version ==="
+          flutter --version
+          echo "=== File sha ==="
           sha256sum mobile/lib/presentation/chat/chat_screen.dart
-          echo -n "Open braces: "; grep -o '{' mobile/lib/presentation/chat/chat_screen.dart | wc -l
-          echo -n "Close braces: "; grep -o '}' mobile/lib/presentation/chat/chat_screen.dart | wc -l
+          echo "=== _loadChat method ==="
+          sed -n '70,90p' mobile/lib/presentation/chat/chat_screen.dart
+          echo "=== File encoding ==="
+          file mobile/lib/presentation/chat/chat_screen.dart
 
       - name: Clean and pub get
         working-directory: ./mobile
