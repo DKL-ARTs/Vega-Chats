@@ -26,7 +26,12 @@ class ApiClient {
       body: jsonEncode(body),
     );
     
-    // Parse SSE response - extract content from data: lines
+    // Debug: log raw response
+    print('=== RESPONSE STATUS: ${resp.statusCode} ===');
+    print('=== RESPONSE BODY (first 500 chars): ===');
+    print(resp.body.substring(0, resp.body.length > 500 ? 500 : resp.body.length));
+    
+    // Parse SSE response
     final responseBody = resp.body;
     final lines = responseBody.split('\n');
     final contentBuffer = StringBuffer();
@@ -45,12 +50,13 @@ class ApiClient {
               contentBuffer.write(delta['content'] as String? ?? '');
             }
           }
-        } catch (_) {
-          // Skip malformed JSON chunks
+        } catch (e) {
+          print('JSON parse error: $e for: $jsonStr');
         }
       }
     }
     
+    print('=== PARSED CONTENT: ${contentBuffer.toString().substring(0, contentBuffer.length > 200 ? 200 : contentBuffer.length)} ===');
     return contentBuffer.toString();
   }
 
