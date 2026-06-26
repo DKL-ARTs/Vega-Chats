@@ -1,0 +1,5 @@
+*.dart text eol=lf
+*.dart text eol=lf
+
+# Ensure consistent line endings
+*.dart eol=lf
