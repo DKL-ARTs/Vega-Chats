@@ -28,7 +28,6 @@ class OpenRouterProvider:
         return data['choices'][0]['message']['content']
 
     async def stream(self, messages: list[dict], model: str = None, api_key: str = None, **kwargs):
-        import sys
         model = model or settings.default_model
         key = api_key or settings.openrouter_api_key
         client = httpx.AsyncClient(
@@ -41,7 +40,6 @@ class OpenRouterProvider:
             },
             timeout=120.0,
         )
-        print(f'[STREAM] key_len={len(key)} api_key_param={api_key is not None}', file=sys.stderr)
         try:
             resp = await client.post('/chat/completions', json={
                 'model': model,
@@ -49,7 +47,6 @@ class OpenRouterProvider:
                 'stream': True,
                 **kwargs,
             })
-            print(f'[OR] status={resp.status_code}', file=sys.stderr)
             if resp.status_code != 200:
                 error_text = await resp.aread()
                 yield f'Error: HTTP {resp.status_code}: {error_text[:200]}'
@@ -58,5 +55,4 @@ class OpenRouterProvider:
                 if line:
                     yield line
         except Exception as e:
-            print(f'[OR] exception={e}', file=sys.stderr)
             yield f'Error: {str(e)}'

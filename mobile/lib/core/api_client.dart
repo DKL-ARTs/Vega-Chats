@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 class ApiClient {
   String baseUrl;
   String apiKey;
-  String lastDebugInfo = '';
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
@@ -21,13 +20,11 @@ class ApiClient {
     if (cleaned.isNotEmpty) {
       headers['Authorization'] = authValue;
     }
-    lastDebugInfo='key_len=${cleaned.length} auth_len=${authValue.length} auth_bytes=${authValue.codeUnits}';
     final resp = await http.post(
       Uri.parse('$baseUrl/api/chat/stream'),
       headers: headers,
       body: jsonEncode(body),
     );
-    lastDebugInfo += ' status=${resp.statusCode}';
     return resp;
   }
 
