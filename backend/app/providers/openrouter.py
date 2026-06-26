@@ -14,6 +14,8 @@ class OpenRouterProvider(BaseProvider):
             headers={
                 'Authorization': f'Bearer {key}',
                 'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://vega-chat.app',
+                'X-Title': 'Vega Chat',
             },
             timeout=120.0,
         )
@@ -39,6 +41,8 @@ class OpenRouterProvider(BaseProvider):
                 headers={
                     'Authorization': 'Bearer ' + key,
                     'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://vega-chat.app',
+                    'X-Title': 'Vega Chat',
                 },
                 timeout=120.0,
             )
