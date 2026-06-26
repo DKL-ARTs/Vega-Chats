@@ -80,6 +80,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'fileName': msg['fileName'] ?? '',
           'isImage': msg['isImage'] ?? false,
         });
+      }
     });
   }
 
@@ -91,6 +92,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _thinkingDots = (_thinkingDots + 1) % 4;
         });
+      }
     });
   }
 
@@ -156,18 +158,21 @@ class _ChatScreenState extends State<ChatScreen> {
       if (fileToSend != null) {
         final bytes = await File(fileToSend).readAsBytes();
         files = [{'name': fileNameToSend ?? 'file', 'content': base64Encode(bytes)}];
+      }
       final messagesForBackend = _messages.map((m) => {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
       }).toList();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sending...", style: TextStyle(fontSize: 10)), duration: Duration(seconds: 2)));
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Status: " + resp.statusCode.toString(), style: TextStyle(fontSize: 10)), duration: Duration(seconds: 2)));
       _stopThinking();
-      setState(() => _messages.add({"role": "assistant", "content": ""}));
-      final respBody = resp.body;
+      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
+      if (mounted) setState(() { _messages.last["content"] = resp.body; });
+      if (mounted) setState(() { _messages.last["content"] = resp.body; });
       if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, "assistant", respBody);
+        await ChatHistory.addMessage(_currentChatId!, "assistant", resp.body);
       }
-      if (mounted) setState(() { _messages.last["content"] = respBody; });
       await _loadChats();
     } catch (e) {
       _stopThinking();
@@ -248,6 +253,7 @@ class _ChatScreenState extends State<ChatScreen> {
       // If we deleted the current chat, go to new chat screen
       if (_currentChatId == chatId) {
         _startNewChat();
+      }
     }
   }
 

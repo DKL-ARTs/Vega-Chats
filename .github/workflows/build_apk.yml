@@ -10,49 +10,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          refetch: true
-
-      - name: Force checkout latest
-        run: |
-          git fetch origin main
-          git checkout --force origin/main
-
+      
       - uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
-
+      
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.2"
+          flutter-version: "3.22.3"
           channel: "stable"
           cache: false
-
-      - name: Full debug
-        run: |
-          echo "=== Dart version ==="
-          dart --version
-          echo "=== Flutter version ==="
-          flutter --version
-          echo "=== File sha ==="
-          sha256sum mobile/lib/presentation/chat/chat_screen.dart
-          echo "=== _loadChat method ==="
-          sed -n '70,90p' mobile/lib/presentation/chat/chat_screen.dart
-          echo "=== File encoding ==="
-          file mobile/lib/presentation/chat/chat_screen.dart
-
+      
       - name: Clean and pub get
         working-directory: ./mobile
         run: |
-          rm -rf .dart_tool build .flutter-plugins
           flutter clean
           flutter pub get
-
+      
       - name: Build APK
         working-directory: ./mobile
         run: flutter build apk --release --split-per-abi
-
+      
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
