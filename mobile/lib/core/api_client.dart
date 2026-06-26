@@ -7,7 +7,7 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
-  Future<http.Response> streamChat({
+  Future<String> streamChat({
     required List<Map<String, dynamic>> messages,
     String model = 'owl-alpha',
     List<Map<String, String>>? files,
@@ -25,7 +25,33 @@ class ApiClient {
       headers: headers,
       body: jsonEncode(body),
     );
-    return resp;
+    
+    // Parse SSE response - extract content from data: lines
+    final responseBody = resp.body;
+    final lines = responseBody.split('\n');
+    final contentBuffer = StringBuffer();
+    
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.startsWith('data: ')) {
+        final jsonStr = trimmed.substring(6).trim();
+        if (jsonStr.isEmpty || jsonStr == '[DONE]') continue;
+        try {
+          final chunk = jsonDecode(jsonStr) as Map<String, dynamic>;
+          final choices = chunk['choices'] as List<dynamic>?;
+          if (choices != null && choices.isNotEmpty) {
+            final delta = choices[0]['delta'] as Map<String, dynamic>?;
+            if (delta != null && delta.containsKey('content')) {
+              contentBuffer.write(delta['content'] as String? ?? '');
+            }
+          }
+        } catch (_) {
+          // Skip malformed JSON chunks
+        }
+      }
+    }
+    
+    return contentBuffer.toString();
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
