@@ -10,31 +10,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
-      
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.44.2"
           channel: "stable"
           cache: false
-      
+
+      - name: Debug - check file integrity
+        run: |
+          echo "=== File info ==="
+          wc -l mobile/lib/presentation/chat/chat_screen.dart
+          echo "=== First 5 lines ==="
+          head -5 mobile/lib/presentation/chat/chat_screen.dart
+          echo "=== Line 70-85 ==="
+          sed -n '70,85p' mobile/lib/presentation/chat/chat_screen.dart
+          echo "=== Brace count ==="
+          echo -n "Open braces: "; grep -o '{' mobile/lib/presentation/chat/chat_screen.dart | wc -l
+          echo -n "Close braces: "; grep -o '}' mobile/lib/presentation/chat/chat_screen.dart | wc -l
+          echo "=== File hash ==="
+          sha256sum mobile/lib/presentation/chat/chat_screen.dart
+
       - name: Clean and pub get
         working-directory: ./mobile
         run: |
           rm -rf .dart_tool build .flutter-plugins
           flutter clean
           flutter pub get
-      
+
       - name: Build APK
         working-directory: ./mobile
         run: flutter build apk --release --split-per-abi
-      
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
