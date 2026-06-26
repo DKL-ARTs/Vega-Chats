@@ -163,15 +163,13 @@ class _ChatScreenState extends State<ChatScreen> {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
       }).toList();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sending...", style: TextStyle(fontSize: 10)), duration: Duration(seconds: 2)));
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Status: " + resp.statusCode.toString(), style: TextStyle(fontSize: 10)), duration: Duration(seconds: 2)));
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      if (mounted) setState(() { _messages.last["content"] = resp.body; });
-      if (mounted) setState(() { _messages.last["content"] = resp.body; });
+      final respBody = await resp.body();
+      if (mounted) setState(() { _messages.last["content"] = respBody; });
       if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, "assistant", resp.body);
+        await ChatHistory.addMessage(_currentChatId!, "assistant", respBody);
       }
       await _loadChats();
     } catch (e) {
