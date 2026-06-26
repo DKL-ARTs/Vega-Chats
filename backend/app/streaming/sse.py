@@ -33,6 +33,8 @@ async def chat_stream(request: Request):
     
     print(f'[AUTH] final api_key_len={len(api_key) if api_key else 0}')
     
+    import sys
+    print(f"[SSE] ALL_HEADERS={dict(request.headers)}", file=sys.stderr)
     provider = get_provider(provider_name)
     
     async def event_generator():
