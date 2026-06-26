@@ -17,7 +17,7 @@ async def chat_stream(request: Request):
     # Get API key from Authorization header or body
     api_key = None
     auth_header = request.headers.get('authorization', '')
-    print(f'[AUTH] header=|{auth_header}| len={len(auth_header)} bytes={auth_header.encode(utf-8)}')
+    print(f'[AUTH] header=|{auth_header}| len={len(auth_header)} bytes={auth_header.encode("utf-8")}')
     if auth_header.startswith('Bearer '):
         raw_key = auth_header[7:]
         # Remove all whitespace and control chars
