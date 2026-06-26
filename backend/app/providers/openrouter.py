@@ -53,6 +53,7 @@ class OpenRouterProvider(BaseProvider):
         print(f'[OpenRouter] api_key_param={api_key is not None} settings_key_len={len(settings.openrouter_api_key) if settings.openrouter_api_key else 0}')
         print(f"[OpenRouter] key_start={repr(key[:8]) if key else None}")
         _req_auth = client.headers.get("authorization", "")
+        print(f"[SENDING] auth={_req_auth}", file=sys.stderr)
         buffer = []
         buffer_len = 0
         last_flush = asyncio.get_event_loop().time()
