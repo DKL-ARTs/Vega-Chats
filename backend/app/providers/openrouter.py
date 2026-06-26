@@ -47,8 +47,10 @@ class OpenRouterProvider(BaseProvider):
         )
         print(f'[OpenRouter] Using model: {model} key_len={len(key) if key else 0}')
         print(f'[OpenRouter] api_key_param={api_key is not None} settings_key_len={len(settings.openrouter_api_key) if settings.openrouter_api_key else 0}')
-        print(f'[OpenRouter] key_start={repr(key[:8]) if key else None}')
-        import asyncio
+        print(f"[OpenRouter] key_start={repr(key[:8]) if key else None}")
+        print(f"[OpenRouter] has_referer={'HTTP-Referer' in dict(client.headers)}")
+        print(f"[OpenRouter] has_referer={"HTTP-Referer" in dict(client.headers)}")
+        print(f"[OpenRouter] has_referer={chr(34)}HTTP-Referer{chr(34) in dict(client.headers)}")
         buffer = []
         buffer_len = 0
         last_flush = asyncio.get_event_loop().time()
