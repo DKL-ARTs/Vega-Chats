@@ -10,6 +10,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          refetch: true
+
+      - name: Force checkout latest
+        run: |
+          git fetch origin main
+          git checkout --force origin/main
+          git status
 
       - uses: actions/setup-java@v4
         with:
@@ -22,19 +30,12 @@ jobs:
           channel: "stable"
           cache: false
 
-      - name: Fix line endings
-        run: |
-          sed -i 's/\r$//' mobile/lib/presentation/chat/chat_screen.dart
-          echo "Line endings fixed"
-          file mobile/lib/presentation/chat/chat_screen.dart
-
-      - name: Debug - check file integrity
+      - name: Debug file
         run: |
           wc -l mobile/lib/presentation/chat/chat_screen.dart
           sha256sum mobile/lib/presentation/chat/chat_screen.dart
           echo -n "Open braces: "; grep -o '{' mobile/lib/presentation/chat/chat_screen.dart | wc -l
           echo -n "Close braces: "; grep -o '}' mobile/lib/presentation/chat/chat_screen.dart | wc -l
-          sed -n '70,85p' mobile/lib/presentation/chat/chat_screen.dart
 
       - name: Clean and pub get
         working-directory: ./mobile
