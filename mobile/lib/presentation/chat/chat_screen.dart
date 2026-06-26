@@ -29,7 +29,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _attachedFile;
   String? _attachedFileName;
   bool _attachedIsImage = false;
-  String _model = 'owl-alpha';
+  String _model = 'openrouter/owl-alpha';
   int? _currentChatId;
   List<Map<String, dynamic>> _chats = [];
   Timer? _thinkingTimer;
@@ -57,7 +57,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _model = prefs.getString('model') ?? 'owl-alpha';
+      _model = prefs.getString('model') ?? 'openrouter/owl-alpha';
       _client.apiKey = prefs.getString('api_key') ?? '';
       _client.baseUrl = prefs.getString('base_url') ?? 'https://vega-chat-production.up.railway.app';
     });
