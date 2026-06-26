@@ -33,6 +33,8 @@ class OpenRouterProvider(BaseProvider):
         return data['choices'][0]['message']['content']
     
     async def stream(self, messages: list[dict], model: str = None, api_key: str = None, **kwargs):
+        import sys
+        print(f"[STREAM] ENTERED api_key_len={len(api_key) if api_key else 0}", file=sys.stderr)
         model = model or settings.default_model
         key = api_key or settings.openrouter_api_key
         # Always create fresh client with proper headers
@@ -50,8 +52,6 @@ class OpenRouterProvider(BaseProvider):
         print(f'[OpenRouter] api_key_param={api_key is not None} settings_key_len={len(settings.openrouter_api_key) if settings.openrouter_api_key else 0}')
         print(f"[OpenRouter] key_start={repr(key[:8]) if key else None}")
         _req_auth = client.headers.get("authorization", "")
-        print(f"[OpenRouter] SENDING auth={req_auth}")
-        print(f"[OpenRouter] has_referer='HTTP-Referer' in dict(client.headers)")
         buffer = []
         buffer_len = 0
         last_flush = asyncio.get_event_loop().time()
