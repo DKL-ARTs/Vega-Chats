@@ -568,5 +568,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-// Force rebuild: 2026-06-26 16:17
