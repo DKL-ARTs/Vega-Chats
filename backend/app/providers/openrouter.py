@@ -63,6 +63,7 @@ class OpenRouterProvider(BaseProvider):
                 buffer_len = 0
                 last_flush = asyncio.get_event_loop().time()
         try:
+            print(f'[OR] About to call stream POST', file=sys.stderr)
             async with self.client.stream('POST', '/chat/completions', json={
                 'model': model,
                 'messages': messages,
