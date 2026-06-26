@@ -80,7 +80,6 @@ class _ChatScreenState extends State<ChatScreen> {
           'fileName': msg['fileName'] ?? '',
           'isImage': msg['isImage'] ?? false,
         });
-      }
     });
   }
 
@@ -92,7 +91,6 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _thinkingDots = (_thinkingDots + 1) % 4;
         });
-      }
     });
   }
 
@@ -158,7 +156,6 @@ class _ChatScreenState extends State<ChatScreen> {
       if (fileToSend != null) {
         final bytes = await File(fileToSend).readAsBytes();
         files = [{'name': fileNameToSend ?? 'file', 'content': base64Encode(bytes)}];
-      }
       final messagesForBackend = _messages.map((m) => {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
@@ -166,15 +163,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      final bytes = <int>[];
-      await for (final chunk in resp.body) {
-        bytes.addAll(chunk);
-      }
-      final respBody = utf8.decode(bytes);
+      final respBody = resp.body;
       if (mounted) setState(() { _messages.last["content"] = respBody; });
       if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, "assistant", respBody);
-      }
       await _loadChats();
     } catch (e) {
       _stopThinking();
@@ -255,7 +247,6 @@ class _ChatScreenState extends State<ChatScreen> {
       // If we deleted the current chat, go to new chat screen
       if (_currentChatId == chatId) {
         _startNewChat();
-      }
     }
   }
 
