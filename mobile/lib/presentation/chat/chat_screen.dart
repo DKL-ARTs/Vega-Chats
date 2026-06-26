@@ -171,7 +171,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() { _messages.last["content"] = "DEBUG: " + _client.lastDebugInfo + "\n\nRESPONSE: " + resp.body; });
       if (mounted) setState(() { _messages.last["content"] = "DEBUG: " + _client.lastDebugInfo + "\n\nRESPONSE: " + resp.body; });
       if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, 'assistant', currentMessage);
+        await ChatHistory.addMessage(_currentChatId!, "assistant", resp.body);
       }
       await _loadChats();
     } catch (e) {
