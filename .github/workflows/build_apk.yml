@@ -8,50 +8,32 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
-
+      
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.2"
+          flutter-version: "3.22.3"
           channel: "stable"
           cache: false
-
+      
       - name: Clean and pub get
         working-directory: ./mobile
         run: |
-          rm -rf .dart_tool build .flutter-plugins
           flutter clean
           flutter pub get
-
+      
       - name: Build APK
         working-directory: ./mobile
-        run: flutter build apk --release --target-platform android-arm64
-
-      - name: List all APK files
-        run: |
-          find mobile/build -name "*.apk" 2>/dev/null
-          echo "---"
-          ls -la mobile/build/app/outputs/flutter-apk/ 2>/dev/null
-          echo "---"
-          ls -la mobile/build/app/outputs/apk/ 2>/dev/null
-
+        run: flutter build apk --debug
+      
       - name: Upload APK
-        run: |
-          APK_PATH=$(find mobile/build -name "*.apk" | head -1)
-          if [ -z "$APK_PATH" ]; then
-            echo "ERROR: No APK found"
-            exit 1
-          fi
-          echo "Found: $APK_PATH"
-          gh release delete build-${{ github.run_number }} --yes || true
-          gh release create build-${{ github.run_number }}             "$APK_PATH"             --draft             --title "Build #${{ github.run_number }}"             --notes "Vega Chat"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vega-chat-debug
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
