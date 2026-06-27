@@ -164,7 +164,6 @@ class _ChatScreenState extends State<ChatScreen> {
         'content': m['content'].toString(),
       }).toList();
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
-      print("RESP: " + resp.substring(0, resp.length > 50 ? 50 : resp.length));
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       String displayText = resp.isEmpty ? "EMPTY RESPONSE (" + resp.length.toString() + " chars)" : resp;
@@ -174,7 +173,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       await _loadChats();
     } catch (e) {
-      print("RESP: " + resp.substring(0, resp.length > 50 ? 50 : resp.length));
       _stopThinking();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), style: TextStyle(fontSize: 9)), duration: Duration(seconds: 5)));
     } finally {
@@ -306,7 +304,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_scaffoldKey.currentState?.isDrawerOpen == true) {
       _scaffoldKey.currentState?.closeDrawer();
     }
-    print("RESP: " + resp.substring(0, resp.length > 50 ? 50 : resp.length));
       _stopThinking();
     _controller.clear();
     setState(() {
@@ -318,7 +315,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _openChat(int chatId) {
     _scaffoldKey.currentState?.closeDrawer();
-    print("RESP: " + resp.substring(0, resp.length > 50 ? 50 : resp.length));
       _stopThinking();
     setState(() {
       _currentChatId = chatId;
