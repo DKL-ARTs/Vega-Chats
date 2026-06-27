@@ -30,15 +30,15 @@ jobs:
 
       - name: Build APK
         working-directory: ./mobile
-        run: flutter build apk --debug
+        run: flutter build apk --release --split-per-abi
 
       - name: Release APK
         run: |
           TAG="build-${{ github.run_number }}"
           gh release delete "$TAG" --yes 2>/dev/null || true
           gh release create "$TAG" \
-            mobile/build/app/outputs/flutter-apk/app-debug.apk \
+            mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
             --title "Build #${{ github.run_number }}" \
-            --notes "Vega Chat debug build"
+            --notes "Vega Chat release build (arm64)"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
