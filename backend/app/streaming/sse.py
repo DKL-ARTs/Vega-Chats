@@ -12,6 +12,7 @@ async def chat_stream(request: Request):
     messages = body.get("messages", [])
     model = body.get("model", "openrouter/auto")
     provider_name = body.get("provider", "openrouter")
+
     api_key = None
     auth_header = request.headers.get("authorization", "")
     if auth_header.startswith("Bearer "):
@@ -19,28 +20,8 @@ async def chat_stream(request: Request):
         cleaned = "".join(ch for ch in raw_key if ch.isalnum() or ch in "-_.")
         if len(cleaned) >= 20:
             api_key = cleaned
+
     provider = get_provider(provider_name)
-    complete_text = ""
-    async for chunk in provider.stream(messages, model, api_key=api_key):
-        if not chunk or chunk == "[DONE]":
-            continue
-        json_str = chunk
-        if json_str.startswith("data: "):
-            json_str = json_str[6:]
-        elif json_str.startswith("data:"):
-            json_str = json_str[5:]
-        json_str = json_str.strip()
-        if not json_str or json_str == "[DONE]":
-            continue
-        try:
-            data = json.loads(json_str)
-            choices = data.get("choices", [])
-            if choices:
-                delta = choices[0].get("delta", {})
-                content = delta.get("content", "")
-                if content:
-                    complete_text += content
-        except (json.JSONDecodeError, KeyError, IndexError):
-            pass
-    print(f"[SSE] Final answer ({len(complete_text)} chars)", file=sys.stderr)
-    return PlainTextResponse(complete_text)
+    answer = await provider.chat(messages, model, api_key=api_key)
+    print(f"[SSE] Final answer ({len(answer)} chars): {answer[:80]}", file=sys.stderr)
+    return PlainTextResponse(answer)
