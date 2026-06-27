@@ -35,14 +35,9 @@ jobs:
         working-directory: ./mobile
         run: flutter build apk --release --target-platform android-arm64
 
-      - name: Create Release
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "build-${{ github.run_number }}"
-          name: "Build #${{ github.run_number }}"
-          files: mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          draft: true
-          prerelease: true
+      - name: Upload APK via gh CLI
+        run: |
+          gh release delete build-${{ github.run_number }} --yes || true
+          gh release create build-${{ github.run_number }}             mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk             --draft             --title "Build #${{ github.run_number }}"             --notes "Vega Chat - Build #${{ github.run_number }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
