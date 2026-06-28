@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +16,7 @@ import 'package:image_picker/image_picker.dart';
 class ChatScreen extends StatefulWidget {
   final int? chatId;
   const ChatScreen({super.key, this.chatId});
+
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
@@ -41,9 +41,10 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _currentChatId = widget.chatId;
     _loadSettings();
-    _loadChats();
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
+    } else {
+      _loadChats();
     }
   }
 
@@ -85,21 +86,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startThinking() {
-    _thinkingTimer?.cancel();
     _thinkingDots = 0;
+    _thinkingTimer?.cancel();
     _thinkingTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (mounted) {
-        setState(() {
-          _thinkingDots = (_thinkingDots + 1) % 4;
-        });
+        setState(() => _thinkingDots = (_thinkingDots + 1) % 4);
       }
     });
   }
 
   void _stopThinking() {
     _thinkingTimer?.cancel();
-    _thinkingTimer = null;
-    _thinkingDots = 0;
+    setState(() {
+      _thinkingTimer = null;
+      _thinkingDots = 0;
+    });
   }
 
   String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
@@ -110,40 +111,34 @@ class _ChatScreenState extends State<ChatScreen> {
     final fileToSend = _attachedFile;
     final fileNameToSend = _attachedFileName;
     final isImageToSend = _attachedIsImage;
-    _controller.clear();
-    FocusScope.of(context).unfocus();
-    await _loadSettings();
-    // Debug: show what we're sending
-    final debugKey = _client.apiKey;
-    final debugKeyLen = debugKey.length;
-    final debugTrimmedLen = debugKey.trim().length;
-    final debugBytes = debugKey.codeUnits.toList();
-    final nonAscii = debugKey.codeUnits.where((b) => b > 127 || b < 32).toList();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('len=$debugKeyLen trimmed=$debugTrimmedLen nonAscii=$nonAscii ALL=${debugBytes.length}bytes', style: TextStyle(fontSize: 9)),
-          duration: Duration(seconds: 3),
-          backgroundColor: Colors.red,
-        ),
-      );
+
+    String msgContent = text;
+    List<Map<String, String>>? files;
+    
+    if (fileToSend != null) {
+      final bytes = await File(fileToSend).readAsBytes();
+      final base64Data = base64Encode(bytes);
+      if (isImageToSend) {
+        final ext = p.extension(fileToSend).toLowerCase().replaceAll('.', '');
+        final mimeType = ext == 'png' ? 'image/png' : (ext == 'gif' ? 'image/gif' : 'image/jpeg');
+        msgContent = '$text\n\n![image](data:$mimeType;base64,$base64Data)';
+      } else {
+        files = [{'name': fileNameToSend ?? 'file', 'content': base64Data}];
+        if (text.isEmpty) msgContent = '[File: ${fileNameToSend ?? "file"}]';
+      }
     }
-    final msgContent = text;
+
     final displayText = text.isEmpty
         ? (isImageToSend ? '📷 Photo' : '📎 ' + (fileNameToSend ?? 'File'))
         : text;
+
     if (_currentChatId == null) {
       _currentChatId = await ChatHistory.createChat(displayText.length > 30 ? displayText.substring(0, 30) + '...' : displayText);
     }
-    await ChatHistory.addMessage(
-      _currentChatId!,
-      'user',
-      msgContent,
-      filePath: fileToSend ?? '',
-      fileName: fileNameToSend ?? '',
-      isImage: isImageToSend,
-    );
+
+    await ChatHistory.addMessage(_currentChatId!, 'user', msgContent, filePath: fileToSend ?? '', fileName: fileNameToSend ?? '', isImage: isImageToSend);
     await _loadChats();
+
     setState(() {
       _messages.add({'role': 'user', 'content': msgContent, 'filePath': fileToSend ?? '', 'fileName': fileNameToSend ?? '', 'isImage': isImageToSend});
       _attachedFile = null;
@@ -151,14 +146,12 @@ class _ChatScreenState extends State<ChatScreen> {
       _attachedIsImage = false;
       _loading = true;
     });
+
+    _controller.clear();
+    FocusScope.of(context).unfocus();
     _startThinking();
+
     try {
-      // Prepare files for backend
-      List<Map<String, String>>? files;
-      if (fileToSend != null) {
-        final bytes = await File(fileToSend).readAsBytes();
-        files = [{'name': fileNameToSend ?? 'file', 'content': base64Encode(bytes)}];
-      }
       final messagesForBackend = _messages.map((m) => {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
@@ -166,7 +159,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      String displayText = resp.isEmpty ? "EMPTY RESPONSE (" + resp.length.toString() + " chars)" : resp;
+      String displayText = resp.isEmpty ? "EMPTY RESPONSE" : resp;
       if (mounted) setState(() { _messages.last["content"] = displayText; });
       if (_currentChatId != null) {
         await ChatHistory.addMessage(_currentChatId!, "assistant", resp);
@@ -174,44 +167,27 @@ class _ChatScreenState extends State<ChatScreen> {
       await _loadChats();
     } catch (e) {
       _stopThinking();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), style: TextStyle(fontSize: 9)), duration: Duration(seconds: 5)));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), duration: const Duration(seconds: 5)));
     } finally {
-      if (mounted) setState(() { _loading = false; });
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   void _copyMessage(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface));
   }
 
   void _showUserMessageMenu(BuildContext context, Map<String, dynamic> message, int index) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: VegaTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) => SafeArea(
+      builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: Icon(Icons.edit, color: VegaTheme.accent),
-              title: Text('Edit', style: TextStyle(color: VegaTheme.textPrimary)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _editMessage(index, message['content'] ?? '');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.copy, color: VegaTheme.accent),
-              title: Text('Copy', style: TextStyle(color: VegaTheme.textPrimary)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _copyMessage(message['content'] ?? '');
-              },
-            ),
+            ListTile(leading: Icon(Icons.copy), title: Text('Copy'), onTap: () { Navigator.pop(context); _copyMessage(message['content'] ?? ''); }),
+            ListTile(leading: Icon(Icons.edit), title: Text('Edit'), onTap: () { Navigator.pop(context); _editMessage(index, message['content'] ?? ''); }),
+            ListTile(leading: Icon(Icons.delete), title: Text('Delete'), onTap: () { Navigator.pop(context); _deleteChat(_currentChatId!); }),
           ],
         ),
       ),
@@ -220,38 +196,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _editMessage(int index, String currentText) {
     _controller.text = currentText;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Edit mode - type new message'), duration: Duration(seconds: 2)),
-    );
   }
 
   Future<void> _deleteChat(int chatId) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: VegaTheme.surface,
-        title: Text('Delete chat?', style: TextStyle(color: VegaTheme.textPrimary)),
-        content: Text('This action cannot be undone.', style: TextStyle(color: VegaTheme.textSecondary)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: VegaTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+      builder: (context) => AlertDialog(title: Text('Delete chat?'), actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Delete')),
+      ]),
     );
-    
-    if (confirmed == true) {
-      await ChatHistory.deleteChat(chatId);
-      await _loadChats();
-      // If we deleted the current chat, go to new chat screen
-      if (_currentChatId == chatId) {
-        _startNewChat();
-      }
+    if (confirmed == true && _currentChatId == chatId) {
+      _messages.clear();
+      _currentChatId = null;
+      _loading = false;
     }
   }
 
@@ -261,7 +219,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!await filesDir.exists()) await filesDir.create(recursive: true);
     final ext = p.extension(fileName);
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final newPath = p.join(filesDir.path, '$ts$ext');
+    final newPath = p.join(filesDir.path, '${ts}${ext}');
     await File(sourcePath).copy(newPath);
     return newPath;
   }
@@ -270,7 +228,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final result = await FilePicker.platform.pickFiles(type: FileType.any);
     if (result != null && result.files.isNotEmpty) {
       final savedPath = await _copyFileToAppDir(result.files.first.path!, result.files.first.name);
-      setState(() { _attachedFile = savedPath; _attachedFileName = result.files.first.name; _attachedIsImage = false; });
+      setState(() {
+        _attachedFile = savedPath;
+        _attachedFileName = result.files.first.name;
+        _attachedIsImage = false;
+      });
     }
   }
 
@@ -279,19 +241,25 @@ class _ChatScreenState extends State<ChatScreen> {
     final image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
       final savedPath = await _copyFileToAppDir(image.path, image.name);
-      setState(() { _attachedFile = savedPath; _attachedFileName = image.name; _attachedIsImage = true; });
+      setState(() {
+        _attachedFile = savedPath;
+        _attachedFileName = image.name;
+        _attachedIsImage = true;
+      });
     }
   }
 
   void _showAttachMenu() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: VegaTheme.surface,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(leading: Icon(Icons.image, color: VegaTheme.accent), title: Text('Photo'), onTap: () { Navigator.pop(ctx); _pickImage(); }),
-          ListTile(leading: Icon(Icons.attach_file, color: VegaTheme.accent), title: Text('File'), onTap: () { Navigator.pop(ctx); _pickFile(); }),
-        ]),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(leading: Icon(Icons.photo_library), title: Text('Photo'), onTap: () { Navigator.pop(context); _pickImage(); }),
+            ListTile(leading: Icon(Icons.attach_file), title: Text('File'), onTap: () { Navigator.pop(context); _pickFile(); }),
+          ],
+        ),
       ),
     );
   }
@@ -302,20 +270,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startNewChat() {
     if (_scaffoldKey.currentState?.isDrawerOpen == true) {
-      _scaffoldKey.currentState?.closeDrawer();
+      Navigator.pop(context);
     }
-      _stopThinking();
-    _controller.clear();
     setState(() {
-      _currentChatId = null;
       _messages.clear();
+      _currentChatId = null;
       _loading = false;
     });
   }
 
   void _openChat(int chatId) {
-    _scaffoldKey.currentState?.closeDrawer();
-      _stopThinking();
     setState(() {
       _currentChatId = chatId;
       _loading = false;
@@ -331,92 +295,26 @@ class _ChatScreenState extends State<ChatScreen> {
       key: _scaffoldKey,
       backgroundColor: VegaTheme.dark,
       drawer: Drawer(
-        width: MediaQuery.of(context).size.width * 0.75,
         backgroundColor: VegaTheme.surface,
-        child: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Chats', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.search, color: VegaTheme.textSecondary, size: 22),
-                          onPressed: () {},
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.add, color: VegaTheme.accent),
-                          onPressed: _startNewChat,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: _chats.isEmpty
-                    ? Center(child: Text('No chats yet', style: TextStyle(color: VegaTheme.textSecondary)))
-                    : ListView.builder(
-                        itemCount: _chats.length,
-                        itemBuilder: (ctx, i) {
-                          final chat = _chats[i];
-                          final isActive = chat['id'] == _currentChatId;
-                          return ListTile(
-                            selected: isActive,
-                            selectedTileColor: VegaTheme.card,
-                            leading: Icon(Icons.chat_bubble_outline, color: isActive ? VegaTheme.accent : VegaTheme.textSecondary),
-                            title: Text(chat['title'] ?? 'Untitled', style: TextStyle(color: isActive ? VegaTheme.accent : VegaTheme.textPrimary)),
-                            subtitle: Text(chat['createdAt']?.toString().substring(0, 10) ?? '', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
-                            trailing: IconButton(
-                              icon: Icon(Icons.delete_outline, color: VegaTheme.textSecondary, size: 20),
-                              onPressed: () => _deleteChat(chat['id']),
-                            ),
-                            onTap: () => _openChat(chat['id']),
-                          );
-                        },
-                      ),
-              ),
-              Divider(color: VegaTheme.border),
-              ListTile(
-                leading: Icon(Icons.folder_outlined, color: VegaTheme.accent),
-                title: Text('Files', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/ide'); },
-              ),
-              ListTile(
-                leading: Icon(Icons.terminal, color: VegaTheme.accent),
-                title: Text('Terminal', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/terminal'); },
-              ),
-              ListTile(
-                leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
-                title: Text('Settings', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/settings'); },
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(color: VegaTheme.dark),
+              child: Text('Vega Chat', style: TextStyle(color: Colors.white, fontSize: 24)),
+            ),
+            ListTile(leading: Icon(Icons.add, color: VegaTheme.textPrimary), title: Text('New Chat', style: TextStyle(color: VegaTheme.textPrimary)), onTap: _startNewChat),
+            ..._chats.map((chat) => ListTile(
+              title: Text(chat['title'] ?? 'Chat', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () => _openChat(chat['id']),
+            )),
+          ],
         ),
       ),
       appBar: AppBar(
-        backgroundColor: VegaTheme.dark,
-        elevation: 0,
-        leading: Builder(
-          builder: (ctx) => IconButton(
-            icon: Icon(Icons.menu, color: VegaTheme.textSecondary),
-            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-          ),
-        ),
-        actions: [
-          if (!_showNewChatScreen)
-            IconButton(
-              icon: Icon(Icons.add, color: VegaTheme.textSecondary),
-              onPressed: _startNewChat,
-            ),
-        ],
+        backgroundColor: VegaTheme.surface,
+        iconTheme: IconThemeData(color: VegaTheme.textPrimary),
+        title: Text('Vega Chat', style: TextStyle(color: VegaTheme.textPrimary)),
       ),
       body: Column(
         children: [
@@ -430,109 +328,59 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (_loading && i == _messages.length) {
                         return Align(
                           alignment: Alignment.centerLeft,
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 12, top: 4),
-                            child: Text(_thinkingText, style: TextStyle(color: VegaTheme.textSecondary, fontSize: 15, fontStyle: FontStyle.italic)),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(12)),
+                            child: Text(_thinkingText, style: TextStyle(color: VegaTheme.textSecondary)),
                           ),
                         );
                       }
-                      if (i >= _messages.length) return const SizedBox.shrink();
                       final msg = _messages[i];
                       final isUser = msg['role'] == 'user';
                       return Column(
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
-                          GestureDetector(
-                            onLongPress: () {
-                              if (isUser) {
-                                _showUserMessageMenu(context, msg, i);
-                              }
-                            },
-                            child: Column(
-                              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // File/image preview (no border)
-                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] == 'true')
-                                  Container(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Image.file(
-                                        File(msg['filePath']!),
-                                        width: 250,
-                                        height: 250,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          width: 250, height: 100,
-                                          decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(12)),
-                                          child: const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != 'true')
-                                  Container(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(color: VegaTheme.card.withOpacity(0.3), borderRadius: BorderRadius.circular(12)),
-                                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                      const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24),
-                                      const SizedBox(width: 8),
-                                      Text(msg['fileName'] ?? 'File', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
-                                    ]),
-                                  ),
-                                // Text message
-                                if ((msg['content'] ?? '').isNotEmpty && !(msg['content']?.startsWith('[FILE:') ?? true))
-                                  isUser
-                                      ? Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          margin: const EdgeInsets.symmetric(horizontal: 12),
-                                          decoration: BoxDecoration(
-                                            color: VegaTheme.userBubble,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: SelectableText(msg['content'] ?? '', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
-                                        )
-                                      : Padding(
-                                          padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-                                          child: MarkdownBody(
-                                            data: msg['content'] ?? '',
-                                            selectable: true,
-                                            shrinkWrap: true,
-                                            styleSheet: MarkdownStyleSheet(
-                                              p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.4),
-                                              h1: const TextStyle(color: VegaTheme.textPrimary, fontSize: 26, fontWeight: FontWeight.bold, height: 1.4),
-                                              h2: const TextStyle(color: VegaTheme.textPrimary, fontSize: 22, fontWeight: FontWeight.bold, height: 1.4),
-                                              h3: const TextStyle(color: VegaTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold, height: 1.4),
-                                              strong: const TextStyle(color: VegaTheme.textPrimary, fontWeight: FontWeight.bold),
-                                              em: const TextStyle(color: VegaTheme.textPrimary, fontStyle: FontStyle.italic),
-                                              code: TextStyle(color: VegaTheme.accent, backgroundColor: VegaTheme.surface, fontFamily: 'monospace', fontSize: 13),
-                                              codeblockDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: VegaTheme.border)),
-                                              blockquoteDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(4), border: Border(left: BorderSide(color: VegaTheme.accent, width: 3))),
-                                              listBullet: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
-                                              a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
-                                            ),
-                                          ),
-                                        ),
-                              ],
+                          if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] == 'true')
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(
+                                  msg['filePath'] ?? '',
+                                  errorBuilder: (c, e, s) => Text('[Image failed to load]', style: TextStyle(color: VegaTheme.textSecondary)),
+                                ),
+                              ),
+                            )
+                          else if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != 'true')
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(12)),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.attach_file, color: VegaTheme.textSecondary, size: 16),
+                                const SizedBox(width: 4),
+                                Text(msg['fileName'] ?? 'File', style: TextStyle(color: VegaTheme.textSecondary)),
+                              ]),
                             ),
-                          ),
-                          if (!isUser && msg['content']?.isNotEmpty == true)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12, left: 4),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  InkWell(
-                                    onTap: () => _copyMessage(msg['content'] ?? ''),
-                                    borderRadius: BorderRadius.circular(4),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(4),
-                                      child: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary),
-                                    ),
+                          if ((msg['content'] ?? '').isNotEmpty && !(msg['content']?.startsWith('[FILE:') ?? true))
+                            GestureDetector(
+                              onLongPress: isUser ? () => _showUserMessageMenu(context, msg, i) : null,
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isUser ? VegaTheme.accent : VegaTheme.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: MarkdownBody(
+                                  data: msg['content'] ?? '',
+                                  selectable: true,
+                                  styleSheet: MarkdownStyleSheet(
+                                    p: TextStyle(color: isUser ? Colors.white : VegaTheme.textPrimary, fontSize: 15),
+                                    code: TextStyle(color: VegaTheme.accent, backgroundColor: Colors.transparent),
                                   ),
-                                ],
+                                ),
                               ),
                             ),
                         ],
@@ -544,28 +392,46 @@ class _ChatScreenState extends State<ChatScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               color: VegaTheme.surface,
-              child: Row(children: [
-                if (_attachedIsImage)
-                  ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(_attachedFile!), width: 60, height: 60, fit: BoxFit.cover))
-                else
-                  Container(width: 60, height: 60, decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 32)),
-                if (!_attachedIsImage) ...[
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(_attachedFileName ?? 'File', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                ] else
-                  const Spacer(),
-                IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 20), onPressed: _removeAttachment),
-              ]),
+              child: Row(
+                children: [
+                  if (_attachedIsImage)
+                    Icon(Icons.image, color: VegaTheme.textSecondary, size: 20)
+                  else
+                    Icon(Icons.attach_file, color: VegaTheme.textSecondary, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_attachedFileName ?? 'File', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13))),
+                  IconButton(icon: Icon(Icons.close, color: VegaTheme.textSecondary, size: 18), onPressed: _removeAttachment),
+                ],
+              ),
             ),
           Container(
-            padding: const EdgeInsets.all(12),
-            color: VegaTheme.dark,
-            child: Row(children: [
-              IconButton(icon: Icon(Icons.attach_file, color: VegaTheme.textSecondary), onPressed: _showAttachMenu),
-              Expanded(child: TextField(controller: _controller, style: TextStyle(color: VegaTheme.textPrimary), decoration: InputDecoration(hintText: 'Message...', hintStyle: TextStyle(color: VegaTheme.textSecondary), filled: true, fillColor: VegaTheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)), onSubmitted: (_) => _send())),
-              const SizedBox(width: 8),
-              IconButton(onPressed: _loading ? null : _send, icon: Icon(Icons.send, color: VegaTheme.accent)),
-            ]),
+            padding: const EdgeInsets.all(8),
+            color: VegaTheme.surface,
+            child: Row(
+              children: [
+                IconButton(icon: Icon(Icons.add, color: VegaTheme.textSecondary), onPressed: _showAttachMenu),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    style: TextStyle(color: VegaTheme.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: 'Type a message...',
+                      hintStyle: TextStyle(color: VegaTheme.textSecondary),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                      filled: true,
+                      fillColor: VegaTheme.dark,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    onSubmitted: (_) => _send(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(_loading ? Icons.hourglass_top : Icons.send, color: VegaTheme.accent),
+                  onPressed: _loading ? null : _send,
+                ),
+              ],
+            ),
           ),
         ],
       ),
