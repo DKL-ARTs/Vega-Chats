@@ -291,6 +291,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
       final savedPath = await _copyFileToAppDir(image.path, image.name);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Image picked: $savedPath"), duration: Duration(seconds: 2)));
       setState(() { _attachedFile = savedPath; _attachedFileName = image.name; _attachedIsImage = true; });
     }
   }
