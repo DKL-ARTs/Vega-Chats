@@ -114,20 +114,6 @@ class _ChatScreenState extends State<ChatScreen> {
     FocusScope.of(context).unfocus();
     await _loadSettings();
     // Debug: show what we're sending
-    final debugKey = _client.apiKey;
-    final debugKeyLen = debugKey.length;
-    final debugTrimmedLen = debugKey.trim().length;
-    final debugBytes = debugKey.codeUnits.toList();
-    final nonAscii = debugKey.codeUnits.where((b) => b > 127 || b < 32).toList();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('len=$debugKeyLen trimmed=$debugTrimmedLen nonAscii=$nonAscii ALL=${debugBytes.length}bytes', style: TextStyle(fontSize: 9)),
-          duration: Duration(seconds: 3),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
     String msgContent = text;
     final displayText = text.isEmpty
         ? (isImageToSend ? '📷 Photo' : '📎 ' + (fileNameToSend ?? 'File'))
@@ -291,7 +277,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
       final savedPath = await _copyFileToAppDir(image.path, image.name);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Image picked: $savedPath"), duration: Duration(seconds: 2)));
       setState(() { _attachedFile = savedPath; _attachedFileName = image.name; _attachedIsImage = true; });
     }
   }
