@@ -7,25 +7,58 @@ class ApiClient {
 
   ApiClient({this.baseUrl = '', this.apiKey = ''});
 
-  Future<String> streamChat({
+  Future<void> streamChat({
     required List<Map<String, dynamic>> messages,
     String model = 'owl-alpha',
     List<Map<String, String>>? files,
+    required void Function(String chunk) onChunk,
+    required Function onError,
   }) async {
     final body = <String, dynamic>{'messages': messages, 'model': model};
     if (files != null && files.isNotEmpty) body['files'] = files;
-    final cleaned = apiKey.replaceAll(RegExp(r'[^a-zA-Z0-9\\-_.]'), '');
-    final authValue = 'Bearer $cleaned';
-    final headers = <String, String>{'Content-Type': 'application/json'};
+    final cleaned = apiKey.replaceAll(RegExp(r'[^a-zA-Z0-9\-_.]'), '');
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
     if (cleaned.isNotEmpty) {
-      headers['Authorization'] = authValue;
+      headers['Authorization'] = 'Bearer $cleaned';
     }
-    final resp = await http.post(
-      Uri.parse('$baseUrl/api/chat/stream'),
-      headers: headers,
-      body: jsonEncode(body),
-    );
-    return resp.body;
+
+    try {
+      final request = http.Request('POST', Uri.parse('$baseUrl/api/chat/stream'));
+      request.headers.addAll(headers);
+      request.body = jsonEncode(body);
+
+      final streamedResponse = await request.send();
+      
+      if (streamedResponse.statusCode != 200) {
+        onError('HTTP ${streamedResponse.statusCode}');
+        return;
+      }
+
+      await for (final chunk in streamedResponse.stream.transform(utf8.decoder)) {
+        final lines = chunk.split('\n');
+        for (final line in lines) {
+          if (line.startsWith('data: ')) {
+            final data = line.substring(6).trim();
+            if (data == '[DONE]') return;
+            if (data.startsWith('Error:')) {
+              onError(data.substring(6));
+              return;
+            }
+            try {
+              final json = jsonDecode(data) as Map<String, dynamic>;
+              final content = json['content'] as String?;
+              if (content != null && content.isNotEmpty) {
+                onChunk(content);
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      onError(e.toString());
+    }
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {

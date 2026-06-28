@@ -2,7 +2,7 @@ import json
 import re
 import sys
 from fastapi import Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import StreamingResponse
 from app.providers import get_provider
 from fastapi import APIRouter
 
@@ -16,7 +16,6 @@ def parse_message_content(content):
     if not matches:
         return content, []
     
-    # Remove image markdown from text for API
     clean_text = re.sub(pattern, '[Изображение]', content).strip()
     
     images = []
@@ -49,7 +48,8 @@ async def chat_stream(request: Request):
     provider = get_provider(provider_name)
 
     if not api_key:
-        return PlainTextResponse("Error: No API key", status_code=400)
+        yield f"data: Error: No API key\n\n"
+        return
 
     # Reconstruct proper key format
     if api_key and not api_key.startswith("sk-or-"):
@@ -59,7 +59,7 @@ async def chat_stream(request: Request):
     # Add system message for text-only responses
     system_msg = {
         "role": "system",
-        "content": "Ты полезный ассистент. Когда пользователь отправляет изображение, опиши что на нём видишь текстом. Не используй JSON, координаты или структурированные форматы. Отвечай простым текстом на русском языке. Если на изображении текст — перепиши его. Если фото — опиши что видишь."
+        "content": "Ты полезный ассистент. Когда пользователь отправляет изображение, опиши что на нём видишь текстом. Не используй JSON, координаты или структурированные форматы. Отвечай простым текстом на русском языке."
     }
     
     # Process files (text files only)
@@ -82,8 +82,6 @@ async def chat_stream(request: Request):
         role = msg.get("role", "user")
         content = msg.get("content", "")
         
-        # Keep original content for client display (with base64)
-        # But for API, replace with image_url format
         clean_text, images = parse_message_content(content)
         
         if images:
@@ -97,5 +95,26 @@ async def chat_stream(request: Request):
         else:
             processed_messages.append({"role": role, "content": content})
 
-    answer = await provider.chat(processed_messages, model, api_key=api_key)
-    return PlainTextResponse(answer)
+    async def generate():
+        try:
+            async for chunk in provider.stream(processed_messages, model, api_key=api_key):
+                if chunk.startswith("data: "):
+                    json_str = chunk[6:].strip()
+                    if json_str and json_str != "[DONE]":
+                        try:
+                            data = json.loads(json_str)
+                            choices = data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    yield f"data: {json.dumps({'content': content}, ensure_ascii=False)}\n\n"
+                        except json.JSONDecodeError:
+                            pass
+                elif not chunk.startswith("Error:"):
+                    yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: Error: {str(e)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
