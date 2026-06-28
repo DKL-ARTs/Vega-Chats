@@ -143,17 +143,7 @@ class _ChatScreenState extends State<ChatScreen> {
       fileName: fileNameToSend ?? '',
       isImage: isImageToSend,
     );
-    await _loadChats();
-    setState(() {
-      _messages.add({'role': 'user', 'content': msgContent, 'filePath': fileToSend ?? '', 'fileName': fileNameToSend ?? '', 'isImage': isImageToSend});
-      _attachedFile = null;
-      _attachedFileName = null;
-      _attachedIsImage = false;
-      _loading = true;
-    });
-    _startThinking();
-    try {
-      // Prepare files for backend
+    // Prepare files for backend
       List<Map<String, String>>? files;
       if (fileToSend != null) {
         final bytes = await File(fileToSend).readAsBytes();
@@ -171,6 +161,17 @@ class _ChatScreenState extends State<ChatScreen> {
           files = [{"name": fileNameToSend ?? "file", "content": base64Encode(bytes)}];
         }
       }
+    
+    await _loadChats();
+    setState(() {
+      _messages.add({'role': 'user', 'content': msgContent, 'filePath': fileToSend ?? '', 'fileName': fileNameToSend ?? '', 'isImage': isImageToSend});
+      _attachedFile = null;
+      _attachedFileName = null;
+      _attachedIsImage = false;
+      _loading = true;
+    });
+    _startThinking();
+    try {
       final messagesForBackend = _messages.map((m) => {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
