@@ -1,6 +1,5 @@
 import httpx
 from app.config import settings
-from fastapi import HTTPException
 
 
 class OpenRouterProvider:
@@ -25,4 +24,42 @@ class OpenRouterProvider:
         model = model or settings.default_model
         key = kwargs.get('api_key') or settings.openrouter_api_key
         if not key or not key.strip():
-            raise HTTPException(status_code=400, detail=API
+            return 'Error: No API key provided'
+        self.client.headers['Authorization'] = 'Bearer ' + key.strip()
+        resp = await self.client.post('/chat/completions', json={
+            'model': model,
+            'messages': messages,
+            **kwargs,
+        })
+        resp.raise_for_status()
+        data = resp.json()
+        return data['choices'][0]['message']['content']
+
+    async def stream(self, messages: list[dict], model: str = None, api_key: str = None, **kwargs):
+        import sys
+        model = model or settings.default_model
+        key = api_key or settings.openrouter_api_key
+        client = httpx.AsyncClient(
+            base_url=settings.openrouter_base_url,
+            headers={
+                'Authorization': 'Bearer ' + key,
+                'Content-Type': 'application/json',
+            },
+            timeout=120.0,
+        )
+        try:
+            resp = await client.post('/chat/completions', json={
+                'model': model,
+                'messages': messages,
+                'stream': True,
+                **kwargs,
+            })
+            if resp.status_code != 200:
+                error_text = await resp.aread()
+                yield f'Error: HTTP {resp.status_code}: {error_text[:200]}'
+                return
+            async for line in resp.aiter_lines():
+                if line:
+                    yield line
+        except Exception as e:
+            yield f'Error: {str(e)}'
