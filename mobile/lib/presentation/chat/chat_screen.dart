@@ -323,6 +323,24 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool get _showNewChatScreen => _messages.isEmpty && !_loading;
 
+  Widget _buildImageWidget(Map<String, dynamic> msg) {
+    final content = msg['content'] ?? '';
+    if (content.contains('base64,')) {
+      try {
+        final base64Str = content.split('base64,')[1];
+        final bytes = base64Decode(base64Str);
+        return Image.memory(bytes, width: 250, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
+      } catch (_) {}
+    }
+    final filePath = msg['filePath'] ?? '';
+    if (filePath.isNotEmpty) {
+      return Image.file(File(filePath), width: 250, fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
+    }
+    return Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.image, color: VegaTheme.textSecondary));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -451,22 +469,12 @@ class _ChatScreenState extends State<ChatScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 // File/image preview (no border)
-                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] == 'true')
+                                if (msg['isImage'] == 'true')
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(12),
-                                      child: Image.file(
-                                        File(msg['filePath']!),
-                                        width: 250,
-                                        height: 250,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          width: 250, height: 100,
-                                          decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(12)),
-                                          child: const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
-                                        ),
-                                      ),
+                                      child: _buildImageWidget(msg),
                                     ),
                                   ),
                                 if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != 'true')
