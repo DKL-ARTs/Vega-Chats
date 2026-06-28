@@ -345,6 +345,10 @@ class _ChatScreenState extends State<ChatScreen> {
     return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
   }
 
+  String _stripImageMarkdown(String text) {
+    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -492,8 +496,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                       Text(msg['fileName'] ?? 'File', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
                                     ]),
                                   ),
-                                // Text message - strip image markdown for display
-                                final displayContent = (msg['content'] ?? '').replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
                                 if (displayContent.isNotEmpty && !displayContent.startsWith('[FILE:'))
                                   isUser
                                       ? Container(
