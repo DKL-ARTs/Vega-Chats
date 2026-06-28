@@ -345,9 +345,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
   }
 
-  String _stripImageMarkdown(String text) {
-    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -462,6 +459,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
                       if (i >= _messages.length) return const SizedBox.shrink();
                       final msg = _messages[i];
+                      final rawContent = msg['content'] ?? '';
+                      final displayContent = _stripImageMarkdown(rawContent);
                       final isUser = msg['role'] == 'user';
                       return Column(
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
