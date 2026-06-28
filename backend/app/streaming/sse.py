@@ -1,7 +1,6 @@
 import json
 import re
 import sys
-import base64
 from fastapi import Request
 from fastapi.responses import PlainTextResponse
 from app.providers import get_provider
@@ -10,14 +9,16 @@ from fastapi import APIRouter
 router = APIRouter()
 
 def parse_message_content(content):
-    """Convert markdown image syntax to OpenRouter image_url format and extract file references"""
+    """Extract images from markdown, return clean text and image objects"""
     pattern = r'!\[image\]\(data:([^)]+)\)'
     matches = re.findall(pattern, content)
     
     if not matches:
-        return content, [], []
+        return content, []
     
-    text = re.sub(pattern, '', content).strip()
+    # Remove image markdown from text for API
+    clean_text = re.sub(pattern, '[Изображение]', content).strip()
+    
     images = []
     for data_uri in matches:
         images.append({
@@ -25,7 +26,7 @@ def parse_message_content(content):
             "image_url": {"url": f"data:{data_uri}"}
         })
     
-    return text, images, []
+    return clean_text, images
 
 @router.post("/chat/stream")
 async def chat_stream(request: Request):
@@ -50,49 +51,51 @@ async def chat_stream(request: Request):
     if not api_key:
         return PlainTextResponse("Error: No API key", status_code=400)
 
-    # Reconstruct proper key if dashes were stripped
+    # Reconstruct proper key format
     if api_key and not api_key.startswith("sk-or-"):
         if api_key.startswith("skorv1"):
             api_key = "sk-or-v1-" + api_key[6:]
     
-    # Process files - insert text file content into messages
+    # Add system message for text-only responses
+    system_msg = {
+        "role": "system",
+        "content": "Отвечай только текстом. Не используй JSON или структурированные форматы. Просто ответь на вопрос пользователя текстом."
+    }
+    
+    # Process files (text files only)
     for file_data in files:
         file_name = file_data.get("name", "file")
         file_content_b64 = file_data.get("content", "")
-        
-        # Try to decode as text
         try:
+            import base64
             file_text = base64.b64decode(file_content_b64).decode("utf-8")
-            file_msg = {
+            messages.append({
                 "role": "user",
-                "content": f"\n\n--- File: {file_name} ---\n{file_text}\n--- End of {file_name} ---"
-            }
-            messages.append(file_msg)
-        except UnicodeDecodeError:
-            # Binary file - skip for now
-            file_msg = {
-                "role": "user",
-                "content": f"\n\n[Binary file: {file_name} - cannot display]"
-            }
-            messages.append(file_msg)
+                "content": f"\n\n--- Файл: {file_name} ---\n{file_text}\n--- Конец файла ---"
+            })
+        except:
+            pass
 
-    # Process messages - convert images to proper format
-    processed_messages = []
+    # Process messages - convert images to OpenRouter format
+    processed_messages = [system_msg]
     for msg in messages:
         role = msg.get("role", "user")
         content = msg.get("content", "")
         
-        text, images, _ = parse_message_content(content)
+        # Keep original content for client display (with base64)
+        # But for API, replace with image_url format
+        clean_text, images = parse_message_content(content)
         
         if images:
             msg_content = []
-            if text:
-                msg_content.append({"type": "text", "text": text})
+            if clean_text and clean_text != '[Изображение]':
+                msg_content.append({"type": "text", "text": clean_text})
+            else:
+                msg_content.append({"type": "text", "text": ""})
             msg_content.extend(images)
             processed_messages.append({"role": role, "content": msg_content})
         else:
             processed_messages.append({"role": role, "content": content})
 
-    print(f"[SSE] messages_count={len(processed_messages)} file_msgs_added={len(files)}", file=sys.stderr)
     answer = await provider.chat(processed_messages, model, api_key=api_key)
     return PlainTextResponse(answer)
