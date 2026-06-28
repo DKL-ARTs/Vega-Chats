@@ -469,7 +469,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 // File/image preview (no border)
-                                if (msg['isImage'] == 'true')
+                                if (msg['isImage'] == true)
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     child: ClipRRect(
@@ -477,7 +477,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       child: _buildImageWidget(msg),
                                     ),
                                   ),
-                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != 'true')
+                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != true)
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     padding: const EdgeInsets.all(12),
@@ -488,8 +488,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                       Text(msg['fileName'] ?? 'File', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
                                     ]),
                                   ),
-                                // Text message
-                                if ((msg['content'] ?? '').isNotEmpty && !(msg['content']?.startsWith('[FILE:') ?? true))
+                                // Text message - strip image markdown for display
+                                final displayContent = (msg['content'] ?? '').replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
+                                if (displayContent.isNotEmpty && !displayContent.startsWith('[FILE:'))
                                   isUser
                                       ? Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -498,12 +499,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                             color: VegaTheme.userBubble,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
-                                          child: SelectableText(msg['content'] ?? '', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                                          child: SelectableText(displayContent, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
                                         )
                                       : Padding(
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
                                           child: MarkdownBody(
-                                            data: msg['content'] ?? '',
+                                            data: displayContent,
                                             selectable: true,
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
