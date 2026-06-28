@@ -1,8 +1,9 @@
 import json
 import sys
-from fastapi import APIRouter, Request
+from fastapi import Request
 from fastapi.responses import PlainTextResponse
 from app.providers import get_provider
+from fastapi import APIRouter
 
 router = APIRouter()
 
@@ -20,8 +21,13 @@ async def chat_stream(request: Request):
         cleaned = "".join(ch for ch in raw_key if ch.isalnum() or ch in "-_.")
         if len(cleaned) >= 20:
             api_key = cleaned
+    elif "api_key" in body and body["api_key"].strip():
+        api_key = body["api_key"].strip()
 
     provider = get_provider(provider_name)
+
+    if not api_key:
+        return PlainTextResponse("Error: No API key", status_code=400)
+
     answer = await provider.chat(messages, model, api_key=api_key)
-    print(f"[SSE] Final answer ({len(answer)} chars): {answer[:80]}", file=sys.stderr)
     return PlainTextResponse(answer)
