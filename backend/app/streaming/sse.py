@@ -82,7 +82,7 @@ async def chat_stream(request: Request):
         role = msg.get("role", "user")
         content = msg.get("content", "")
         
-        text, images = parse_message_content(content)
+        text, images, _ = parse_message_content(content)
         
         if images:
             msg_content = []
