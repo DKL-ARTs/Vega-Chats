@@ -128,7 +128,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
     }
-    final msgContent = text;
+    String msgContent = text;
     final displayText = text.isEmpty
         ? (isImageToSend ? '📷 Photo' : '📎 ' + (fileNameToSend ?? 'File'))
         : text;
