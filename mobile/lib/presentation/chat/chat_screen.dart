@@ -113,6 +113,20 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
     FocusScope.of(context).unfocus();
     await _loadSettings();
+    // Debug: show what we're sending
+    final debugKey = _client.apiKey;
+    final debugKeyLen = debugKey.length;
+    final debugTrimmedLen = debugKey.trim().length;
+    final debugBytes = debugKey.codeUnits.toList();
+    final nonAscii = debugKey.codeUnits.where((b) => b > 127 || b < 32).toList();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('len=$debugKeyLen trimmed=$debugTrimmedLen nonAscii=$nonAscii ALL=${debugBytes.length}bytes', style: TextStyle(fontSize: 9)),
+          duration: Duration(seconds: 3),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
     final msgContent = text;
     final displayText = text.isEmpty
@@ -131,7 +145,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     await _loadChats();
     setState(() {
-      _messages.add({'role': 'user', 'content': enhancedContent, 'filePath': fileToSend ?? '', 'fileName': fileNameToSend ?? '', 'isImage': isImageToSend});
+      _messages.add({'role': 'user', 'content': msgContent, 'filePath': fileToSend ?? '', 'fileName': fileNameToSend ?? '', 'isImage': isImageToSend});
       _attachedFile = null;
       _attachedFileName = null;
       _attachedIsImage = false;
@@ -141,25 +155,25 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       // Prepare files for backend
       List<Map<String, String>>? files;
-      String enhancedContent = msgContent;
       if (fileToSend != null) {
         final bytes = await File(fileToSend).readAsBytes();
-        final base64Data = base64Encode(bytes);
         if (isImageToSend) {
-          final ext = fileNameToSend?.split('.').last.toLowerCase() ?? 'jpg';
-          final mimeType = ext == 'png' ? 'image/png' : (ext == 'gif' ? 'image/gif' : 'image/jpeg');
-          if (enhancedContent.isNotEmpty) {
-            enhancedContent = '$enhancedContent\n\n![image](data:$mimeType;base64,$base64Data)';
+          // Embed image as base64 markdown in message content
+          final base64Data = base64Encode(bytes);
+          final ext = fileNameToSend?.split(".").last.toLowerCase() ?? "jpg";
+          final mimeType = ext == "png" ? "image/png" : (ext == "gif" ? "image/gif" : "image/jpeg");
+          if (msgContent.isNotEmpty) {
+            msgContent = "$msgContent\n\n![image](data:$mimeType;base64,$base64Data)";
           } else {
-            enhancedContent = '![image](data:$mimeType;base64,$base64Data)';
+            msgContent = "![image](data:$mimeType;base64,$base64Data)";
           }
         } else {
-          files = [{'name': fileNameToSend ?? 'file', 'content': base64Data}];
+          files = [{"name": fileNameToSend ?? "file", "content": base64Encode(bytes)}];
         }
       }
       final messagesForBackend = _messages.map((m) => {
         'role': m['role'].toString(),
-        'content': m['content'].toString().replaceAll(RegExp(r'!\[image\]\(data:[^)]+\)'), '[Image]'),
+        'content': m['content'].toString(),
       }).toList();
       final resp = await _client.streamChat(messages: messagesForBackend, model: _model, files: files);
       _stopThinking();
