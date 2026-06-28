@@ -341,6 +341,10 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.image, color: VegaTheme.textSecondary));
   }
 
+  String _stripImageMarkdown(String text) {
+    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
