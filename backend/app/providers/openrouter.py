@@ -7,16 +7,16 @@ class OpenRouterProvider:
 
     def __init__(self, api_key: str = None):
         key = api_key or settings.openrouter_api_key
-        headers = {
+        self.headers = {
             'Content-Type': 'application/json',
             'HTTP-Referer': 'https://vega-chat.app',
             'X-Title': 'Vega Chat',
         }
         if key and key.strip():
-            headers['Authorization'] = 'Bearer ' + key.strip()
+            self.headers['Authorization'] = 'Bearer ' + key.strip()
         self.client = httpx.AsyncClient(
             base_url=settings.openrouter_base_url,
-            headers=headers,
+            headers=self.headers,
             timeout=120.0,
         )
 
@@ -44,6 +44,8 @@ class OpenRouterProvider:
             headers={
                 'Authorization': 'Bearer ' + key,
                 'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://vega-chat.app',
+                'X-Title': 'Vega Chat',
             },
             timeout=120.0,
         )
