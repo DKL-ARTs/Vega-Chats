@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from fastapi import Request
 from fastapi.responses import PlainTextResponse
@@ -6,6 +7,28 @@ from app.providers import get_provider
 from fastapi import APIRouter
 
 router = APIRouter()
+
+def parse_message_content(content):
+    """Convert markdown image syntax to OpenRouter image_url format"""
+    # Find all ![image](data:...) patterns
+    pattern = r'!\[image\]\(data:([^)]+)\)'
+    matches = re.findall(pattern, content)
+    
+    if not matches:
+        return content, []
+    
+    # Remove image markdown from text
+    text = re.sub(pattern, '', content).strip()
+    
+    # Build image_url objects
+    images = []
+    for data_uri in matches:
+        images.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{data_uri}"}
+        })
+    
+    return text, images
 
 @router.post("/chat/stream")
 async def chat_stream(request: Request):
@@ -21,7 +44,6 @@ async def chat_stream(request: Request):
     elif "api_key" in body and body["api_key"].strip():
         api_key = body["api_key"].strip()
 
-    # Also try to get key from query param or header directly
     if not api_key:
         api_key = request.headers.get("x-api-key", "")
 
@@ -31,12 +53,28 @@ async def chat_stream(request: Request):
         return PlainTextResponse("Error: No API key", status_code=400)
 
     # Reconstruct proper key if dashes were stripped
-    # OpenRouter keys: sk-or-v1-XXXX-XXXX-XXXX
     if api_key and not api_key.startswith("sk-or-"):
-        # Try inserting dashes: sk + or + v1 + hash
         if api_key.startswith("skorv1"):
             api_key = "sk-or-v1-" + api_key[6:]
 
-    print(f"[SSE] final_api_key={repr(api_key)}", file=sys.stderr)
-    answer = await provider.chat(messages, model, api_key=api_key)
+    # Process messages - convert images to proper format
+    processed_messages = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        
+        text, images = parse_message_content(content)
+        
+        if images:
+            # Message has images - build multimodal content
+            msg_content = []
+            if text:
+                msg_content.append({"type": "text", "text": text})
+            msg_content.extend(images)
+            processed_messages.append({"role": role, "content": msg_content})
+        else:
+            processed_messages.append({"role": role, "content": content})
+
+    print(f"[SSE] messages={json.dumps(processed_messages, ensure_ascii=False)[:200]}", file=sys.stderr)
+    answer = await provider.chat(processed_messages, model, api_key=api_key)
     return PlainTextResponse(answer)
