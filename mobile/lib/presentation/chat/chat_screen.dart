@@ -469,7 +469,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 // File/image preview (no border)
-                                if (msg['isImage'] == true)
+                                if (msg['isImage'] == 'true')
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     child: ClipRRect(
@@ -477,7 +477,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       child: _buildImageWidget(msg),
                                     ),
                                   ),
-                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != true)
+                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != 'true')
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     padding: const EdgeInsets.all(12),
