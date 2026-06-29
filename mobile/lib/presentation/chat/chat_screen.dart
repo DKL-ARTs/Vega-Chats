@@ -176,6 +176,8 @@ class _ChatScreenState extends State<ChatScreen> {
         },
       );
       _stopThinking();
+      // streaming already populated the assistant message via onChunk
+      // Save the assistant response to history
       if (_currentChatId != null && _messages.isNotEmpty) {
         final lastMsg = _messages.last;
         if (lastMsg['role'] == 'assistant' && lastMsg['content'].toString().isNotEmpty) {
@@ -190,20 +192,47 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _regenerate(int index) async {
+  Future<void> _regenerate(int assistantIndex) async {
     if (_loading) return;
-    while (_messages.length > index + 1) { _messages.removeLast(); }
-    if (index >= _messages.length || _messages[index]['role'] != 'user') return;
+    // The button is on the assistant message, but we need to find the user message before it
+    // assistantIndex points to the assistant message in _messages
+    print('REGENERATE: assistantIndex=$assistantIndex, messages=${_messages.length}');
+    if (assistantIndex >= _messages.length || _messages[assistantIndex]['role'] != 'assistant') {
+      print('REGENERATE SKIP: not an assistant message');
+      return;
+    }
+    // Find the user message before this assistant message
+    int userIndex = assistantIndex - 1;
+    while (userIndex >= 0 && _messages[userIndex]['role'] != 'user') {
+      userIndex--;
+    }
+    if (userIndex < 0) {
+      print('REGENERATE SKIP: no user message found');
+      return;
+    }
+    print('REGENERATE: userIndex=$userIndex');
+    // Remove messages after the user message
+    while (_messages.length > userIndex + 1) { _messages.removeLast(); }
     _stopThinking();
-    setState(() { _loading = true; _messages.add({'role': 'assistant', 'content': ''}); });
+    setState(() { _loading = true; });
     _startThinking();
     try {
       final buffer = StringBuffer();
-      final msgs = _messages.sublist(0, index + 1).map((m) =>
+      // Build context: all messages up to and including the user message
+      final msgs = _messages.sublist(0, userIndex + 1).map((m) =>
         {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
+      // Add empty assistant placeholder for streaming target
+      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       await _client.streamChat(messages: msgs, model: _model, files: null,
         onChunk: (chunk) { if (mounted) { buffer.write(chunk); setState(() { _messages.last["content"] = buffer.toString(); }); } },
         onError: (err) { if (mounted) setState(() { _messages.last["content"] = "Error: $err"; }); });
+      // Save to DB
+      if (_currentChatId != null && _messages.isNotEmpty) {
+        final last = _messages.last;
+        if (last['role'] == 'assistant' && last['content'].toString().isNotEmpty) {
+          await ChatHistory.addMessage(_currentChatId!, 'assistant', last['content'] ?? '');
+        }
+      }
     } catch (e) {
       if (mounted) setState(() { _messages.last["content"] = "Error: $e"; });
     } finally {
@@ -219,6 +248,8 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: VegaTheme.surface,
+      isDismissible: true,
+      enableDrag: true,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
         child: Column(
@@ -473,7 +504,10 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: _showNewChatScreen
                 ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
-                : ListView.builder(
+                : GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                    child: ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _messages.length + (_loading ? 1 : 0),
                     itemBuilder: (ctx, i) {
@@ -492,13 +526,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       return Column(
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
-                          GestureDetector(
-                            onLongPress: () {
-                              if (isUser) {
-                                _showUserMessageMenu(context, msg, i);
-                              }
-                            },
-                            child: Column(
+                          Column(
                               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -537,8 +565,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                       : Padding(
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
                                           child: MarkdownBody(
-                                            data: _stripImageMarkdown(msg['content'] ?? ''),
-                                            selectable: true,
+                                              data: _stripImageMarkdown(msg['content'] ?? ''),
+                                              selectable: true,
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
                                               p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.4),
@@ -553,6 +581,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               listBullet: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
                                               a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
                                             ),
+                                          ),
                                           ),
                                         ),
                               ],
@@ -588,6 +617,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       );
                     },
                   ),
+          ),
           ),
           if (_attachedFile != null)
             Container(
