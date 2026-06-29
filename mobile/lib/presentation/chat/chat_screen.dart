@@ -163,6 +163,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'content': m['content'].toString(),
       }).toList();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
+      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       final buffer = StringBuffer();
       await _client.streamChat(messages: messagesForBackend, model: _model, files: files,
         onChunk: (chunk) {
