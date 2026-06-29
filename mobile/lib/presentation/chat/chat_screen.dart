@@ -618,7 +618,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
-          ),
           if (_attachedFile != null)
             Container(
               padding: const EdgeInsets.all(8),
