@@ -37,10 +37,13 @@ class ApiClient {
       }
 
       await for (final chunk in streamedResponse.stream.transform(utf8.decoder)) {
-        final lines = chunk.split('\n');
+        final cleanChunk = chunk.replaceAll('\r', '');
+        final lines = cleanChunk.split('\n');
         for (final line in lines) {
-          if (line.startsWith('data: ')) {
-            final data = line.substring(6).trim();
+          final trimmed = line.trim();
+          if (trimmed.isEmpty) continue;
+          if (trimmed.startsWith('data: ')) {
+            final data = trimmed.substring(6).trim();
             if (data == '[DONE]') return;
             if (data.startsWith('Error:')) {
               onError(data.substring(6));
@@ -52,7 +55,13 @@ class ApiClient {
               if (content != null && content.isNotEmpty) {
                 onChunk(content);
               }
-            } catch (_) {}
+            } catch (_) {
+              // If JSON parse fails, treat as raw text chunk
+              onChunk(data);
+            }
+          } else if (!trimmed.startsWith(':')) {
+            // Non-SSE line, treat as raw text
+            onChunk(trimmed);
           }
         }
       }

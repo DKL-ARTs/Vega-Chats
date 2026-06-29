@@ -175,8 +175,7 @@ class _ChatScreenState extends State<ChatScreen> {
         },
       );
       _stopThinking();
-      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      // streaming handles updates
+      // streaming already populated the assistant message via onChunk
       if (_currentChatId != null) {
         // saved via streaming
       }
