@@ -162,9 +162,8 @@ class _ChatScreenState extends State<ChatScreen> {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
       }).toList();
-      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       final buffer = StringBuffer();
-      await _client.streamChat(messages: messagesForBackend, model: _model, files: files,
+      await _client.streamChat(messages: messagesForBackend, model: model, files: files,
         onChunk: (chunk) {
           if (mounted) {
             buffer.write(chunk);
@@ -176,14 +175,12 @@ class _ChatScreenState extends State<ChatScreen> {
         },
       );
       _stopThinking();
-      // streaming already populated the assistant message via onChunk
-      // Save the assistant response to history
-      if (_currentChatId != null && _messages.isNotEmpty) {
-        final lastMsg = _messages.last;
-        if (lastMsg['role'] == 'assistant' && lastMsg['content'].toString().isNotEmpty) {
-          await ChatHistory.addMessage(_currentChatId!, 'assistant', lastMsg['content'] ?? '');
-        }
+      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
+      // streaming handles updates
+      if (_currentChatId != null) {
+        // saved via streaming
       }
+      await _loadChats();
     } catch (e) {
       _stopThinking();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), style: TextStyle(fontSize: 9)), duration: Duration(seconds: 5)));
@@ -194,33 +191,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _regenerate(int index) async {
     if (_loading) return;
-    print('REGENERATE: index=$index, messages=${_messages.length}');
-    // Remove messages after the user message at index
     while (_messages.length > index + 1) { _messages.removeLast(); }
-    if (index >= _messages.length || _messages[index]['role'] != 'user') {
-      print('REGENERATE SKIP: role=${_messages[index]['role']}, len=${_messages.length}');
-      return;
-    }
+    if (index >= _messages.length || _messages[index]['role'] != 'user') return;
     _stopThinking();
-    setState(() { _loading = true; });
+    setState(() { _loading = true; _messages.add({'role': 'assistant', 'content': ''}); });
     _startThinking();
     try {
       final buffer = StringBuffer();
-      // Build context: all messages up to and including the user message at index
       final msgs = _messages.sublist(0, index + 1).map((m) =>
         {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
-      // Add empty assistant placeholder for streaming target
-      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       await _client.streamChat(messages: msgs, model: _model, files: null,
         onChunk: (chunk) { if (mounted) { buffer.write(chunk); setState(() { _messages.last["content"] = buffer.toString(); }); } },
         onError: (err) { if (mounted) setState(() { _messages.last["content"] = "Error: $err"; }); });
-      // Save to DB
-      if (_currentChatId != null && _messages.isNotEmpty) {
-        final last = _messages.last;
-        if (last['role'] == 'assistant' && last['content'].toString().isNotEmpty) {
-          await ChatHistory.addMessage(_currentChatId!, 'assistant', last['content'] ?? '');
-        }
-      }
     } catch (e) {
       if (mounted) setState(() { _messages.last["content"] = "Error: $e"; });
     } finally {
@@ -236,8 +218,6 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: VegaTheme.surface,
-      isDismissible: true,
-      enableDrag: true,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
         child: Column(
@@ -511,7 +491,13 @@ class _ChatScreenState extends State<ChatScreen> {
                       return Column(
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
-                          Column(
+                          GestureDetector(
+                            onLongPress: () {
+                              if (isUser) {
+                                _showUserMessageMenu(context, msg, i);
+                              }
+                            },
+                            child: Column(
                               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -545,15 +531,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                             color: VegaTheme.userBubble,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
-                                          child: Text(_stripImageMarkdown(msg['content'] ?? ''), style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                                          child: SelectableText(_stripImageMarkdown(msg['content'] ?? ''), style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
                                         )
                                       : Padding(
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-                                          child: GestureDetector(
-                                            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                                            child: MarkdownBody(
-                                              data: _stripImageMarkdown(msg['content'] ?? ''),
-                                              selectable: true,
+                                          child: MarkdownBody(
+                                            data: _stripImageMarkdown(msg['content'] ?? ''),
+                                            selectable: true,
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
                                               p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.4),
@@ -568,7 +552,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                               listBullet: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
                                               a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
                                             ),
-                                          ),
                                           ),
                                         ),
                               ],
