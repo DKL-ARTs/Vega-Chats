@@ -162,6 +162,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
       }).toList();
+      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       final buffer = StringBuffer();
       await _client.streamChat(messages: messagesForBackend, model: _model, files: files,
         onChunk: (chunk) {
@@ -176,10 +177,13 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       _stopThinking();
       // streaming already populated the assistant message via onChunk
-      if (_currentChatId != null) {
-        // saved via streaming
+      // Save the assistant response to history
+      if (_currentChatId != null && _messages.isNotEmpty) {
+        final lastMsg = _messages.last;
+        if (lastMsg['role'] == 'assistant' && lastMsg['content'].toString().isNotEmpty) {
+          await ChatHistory.addMessage(_currentChatId!, 'assistant', lastMsg['content'] ?? '');
+        }
       }
-      await _loadChats();
     } catch (e) {
       _stopThinking();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), style: TextStyle(fontSize: 9)), duration: Duration(seconds: 5)));
