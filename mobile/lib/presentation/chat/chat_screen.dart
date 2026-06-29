@@ -1,5 +1,3 @@
-proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
-proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
