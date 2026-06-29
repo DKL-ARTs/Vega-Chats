@@ -1,3 +1,5 @@
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
@@ -7,7 +9,6 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
-import 'dart:async';
 import '../../data/chat_history.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:path_provider/path_provider.dart';
@@ -165,9 +166,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }).toList();
       final buffer = StringBuffer();
       await _client.streamChat(
-        messages: messagesForBackend,
-        model: _model,
-        files: files,
+        messages: messagesForBackend, model: _model, files: files,
         onChunk: (chunk) {
           if (mounted) {
             buffer.write(chunk);
@@ -175,7 +174,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         },
         onError: (err) {
-          if (mounted) setState(() { _messages.last["content"] = "Error: $err"; });
+          if (mounted) setState(() { _messages.last["content"] = "Error: \$err"; });
         },
       );
       _stopThinking();
@@ -193,22 +192,59 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void>(_regenerate(int index) async {
-    // Remove answer(s) AFTER user message at index
+  void regenerate(int index) async {
+    if (!mounted) return;
+    // Remove all messages after index
     while (_messages.length > index + 1) {
       _messages.removeLast();
     }
-    // Remove last user message and re-send
-    if (_messages.isNotEmpty) _messages.removeLast();
-    if (_currentChatId != null) {
-      await ChatHistory.deleteChat(_currentChatId!);
-      _currentChatId = null;
-    }
+    // Get user message at index
+    if (index >= _messages.length) return;
+    final msg = _messages[index];
+    if (msg['role'] != 'user') return;
+    // Remove this user message
+    _messages.removeAt(index);
     setState(() {});
+    // Re-send
+    _controller.clear();
+    FocusScope.of(context).unfocus();
+    final rawContent = msg['content'] ?? '';
+    final displayText = rawContent.replaceAll(RegExp(r'!\[image\]\(data:[^)]+\)'), '📷 Изображение').trim();
+    if (_currentChatId == null) {
+      _currentChatId = await ChatHistory.createChat(displayText.length > 30 ? displayText.substring(0, 30) + '...' : displayText);
+    }
+    await ChatHistory.addMessage(_currentChatId!, 'user', rawContent);
+    await _loadChats();
+    setState(() { _messages.add(msg); _loading = true; });
+    _startThinking();
+    try {
+      final buffer = StringBuffer();
+      final messagesForBackend = _messages.sublist(0, _messages.length).map((m) => {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
+      await _client.streamChat(messages: messagesForBackend, model: _model, files: null,
+        onChunk: (chunk) {
+          if (mounted) {
+            buffer.write(chunk);
+            setState(() { _messages.last["content"] = buffer.toString(); });
+          }
+        },
+        onError: (err) {
+          if (mounted) setState(() { _messages.last["content"] = "Error: \$err"; });
+        },
+      );
+      if (_currentChatId != null) await ChatHistory.addMessage(_currentChatId!, "assistant", buffer.toString());
+      await _loadChats();
+    } catch (e) {
+      if (mounted) setState(() { _messages.last["content"] = "Error: \$e"; });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-    void _copyMessage(String text) {
+  void _copyMessage(String text) {
     Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface),
+    );
   }
 
   void _showUserMessageMenu(BuildContext context, Map<String, dynamic> message, int index) {
@@ -347,6 +383,28 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadChat(chatId);
   }
 
+  String _stripImageMarkdown(String text) {
+    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '[Изображение]').trim();
+  }
+
+  Widget _buildImage(Map<String, dynamic> msg) {
+    final rawContent = msg['content'] ?? '';
+    if (rawContent.contains('base64,')) {
+      try {
+        final base64Str = rawContent.split('base64,')[1];
+        final bytes = base64Decode(base64Str);
+        return Image.memory(bytes, width: 250, height: 200, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(width: 250, height: 100, decoration: BoxDecoration(color: VegaTheme.surface), child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
+      } catch (_) {}
+    }
+    final filePath = msg['filePath'] ?? '';
+    if (filePath.isNotEmpty) {
+      return Image.file(File(filePath), width: 250, height: 200, fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(width: 250, height: 100, decoration: BoxDecoration(color: VegaTheme.surface), child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
+    }
+    return Container(width: 250, height: 100, decoration: BoxDecoration(color: VegaTheme.surface), child: Icon(Icons.image, color: VegaTheme.textSecondary));
+  }
+
   bool get _showNewChatScreen => _messages.isEmpty && !_loading;
 
   Widget _buildImageWidget(Map<String, dynamic> msg) {
@@ -366,11 +424,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     return Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.image, color: VegaTheme.textSecondary));
   }
-
-  String _stripImageMarkdown(String text) {
-    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -468,11 +521,9 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: Stack(
-              children: [
-                _showNewChatScreen
-                    ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
-                    : ListView.builder(
+            child: _showNewChatScreen
+                ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
+                : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _messages.length + (_loading ? 1 : 0),
                     itemBuilder: (ctx, i) {
@@ -487,8 +538,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
                       if (i >= _messages.length) return const SizedBox.shrink();
                       final msg = _messages[i];
-                      final rawContent = msg['content'] ?? '';
-                      final displayContent = _stripImageMarkdown(rawContent);
                       final isUser = msg['role'] == 'user';
                       return Column(
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -504,7 +553,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 // File/image preview (no border)
-                                if (msg['isImage'] == true)
+                                if (msg['isImage'] == 'true')
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     child: ClipRRect(
@@ -512,7 +561,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       child: _buildImageWidget(msg),
                                     ),
                                   ),
-                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != true)
+                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != 'true')
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     padding: const EdgeInsets.all(12),
@@ -523,7 +572,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                       Text(msg['fileName'] ?? 'File', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
                                     ]),
                                   ),
-                                if (displayContent.isNotEmpty && !displayContent.startsWith('[FILE:'))
+                                // Text message
+                                if (_stripImageMarkdown(msg['content'] ?? '').isNotEmpty && !(_stripImageMarkdown(msg['content'] ?? '').startsWith('[FILE:')))
                                   isUser
                                       ? Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -532,12 +582,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                             color: VegaTheme.userBubble,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
-                                          child: SelectableText(displayContent, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                                          child: SelectableText(_stripImageMarkdown(msg['content'] ?? ''), style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
                                         )
                                       : Padding(
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
                                           child: MarkdownBody(
-                                            data: displayContent,
+                                            data: _stripImageMarkdown(msg['content'] ?? ''),
                                             selectable: true,
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
@@ -570,15 +620,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                     child: Padding(
                                       padding: const EdgeInsets.all(4),
                                       child: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  InkWell(
-                                    onTap: () => _regenerate(i),
-                                    borderRadius: BorderRadius.circular(4),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(4),
-                                      child: Icon(Icons.refresh, size: 16, color: VegaTheme.textSecondary),
                                     ),
                                   ),
                                 ],
