@@ -194,18 +194,29 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _regenerate(int index) async {
     if (_loading) return;
+    // Remove messages after the user message at index
     while (_messages.length > index + 1) { _messages.removeLast(); }
     if (index >= _messages.length || _messages[index]['role'] != 'user') return;
     _stopThinking();
-    setState(() { _loading = true; _messages.add({'role': 'assistant', 'content': ''}); });
+    setState(() { _loading = true; });
     _startThinking();
     try {
       final buffer = StringBuffer();
+      // Build context: all messages up to and including the user message at index
       final msgs = _messages.sublist(0, index + 1).map((m) =>
         {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
+      // Add empty assistant placeholder for streaming target
+      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       await _client.streamChat(messages: msgs, model: _model, files: null,
         onChunk: (chunk) { if (mounted) { buffer.write(chunk); setState(() { _messages.last["content"] = buffer.toString(); }); } },
         onError: (err) { if (mounted) setState(() { _messages.last["content"] = "Error: $err"; }); });
+      // Save to DB
+      if (_currentChatId != null && _messages.isNotEmpty) {
+        final last = _messages.last;
+        if (last['role'] == 'assistant' && last['content'].toString().isNotEmpty) {
+          await ChatHistory.addMessage(_currentChatId!, 'assistant', last['content'] ?? '');
+        }
+      }
     } catch (e) {
       if (mounted) setState(() { _messages.last["content"] = "Error: $e"; });
     } finally {
@@ -221,6 +232,8 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: VegaTheme.surface,
+      isDismissible: true,
+      enableDrag: true,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
         child: Column(
@@ -534,7 +547,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                             color: VegaTheme.userBubble,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
-                                          child: SelectableText(_stripImageMarkdown(msg['content'] ?? ''), style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
+                                          child: Text(_stripImageMarkdown(msg['content'] ?? ''), style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
                                         )
                                       : Padding(
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
