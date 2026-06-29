@@ -163,7 +163,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'content': m['content'].toString(),
       }).toList();
       final buffer = StringBuffer();
-      await _client.streamChat(messages: messagesForBackend, model: model, files: files,
+      await _client.streamChat(messages: messagesForBackend, model: _model, files: files,
         onChunk: (chunk) {
           if (mounted) {
             buffer.write(chunk);
