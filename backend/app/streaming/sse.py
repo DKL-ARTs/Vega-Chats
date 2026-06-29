@@ -97,22 +97,30 @@ async def chat_stream(request: Request):
 
     async def generate():
         try:
-            async for chunk in provider.stream(processed_messages, model, api_key=api_key):
-                if chunk.startswith("data: "):
-                    json_str = chunk[6:].strip()
-                    if json_str and json_str != "[DONE]":
-                        try:
-                            data = json.loads(json_str)
-                            choices = data.get("choices", [])
-                            if choices:
-                                delta = choices[0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    yield f"data: {json.dumps({'content': content}, ensure_ascii=False)}\n\n"
-                        except json.JSONDecodeError:
-                            pass
-                elif not chunk.startswith("Error:"):
-                    yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+            async for raw_chunk in provider.stream(processed_messages, model, api_key=api_key):
+                # Handle multi-line chunks (provider may yield multiple lines at once)
+                final lines = raw_chunk.split("\n")
+                for chunk in lines:
+                    chunk = chunk.trim()
+                    if (chunk.isEmpty) continue;
+                    if (chunk.startsWith("data: ")) {
+                        final json_str = chunk.substring(6).trim();
+                        if (json_str.isEmpty || json_str == "[DONE]") continue;
+                        try {
+                            final data = json.loads(json_str);
+                            final choices = data.get("choices", []);
+                            if (choices.isNotEmpty) {
+                                final delta = choices[0].get("delta", {});
+                                final content = delta.get("content", "");
+                                if (content.isNotEmpty) {
+                                    yield "data: " + json.dumps({"content": content}, ensure_ascii=False) + "\n\n";
+                                }
+                            }
+                        } catch (_) {}
+                    } else if (!chunk.startsWith("Error:") && !chunk.startsWith(":")) {
+                        yield "data: " + json.dumps({"content": chunk}, ensure_ascii=False) + "\n\n";
+                    }
+                }
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: Error: {str(e)}\n\n"

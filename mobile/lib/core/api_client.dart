@@ -25,14 +25,16 @@ class ApiClient {
     }
 
     try {
+      final client = http.Client();
       final request = http.Request('POST', Uri.parse('$baseUrl/api/chat/stream'));
       request.headers.addAll(headers);
       request.body = jsonEncode(body);
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await client.send(request);
       
       if (streamedResponse.statusCode != 200) {
         onError('HTTP ${streamedResponse.statusCode}');
+        client.close();
         return;
       }
 

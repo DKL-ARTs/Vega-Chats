@@ -194,9 +194,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _regenerate(int index) async {
     if (_loading) return;
+    print('REGENERATE: index=$index, messages=${_messages.length}');
     // Remove messages after the user message at index
     while (_messages.length > index + 1) { _messages.removeLast(); }
-    if (index >= _messages.length || _messages[index]['role'] != 'user') return;
+    if (index >= _messages.length || _messages[index]['role'] != 'user') {
+      print('REGENERATE SKIP: role=${_messages[index]['role']}, len=${_messages.length}');
+      return;
+    }
     _stopThinking();
     setState(() { _loading = true; });
     _startThinking();
@@ -507,13 +511,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       return Column(
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
-                          GestureDetector(
-                            onLongPress: () {
-                              if (isUser) {
-                                _showUserMessageMenu(context, msg, i);
-                              }
-                            },
-                            child: Column(
+                          Column(
                               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -551,9 +549,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                         )
                                       : Padding(
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-                                          child: MarkdownBody(
-                                            data: _stripImageMarkdown(msg['content'] ?? ''),
-                                            selectable: true,
+                                          child: GestureDetector(
+                                            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                                            child: MarkdownBody(
+                                              data: _stripImageMarkdown(msg['content'] ?? ''),
+                                              selectable: true,
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
                                               p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.4),
@@ -568,6 +568,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               listBullet: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
                                               a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
                                             ),
+                                          ),
                                           ),
                                         ),
                               ],
