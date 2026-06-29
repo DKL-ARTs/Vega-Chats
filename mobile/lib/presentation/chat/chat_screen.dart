@@ -460,6 +460,34 @@ class _ChatScreenState extends State<ChatScreen> {
     return _imgPlaceholder();
   }
 
+  String _stripImageMarkdown(String text) {
+    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
+  }
+
+  Widget _buildImageWidget(Map<String, dynamic> msg) {
+    final raw = msg['content'] ?? '';
+    if (raw.contains('base64,')) {
+      try {
+        final b64 = raw.split('base64,')[1];
+        final bytes = base64Decode(b64);
+        return Image.memory(bytes, width: 250, height: 200, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(width: 250, height: 100,
+            decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8)),
+            child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
+      } catch (_) {}
+    }
+    final fp = msg['filePath'] ?? '';
+    if (fp.isNotEmpty) {
+      return Image.file(File(fp), width: 250, height: 200, fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(width: 250, height: 100,
+          decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8)),
+          child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
+    }
+    return Container(width: 250, height: 100,
+      decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8)),
+      child: Icon(Icons.image, color: VegaTheme.textSecondary));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
