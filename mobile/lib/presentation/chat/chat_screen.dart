@@ -179,9 +179,9 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      if (mounted) setState(() { _messages.last["content"] = resp; });
+      // streaming mode
       if (_currentChatId != null) {
-        await ChatHistory.addMessage(_currentChatId!, "assistant", resp);
+        // streaming
       }
       await _loadChats();
     } catch (e) {
@@ -240,11 +240,28 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _regenerate(int index) async {
+    if (_loading) return;
+    while (_messages.length > index + 1) { _messages.removeLast(); }
+    if (index >= _messages.length || _messages[index]['role'] != 'user') return;
+    _stopThinking();
+    setState(() { _loading = true; _messages.add({'role': 'assistant', 'content': ''}); });
+    _startThinking();
+    try {
+      final buffer = StringBuffer();
+      final msgs = _messages.sublist(0, index + 1).map((m) => {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
+      await _client.streamChat(messages: msgs, model: _model, files: null,
+        onChunk: (chunk) { if (mounted) { buffer.write(chunk); setState(() { _messages.last["content"] = buffer.toString(); }); } },
+        onError: (err) { if (mounted) setState(() { _messages.last["content"] = "Error: $err"; }); });
+    } catch (e) {
+      if (mounted) setState(() { _messages.last["content"] = "Error: $e"; });
+    } finally {
+      if (mounted) setState(() { _loading = false; _stopThinking(); });
+    }
+  }
+
   void _copyMessage(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Copied'), duration: Duration(seconds: 1), backgroundColor: VegaTheme.surface),
-    );
   }
 
   void _showUserMessageMenu(BuildContext context, Map<String, dynamic> message, int index) {
@@ -425,6 +442,24 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.image, color: VegaTheme.textSecondary));
   }
 
+  String _stripImageMarkdown(String text) {
+    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
+  }
+
+  Widget _imgPlaceholder() => Container(width: 250, height: 100,
+    decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8)),
+    child: Icon(Icons.broken_image, color: VegaTheme.textSecondary));
+
+  Widget _buildImageWidget(Map<String, dynamic> msg) {
+    final raw = msg['content'] ?? '';
+    if (raw.contains('base64,')) {
+      try { return Image.memory(base64Decode(raw.split('base64,')[1]), width: 250, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imgPlaceholder()); } catch (_) {}
+    }
+    final fp = msg['filePath'] ?? '';
+    if (fp.isNotEmpty) { return Image.file(File(fp), width: 250, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imgPlaceholder()); }
+    return _imgPlaceholder();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -553,7 +588,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 // File/image preview (no border)
-                                if (msg['isImage'] == 'true')
+                                if (msg['isImage'] == true)
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     child: ClipRRect(
@@ -561,7 +596,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       child: _buildImageWidget(msg),
                                     ),
                                   ),
-                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != 'true')
+                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != true)
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     padding: const EdgeInsets.all(12),
@@ -615,12 +650,22 @@ class _ChatScreenState extends State<ChatScreen> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   InkWell(
-                                    onTap: () => _copyMessage(msg['content'] ?? ''),
+                                    onTap: () => _copyMessage(_stripImageMarkdown(msg['content'] ?? '')),
                                     borderRadius: BorderRadius.circular(4),
                                     child: Padding(
                                       padding: const EdgeInsets.all(4),
                                       child: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary),
                                     ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    onTap: () => _regenerate(i),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(Icons.refresh, size: 16, color: VegaTheme.textSecondary),
+                                    ),
+                                  ),                                    ),
                                   ),
                                 ],
                               ),
