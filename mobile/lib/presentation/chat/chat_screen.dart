@@ -163,8 +163,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'content': m['content'].toString(),
       }).toList();
       final buffer = StringBuffer();
-      await _client.streamChat(
-        messages: messagesForBackend, model: _model, files: files,
+      await _client.streamChat(messages: messagesForBackend, model: model, files: files,
         onChunk: (chunk) {
           if (mounted) {
             buffer.write(chunk);
@@ -172,14 +171,14 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         },
         onError: (err) {
-          if (mounted) setState(() { _messages.last["content"] = "Error: \$err"; });
+          if (mounted) setState(() { _messages.last["content"] = "Error: $err"; });
         },
       );
       _stopThinking();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      // streaming mode
+      // streaming handles updates
       if (_currentChatId != null) {
-        // streaming
+        // saved via streaming
       }
       await _loadChats();
     } catch (e) {
@@ -187,54 +186,6 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), style: TextStyle(fontSize: 9)), duration: Duration(seconds: 5)));
     } finally {
       if (mounted) setState(() { _loading = false; });
-    }
-  }
-
-  void regenerate(int index) async {
-    if (!mounted) return;
-    // Remove all messages after index
-    while (_messages.length > index + 1) {
-      _messages.removeLast();
-    }
-    // Get user message at index
-    if (index >= _messages.length) return;
-    final msg = _messages[index];
-    if (msg['role'] != 'user') return;
-    // Remove this user message
-    _messages.removeAt(index);
-    setState(() {});
-    // Re-send
-    _controller.clear();
-    FocusScope.of(context).unfocus();
-    final rawContent = msg['content'] ?? '';
-    final displayText = rawContent.replaceAll(RegExp(r'!\[image\]\(data:[^)]+\)'), '📷 Изображение').trim();
-    if (_currentChatId == null) {
-      _currentChatId = await ChatHistory.createChat(displayText.length > 30 ? displayText.substring(0, 30) + '...' : displayText);
-    }
-    await ChatHistory.addMessage(_currentChatId!, 'user', rawContent);
-    await _loadChats();
-    setState(() { _messages.add(msg); _loading = true; });
-    _startThinking();
-    try {
-      final buffer = StringBuffer();
-      final messagesForBackend = _messages.sublist(0, _messages.length).map((m) => {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
-      await _client.streamChat(messages: messagesForBackend, model: _model, files: null,
-        onChunk: (chunk) {
-          if (mounted) {
-            buffer.write(chunk);
-            setState(() { _messages.last["content"] = buffer.toString(); });
-          }
-        },
-        onError: (err) {
-          if (mounted) setState(() { _messages.last["content"] = "Error: \$err"; });
-        },
-      );
-      if (_currentChatId != null) await ChatHistory.addMessage(_currentChatId!, "assistant", buffer.toString());
-      await _loadChats();
-    } catch (e) {
-      if (mounted) setState(() { _messages.last["content"] = "Error: \$e"; });
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -247,7 +198,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _startThinking();
     try {
       final buffer = StringBuffer();
-      final msgs = _messages.sublist(0, index + 1).map((m) => {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
+      final msgs = _messages.sublist(0, index + 1).map((m) =>
+        {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
       await _client.streamChat(messages: msgs, model: _model, files: null,
         onChunk: (chunk) { if (mounted) { buffer.write(chunk); setState(() { _messages.last["content"] = buffer.toString(); }); } },
         onError: (err) { if (mounted) setState(() { _messages.last["content"] = "Error: $err"; }); });
@@ -258,7 +210,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _copyMessage(String text) {
+    void _copyMessage(String text) {
     Clipboard.setData(ClipboardData(text: text));
   }
 
@@ -398,29 +350,11 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadChat(chatId);
   }
 
-  String _stripImageMarkdown(String text) {
-    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '[Изображение]').trim();
-  }
-
-  Widget _buildImage(Map<String, dynamic> msg) {
-    final rawContent = msg['content'] ?? '';
-    if (rawContent.contains('base64,')) {
-      try {
-        final base64Str = rawContent.split('base64,')[1];
-        final bytes = base64Decode(base64Str);
-        return Image.memory(bytes, width: 250, height: 200, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(width: 250, height: 100, decoration: BoxDecoration(color: VegaTheme.surface), child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
-      } catch (_) {}
-    }
-    final filePath = msg['filePath'] ?? '';
-    if (filePath.isNotEmpty) {
-      return Image.file(File(filePath), width: 250, height: 200, fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(width: 250, height: 100, decoration: BoxDecoration(color: VegaTheme.surface), child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
-    }
-    return Container(width: 250, height: 100, decoration: BoxDecoration(color: VegaTheme.surface), child: Icon(Icons.image, color: VegaTheme.textSecondary));
-  }
-
   bool get _showNewChatScreen => _messages.isEmpty && !_loading;
+
+  String _stripImageMarkdown(String text) {
+    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
+  }
 
   Widget _buildImageWidget(Map<String, dynamic> msg) {
     final content = msg['content'] ?? '';
@@ -438,52 +372,6 @@ class _ChatScreenState extends State<ChatScreen> {
         errorBuilder: (_, __, ___) => Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
     }
     return Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.image, color: VegaTheme.textSecondary));
-  }
-
-  String _stripImageMarkdown(String text) {
-    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
-  }
-
-  Widget _imgPlaceholder() => Container(width: 250, height: 100,
-    decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8)),
-    child: Icon(Icons.broken_image, color: VegaTheme.textSecondary));
-
-  Widget _buildImageWidget(Map<String, dynamic> msg) {
-    final raw = msg['content'] ?? '';
-    if (raw.contains('base64,')) {
-      try { return Image.memory(base64Decode(raw.split('base64,')[1]), width: 250, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imgPlaceholder()); } catch (_) {}
-    }
-    final fp = msg['filePath'] ?? '';
-    if (fp.isNotEmpty) { return Image.file(File(fp), width: 250, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imgPlaceholder()); }
-    return _imgPlaceholder();
-  }
-
-  String _stripImageMarkdown(String text) {
-    return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
-  }
-
-  Widget _buildImageWidget(Map<String, dynamic> msg) {
-    final raw = msg['content'] ?? '';
-    if (raw.contains('base64,')) {
-      try {
-        final b64 = raw.split('base64,')[1];
-        final bytes = base64Decode(b64);
-        return Image.memory(bytes, width: 250, height: 200, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(width: 250, height: 100,
-            decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8)),
-            child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
-      } catch (_) {}
-    }
-    final fp = msg['filePath'] ?? '';
-    if (fp.isNotEmpty) {
-      return Image.file(File(fp), width: 250, height: 200, fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(width: 250, height: 100,
-          decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
-    }
-    return Container(width: 250, height: 100,
-      decoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8)),
-      child: Icon(Icons.image, color: VegaTheme.textSecondary));
   }
 
   @override
@@ -634,7 +522,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ]),
                                   ),
                                 // Text message
-                                if (_stripImageMarkdown(msg['content'] ?? '').isNotEmpty && !(_stripImageMarkdown(msg['content'] ?? '').startsWith('[FILE:')))
+                                if (_stripImageMarkdown(msg['content'] ?? '').isNotEmpty)
                                   isUser
                                       ? Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -686,12 +574,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                   const SizedBox(width: 8),
                                   InkWell(
                                     onTap: () => _regenerate(i),
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(4),
                                     child: Padding(
                                       padding: const EdgeInsets.all(4),
                                       child: Icon(Icons.refresh, size: 16, color: VegaTheme.textSecondary),
                                     ),
-                                  ),                                    ),
                                   ),
                                 ],
                               ),
