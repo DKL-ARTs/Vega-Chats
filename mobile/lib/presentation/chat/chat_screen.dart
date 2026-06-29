@@ -508,8 +508,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     behavior: HitTestBehavior.translucent,
                     onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
                     child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + (_loading ? 1 : 0),
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _messages.length + (_loading ? 1 : 0),
                     itemBuilder: (ctx, i) {
                       if (_loading && i == _messages.length) {
                         return Align(
@@ -616,7 +616,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         ],
                       );
                     },
-                  ),
+                    ),
           ),
           if (_attachedFile != null)
             Container(
