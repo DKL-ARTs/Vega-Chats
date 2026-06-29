@@ -38,7 +38,11 @@ class ApiClient {
         return;
       }
 
+      print('STREAM: status=${streamedResponse.statusCode}');
+      int chunkCount = 0;
       await for (final chunk in streamedResponse.stream.transform(utf8.decoder)) {
+        chunkCount++;
+        print('STREAM chunk #$chunkCount: ${chunk.length} chars');
         final cleanChunk = chunk.replaceAll('\r', '');
         final lines = cleanChunk.split('\n');
         for (final line in lines) {
@@ -48,6 +52,7 @@ class ApiClient {
             final data = trimmed.substring(6).trim();
             if (data == '[DONE]') return;
             if (data.startsWith('Error:')) {
+              print('STREAM Error: $data');
               onError(data.substring(6));
               return;
             }
@@ -55,18 +60,22 @@ class ApiClient {
               final json = jsonDecode(data) as Map<String, dynamic>;
               final content = json['content'] as String?;
               if (content != null && content.isNotEmpty) {
+                print('STREAM content: ${content.length} chars');
                 onChunk(content);
               }
-            } catch (_) {
+            } catch (e) {
+              print('STREAM json parse error: $e, data: $data');
               // If JSON parse fails, treat as raw text chunk
               onChunk(data);
             }
           } else if (!trimmed.startsWith(':')) {
             // Non-SSE line, treat as raw text
+            print('STREAM raw: $trimmed');
             onChunk(trimmed);
           }
         }
       }
+      print('STREAM ended after $chunkCount chunks');
     } catch (e) {
       onError(e.toString());
     }
