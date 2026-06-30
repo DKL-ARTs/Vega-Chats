@@ -544,7 +544,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
                                           child: MarkdownBody(
                                             data: _stripImageMarkdown(msg['content'] ?? ''),
-                                            selectable: true,
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
                                               p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.4),
