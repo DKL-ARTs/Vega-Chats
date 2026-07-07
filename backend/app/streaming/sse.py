@@ -1,6 +1,5 @@
 import json
 import re
-import sys
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 from app.providers import get_provider
@@ -8,24 +7,26 @@ from fastapi import APIRouter
 
 router = APIRouter()
 
+
 def parse_message_content(content):
     """Extract images from markdown, return clean text and image objects"""
     pattern = r'!\[image\]\(data:([^)]+)\)'
     matches = re.findall(pattern, content)
-    
+
     if not matches:
         return content, []
-    
+
     clean_text = re.sub(pattern, '[Изображение]', content).strip()
-    
+
     images = []
     for data_uri in matches:
         images.append({
             "type": "image_url",
             "image_url": {"url": f"data:{data_uri}"}
         })
-    
+
     return clean_text, images
+
 
 @router.post("/chat/stream")
 async def chat_stream(request: Request):
@@ -48,42 +49,43 @@ async def chat_stream(request: Request):
     provider = get_provider(provider_name)
 
     if not api_key:
-        yield f"data: Error: No API key\n\n"
-        return
+        async def no_key():
+            yield "data: Error: No API key\n\n"
+        return StreamingResponse(no_key(), media_type="text/event-stream")
 
     # Reconstruct proper key format
     if api_key and not api_key.startswith("sk-or-"):
         if api_key.startswith("skorv1"):
             api_key = "sk-or-v1-" + api_key[6:]
-    
+
     # Add system message for text-only responses
     system_msg = {
         "role": "system",
         "content": "Ты полезный ассистент. Когда пользователь отправляет изображение, опиши что на нём видишь текстом. Не используй JSON, координаты или структурированные форматы. Отвечай простым текстом на русском языке."
     }
-    
+
     # Process files (text files only)
+    import base64
     for file_data in files:
         file_name = file_data.get("name", "file")
         file_content_b64 = file_data.get("content", "")
         try:
-            import base64
             file_text = base64.b64decode(file_content_b64).decode("utf-8")
             messages.append({
                 "role": "user",
                 "content": f"\n\n--- Файл: {file_name} ---\n{file_text}\n--- Конец файла ---"
             })
-        except:
+        except Exception:
             pass
 
     # Process messages - convert images to OpenRouter format
     processed_messages = [system_msg]
     for msg in messages:
         role = msg.get("role", "user")
-        content = msg.get("content", "")
-        
-        clean_text, images = parse_message_content(content)
-        
+        msg_content_str = msg.get("content", "")
+
+        clean_text, images = parse_message_content(msg_content_str)
+
         if images:
             msg_content = []
             if clean_text and clean_text != '[Изображение]':
@@ -93,34 +95,33 @@ async def chat_stream(request: Request):
             msg_content.extend(images)
             processed_messages.append({"role": role, "content": msg_content})
         else:
-            processed_messages.append({"role": role, "content": content})
+            processed_messages.append({"role": role, "content": msg_content_str})
 
     async def generate():
         try:
             async for raw_chunk in provider.stream(processed_messages, model, api_key=api_key):
                 # Handle multi-line chunks (provider may yield multiple lines at once)
-                final lines = raw_chunk.split("\n")
+                lines = raw_chunk.split("\n")
                 for chunk in lines:
-                    chunk = chunk.trim()
-                    if (chunk.isEmpty) continue;
-                    if (chunk.startsWith("data: ")) {
-                        final json_str = chunk.substring(6).trim();
-                        if (json_str.isEmpty || json_str == "[DONE]") continue;
-                        try {
-                            final data = json.loads(json_str);
-                            final choices = data.get("choices", []);
-                            if (choices.isNotEmpty) {
-                                final delta = choices[0].get("delta", {});
-                                final content = delta.get("content", "");
-                                if (content.isNotEmpty) {
-                                    yield "data: " + json.dumps({"content": content}, ensure_ascii=False) + "\n\n";
-                                }
-                            }
-                        } catch (_) {}
-                    } else if (!chunk.startsWith("Error:") && !chunk.startsWith(":")) {
-                        yield "data: " + json.dumps({"content": chunk}, ensure_ascii=False) + "\n\n";
-                    }
-                }
+                    chunk = chunk.strip()
+                    if not chunk:
+                        continue
+                    if chunk.startswith("data: "):
+                        json_str = chunk[6:].strip()
+                        if not json_str or json_str == "[DONE]":
+                            continue
+                        try:
+                            data = json.loads(json_str)
+                            choices = data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                delta_content = delta.get("content", "")
+                                if delta_content:
+                                    yield "data: " + json.dumps({"content": delta_content}, ensure_ascii=False) + "\n\n"
+                        except Exception:
+                            pass
+                    elif not chunk.startswith("Error:") and not chunk.startswith(":"):
+                        yield "data: " + json.dumps({"content": chunk}, ensure_ascii=False) + "\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: Error: {str(e)}\n\n"
