@@ -197,6 +197,25 @@ class _ChatScreenState extends State<ChatScreen> {
     while (userIndex >= 0 && _messages[userIndex]['role'] != 'user') { userIndex--; }
     if (userIndex < 0) return;
     while (_messages.length > userIndex + 1) { _messages.removeLast(); }
+    // Extract files from the user message
+    List<Map<String, String>>? regenFiles;
+    final userMsg = _messages[userIndex];
+    if (userMsg['isImage'] == true && userMsg['content'] != null) {
+      final content = userMsg['content'].toString();
+      if (content.contains('base64,')) {
+        regenFiles = [{
+          'name': userMsg['fileName']?.toString() ?? 'image.png',
+          'content': content.split('base64,').last,
+          'isImage': 'true',
+        }];
+      }
+    } else if (userMsg['filePath'] != null && userMsg['filePath'].toString().isNotEmpty) {
+      regenFiles = [{
+        'name': userMsg['fileName']?.toString() ?? 'file',
+        'content': userMsg['filePath'].toString(),
+        'isImage': 'false',
+      }];
+    }
     _stopThinking();
     setState(() { _loading = true; _messages.add({'role': 'assistant', 'content': ''}); });
     _startThinking();
@@ -204,9 +223,16 @@ class _ChatScreenState extends State<ChatScreen> {
       final buffer = StringBuffer();
       final msgs = _messages.sublist(0, userIndex + 1).map((m) =>
         {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
-      await _client.streamChat(messages: msgs, model: _model, files: null,
+      await _client.streamChat(messages: msgs, model: _model, files: regenFiles,
         onChunk: (chunk) { if (mounted) { buffer.write(chunk); setState(() { _messages.last["content"] = buffer.toString(); }); } },
         onError: (err) { if (mounted) setState(() { _messages.last["content"] = "Error: $err"; }); });
+      // Save regenerated response to history
+      if (mounted && _currentChatId != null) {
+        final last = _messages.last;
+        if (last['role'] == 'assistant' && last['content'].toString().isNotEmpty) {
+          await ChatHistory.addMessage(_currentChatId!, 'assistant', last['content'].toString());
+        }
+      }
     } catch (e) {
       if (mounted) setState(() { _messages.last["content"] = "Error: $e"; });
     } finally {
@@ -543,6 +569,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       : Padding(
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
                                           child: MarkdownBody(
+                                            selectable: false,
                                             data: _stripImageMarkdown(msg['content'] ?? ''),
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(

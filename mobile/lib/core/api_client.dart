@@ -41,41 +41,53 @@ class ApiClient {
       print('STREAM: status=${streamedResponse.statusCode}');
       int chunkCount = 0;
       int totalBytes = 0;
+      // CRITICAL: Buffer incomplete SSE events. SSE events are separated by \n\n,
+      // but JSON content can contain \n which must NOT be treated as event boundary.
+      final sseBuffer = StringBuffer();
       await for (final chunk in streamedResponse.stream.transform(utf8.decoder)) {
         chunkCount++;
         totalBytes += chunk.length;
-        print('STREAM chunk #$chunkCount: ${chunk.length} chars, total=$totalBytes');
-        print('STREAM raw chunk: ${chunk.substring(0, chunk.length > 200 ? 200 : chunk.length)}');
-        final cleanChunk = chunk.replaceAll('\r', '');
-        final lines = cleanChunk.split('\n');
-        for (final line in lines) {
-          final trimmed = line.trim();
-          if (trimmed.isEmpty) continue;
-          if (trimmed.startsWith('data: ')) {
-            final data = trimmed.substring(6).trim();
-            if (data == '[DONE]') return;
-            if (data.startsWith('Error:')) {
-              print('STREAM Error: $data');
-              onError(data.substring(6));
-              return;
+        sseBuffer.write(chunk.replaceAll('\r', ''));
+        // Process all complete SSE events in the buffer
+        while (true) {
+          final bufStr = sseBuffer.toString();
+          final eventEnd = bufStr.indexOf('\n\n');
+          if (eventEnd < 0) break; // incomplete event, wait for more data
+          final eventStr = bufStr.substring(0, eventEnd);
+          sseBuffer.clear();
+          sseBuffer.write(bufStr.substring(eventEnd + 2));
+          // Extract all data: lines from this event
+          final dataLines = <String>[];
+          for (final line in eventStr.split('\n')) {
+            final trimmed = line.trim();
+            if (trimmed.startsWith('data: ')) {
+              dataLines.add(trimmed.substring(6).trim());
             }
-            try {
-              final json = jsonDecode(data) as Map<String, dynamic>;
-              final content = json['content'] as String?;
-              if (content != null && content.isNotEmpty) {
-                print('STREAM content: "$content"');
-                onChunk(content);
-              }
-            } catch (e) {
-              print('STREAM json parse error: $e');
-              print('STREAM raw data: "$data"');
-              // If JSON parse fails, treat as raw text chunk
-              onChunk(data);
+          }
+          if (dataLines.isEmpty) continue;
+          final data = dataLines.join('\n');
+          if (data == '[DONE]') {
+            print('STREAM: [DONE] received, total=$totalBytes');
+            return;
+          }
+          if (data.startsWith('Error:')) {
+            print('STREAM Error: $data');
+            onError(data.substring(6));
+            return;
+          }
+          try {
+            final json = jsonDecode(data) as Map<String, dynamic>;
+            final content = json['content'] as String?;
+            if (content != null && content.isNotEmpty) {
+              onChunk(content);
             }
-          } else if (!trimmed.startsWith(':')) {
-            // Non-SSE line, treat as raw text
-            print('STREAM non-SSE: "$trimmed"');
-            onChunk(trimmed);
+          } catch (e) {
+            // JSON parse failed - try to extract content manually
+            final match = RegExp(r'"content"\s*:\s*"((?:[^"\\]|\\.)*)"').firstMatch(data);
+            if (match != null) {
+              final extracted = match.group(1) ?? '';
+              if (extracted.isNotEmpty) onChunk(extracted);
+            }
           }
         }
       }
