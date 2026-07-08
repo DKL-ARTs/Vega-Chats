@@ -59,7 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _model = prefs.getString('model') ?? 'openrouter/owl-alpha';
       _client.apiKey = prefs.getString('api_key') ?? '';
-      _client.baseUrl = prefs.getString('base_url') ?? 'https://vega-chat-production.up.railway.app';
+      _client.baseUrl = prefs.getString('base_url') ?? 'https://vega-chats-production.up.railway.app';
     });
   }
 
