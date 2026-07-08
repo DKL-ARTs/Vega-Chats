@@ -51,9 +51,17 @@ async def chat_stream(request: Request):
         from app.config import settings
         api_key = settings.openrouter_api_key
 
+    # DEBUG: Log what we received
+    masked = api_key[:10] + "..." + api_key[-4:] if len(api_key) > 14 else api_key
+    body_key = body.get("api_key", "")
+    has_body = bool(body_key.strip())
+    print("[SSE] api_key received: len=" + str(len(api_key)) + ", preview=" + masked + ", has_auth_header=" + str(bool(auth_header)) + ", has_body_key=" + str(has_body))
+    print("[SSE] messages_count=" + str(len(messages)) + ", model=" + str(model) + ", provider=" + str(provider_name))
+
     provider = get_provider(provider_name)
 
     if not api_key:
+        print("[SSE] ERROR: No API key provided!")
         async def no_key():
             yield "data: Error: No API key\n\n"
         return StreamingResponse(no_key(), media_type="text/event-stream")
