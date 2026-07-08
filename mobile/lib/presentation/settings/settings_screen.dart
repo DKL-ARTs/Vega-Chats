@@ -10,7 +10,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _apiKeyController = TextEditingController();
-  final _baseUrlController = TextEditingController(text: 'https://vega-chats-production.up.railway.app');
+  final _baseUrlController = TextEditingController(text: 'https://vega-chat-production.up.railway.app');
   String _selectedModel = 'openrouter/auto';
 
   final _models = [
@@ -115,23 +115,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    _saveSettings();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Настройки сохранены')),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: VegaTheme.accent,
-                    foregroundColor: Colors.black,
-                  ),
-                  child: const Text('Сохранить настройки'),
-                ),
-              ),
           ],
         ),
       ),
