@@ -56,10 +56,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    String baseUrl = prefs.getString('base_url') ?? 'https://vega-chats-production.up.railway.app';
+    // Normalize old URL (without 's') to the correct one
+    if (baseUrl.contains('vega-chat-production') && !baseUrl.contains('vega-chats-production')) {
+      baseUrl = 'https://vega-chats-production.up.railway.app';
+      await prefs.setString('base_url', baseUrl);
+    }
     setState(() {
       _model = prefs.getString('model') ?? 'openrouter/owl-alpha';
       _client.apiKey = prefs.getString('api_key') ?? '';
-      _client.baseUrl = prefs.getString('base_url') ?? 'https://vega-chats-production.up.railway.app';
+      _client.baseUrl = baseUrl;
     });
   }
 

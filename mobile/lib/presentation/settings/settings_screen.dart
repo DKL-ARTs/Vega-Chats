@@ -10,7 +10,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _apiKeyController = TextEditingController();
-  final _baseUrlController = TextEditingController(text: 'https://vega-chat-production.up.railway.app');
+  final _baseUrlController = TextEditingController(text: 'https://vega-chats-production.up.railway.app');
   String _selectedModel = 'openrouter/auto';
 
   final _models = [
