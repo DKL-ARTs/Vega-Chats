@@ -10,7 +10,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _apiKeyController = TextEditingController();
-  final _baseUrlController = TextEditingController(text: 'https://vega-chat-production.up.railway.app');
+  final _baseUrlController = TextEditingController(text: 'https://vega-chats-production.up.railway.app');
   String _selectedModel = 'openrouter/auto';
 
   final _models = [
@@ -69,6 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             TextField(
               controller: _apiKeyController,
               style: TextStyle(color: VegaTheme.textPrimary),
+              onChanged: (_) => _saveSettings(),
               decoration: InputDecoration(
                 labelText: 'OpenRouter API Key',
                 labelStyle: TextStyle(color: VegaTheme.textSecondary),
@@ -82,6 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: _baseUrlController,
+              onChanged: (_) => _saveSettings(),
               style: TextStyle(color: VegaTheme.textPrimary),
               decoration: InputDecoration(
                 labelText: 'Backend URL',
