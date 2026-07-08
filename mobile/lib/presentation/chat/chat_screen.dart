@@ -168,24 +168,19 @@ class _ChatScreenState extends State<ChatScreen> {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
       }).toList();
-      setState(() => _messages.add({'role': 'assistant', 'content': ''}));
-      final buffer = StringBuffer();
-      await _client.streamChat(messages: messagesForBackend, model: _model, files: files,
-        onChunk: (chunk) {
-          if (mounted) {
-            buffer.write(chunk);
-            setState(() { _messages.last["content"] = buffer.toString(); });
-          }
-        },
-        onError: (err) {
-          if (mounted) setState(() { _messages.last["content"] = "Error: $err"; });
-        },
-      );
+      // Use non-streaming chat for proper markdown rendering
+      final response = await _client.chat(messages: messagesForBackend, model: _model, files: files);
       _stopThinking();
-      if (_currentChatId != null && _messages.isNotEmpty) {
-        final lastMsg = _messages.last;
-        if (lastMsg['role'] == 'assistant' && lastMsg['content'].toString().isNotEmpty) {
-          await ChatHistory.addMessage(_currentChatId!, 'assistant', lastMsg['content'] ?? '');
+      if (mounted) {
+        setState(() {
+          if (_messages.isNotEmpty && _messages.last['role'] == 'assistant') {
+            _messages.last['content'] = response;
+          } else {
+            _messages.add({'role': 'assistant', 'content': response});
+          }
+        });
+        if (_currentChatId != null && response.isNotEmpty) {
+          await ChatHistory.addMessage(_currentChatId!, 'assistant', response);
         }
       }
     } catch (e) {
@@ -226,17 +221,19 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() { _loading = true; _messages.add({'role': 'assistant', 'content': ''}); });
     _startThinking();
     try {
-      final buffer = StringBuffer();
       final msgs = _messages.sublist(0, userIndex + 1).map((m) =>
         {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
-      await _client.streamChat(messages: msgs, model: _model, files: regenFiles,
-        onChunk: (chunk) { if (mounted) { buffer.write(chunk); setState(() { _messages.last["content"] = buffer.toString(); }); } },
-        onError: (err) { if (mounted) setState(() { _messages.last["content"] = "Error: $err"; }); });
-      // Save regenerated response to history
-      if (mounted && _currentChatId != null) {
-        final last = _messages.last;
-        if (last['role'] == 'assistant' && last['content'].toString().isNotEmpty) {
-          await ChatHistory.addMessage(_currentChatId!, 'assistant', last['content'].toString());
+      final response = await _client.chat(messages: msgs, model: _model, files: regenFiles);
+      if (mounted) {
+        setState(() {
+          if (_messages.isNotEmpty && _messages.last['role'] == 'assistant') {
+            _messages.last['content'] = response;
+          } else {
+            _messages.add({'role': 'assistant', 'content': response});
+          }
+        });
+        if (_currentChatId != null && response.isNotEmpty) {
+          await ChatHistory.addMessage(_currentChatId!, 'assistant', response);
         }
       }
     } catch (e) {

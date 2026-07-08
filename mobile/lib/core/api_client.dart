@@ -111,4 +111,46 @@ class ApiClient {
     final resp = await http.post(Uri.parse('$baseUrl/api/files/list'), body: jsonEncode({'path': path}));
     return jsonDecode(resp.body);
   }
+
+  Future<String> chat({
+    required List<Map<String, dynamic>> messages,
+    String model = 'owl-alpha',
+    List<Map<String, String>>? files,
+  }) async {
+    final body = <String, dynamic>{'messages': messages, 'model': model};
+    if (files != null && files.isNotEmpty) body['files'] = files;
+    final cleaned = apiKey.replaceAll(RegExp(r'[^a-zA-Z0-9\-_.]'), '');
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (cleaned.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $cleaned';
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/chat/stream'),
+      headers: headers,
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    // Parse SSE response to extract final content
+    final lines = response.body.split('\n');
+    final buffer = StringBuffer();
+    for (final line in lines) {
+      if (line.startsWith('data: ')) {
+        final data = line.substring(6).trim();
+        if (data == '[DONE]' || data.isEmpty) continue;
+        try {
+          final json = jsonDecode(data);
+          final content = json['content'];
+          if (content != null) buffer.write(content);
+        } catch (_) {}
+      }
+    }
+    return buffer.toString();
+  }
 }
