@@ -46,6 +46,11 @@ async def chat_stream(request: Request):
     if not api_key:
         api_key = request.headers.get("x-api-key", "")
 
+    # Fallback to environment variable
+    if not api_key:
+        from app.config import settings
+        api_key = settings.openrouter_api_key
+
     provider = get_provider(provider_name)
 
     if not api_key:
