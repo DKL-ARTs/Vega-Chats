@@ -164,6 +164,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }).toList();
       setState(() => _messages.add({'role': 'assistant', 'content': ''}));
       final buffer = StringBuffer();
+      print('[CHAT] sending: apiKeyLen=' + _client.apiKey.length.toString() + ', model=' + _model + ', msgs=' + messagesForBackend.length.toString());
       await _client.streamChat(messages: messagesForBackend, model: _model, files: files,
         onChunk: (chunk) {
           if (mounted) {

@@ -69,7 +69,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             TextField(
               controller: _apiKeyController,
               style: TextStyle(color: VegaTheme.textPrimary),
-              onChanged: (_) => _saveSettings(),
               decoration: InputDecoration(
                 labelText: 'OpenRouter API Key',
                 labelStyle: TextStyle(color: VegaTheme.textSecondary),
@@ -83,7 +82,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: _baseUrlController,
-              onChanged: (_) => _saveSettings(),
               style: TextStyle(color: VegaTheme.textPrimary),
               decoration: InputDecoration(
                 labelText: 'Backend URL',
@@ -117,6 +115,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    _saveSettings();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Настройки сохранены')),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: VegaTheme.accent,
+                    foregroundColor: Colors.black,
+                  ),
+                  child: const Text('Сохранить настройки'),
+                ),
+              ),
           ],
         ),
       ),
