@@ -1,11 +1,15 @@
 import json
 import re
+import sys
+import logging
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 from app.providers import get_provider
 from fastapi import APIRouter
 
 router = APIRouter()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stdout)
+log = logging.getLogger("sse")
 
 
 def parse_message_content(content):
@@ -51,17 +55,22 @@ async def chat_stream(request: Request):
         from app.config import settings
         api_key = settings.openrouter_api_key
 
-    # DEBUG: Log what we received
+    # DEBUG: Log what we received (use stderr + logging to ensure Railway captures it)
     masked = api_key[:10] + "..." + api_key[-4:] if len(api_key) > 14 else api_key
     body_key = body.get("api_key", "")
     has_body = bool(body_key.strip())
-    print("[SSE] api_key received: len=" + str(len(api_key)) + ", preview=" + masked + ", has_auth_header=" + str(bool(auth_header)) + ", has_body_key=" + str(has_body))
-    print("[SSE] messages_count=" + str(len(messages)) + ", model=" + str(model) + ", provider=" + str(provider_name))
+    log_msg = "[SSE] api_key: len=" + str(len(api_key)) + ", preview=" + masked + ", has_auth=" + str(bool(auth_header)) + ", has_body=" + str(has_body) + ", msgs=" + str(len(messages)) + ", model=" + str(model)
+    sys.stderr.write(log_msg + "\n")
+    sys.stderr.flush()
+    log.info(log_msg)
 
     provider = get_provider(provider_name)
 
     if not api_key:
-        print("[SSE] ERROR: No API key provided!")
+        err_msg = "[SSE] ERROR: No API key provided!"
+        sys.stderr.write(err_msg + "\n")
+        sys.stderr.flush()
+        log.error(err_msg)
         async def no_key():
             yield "data: Error: No API key\n\n"
         return StreamingResponse(no_key(), media_type="text/event-stream")
