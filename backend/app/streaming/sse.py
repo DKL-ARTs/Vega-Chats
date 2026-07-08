@@ -11,6 +11,11 @@ router = APIRouter()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stdout)
 log = logging.getLogger("sse")
 
+# Startup marker - will appear in Railway logs on import
+print("=" * 50, flush=True)
+print("[SSE] sse.py loaded - version with debug logging 2d3e8f80", flush=True)
+print("=" * 50, flush=True)
+
 
 def parse_message_content(content):
     """Extract images from markdown, return clean text and image objects"""
@@ -34,11 +39,14 @@ def parse_message_content(content):
 
 @router.post("/chat/stream")
 async def chat_stream(request: Request):
+    # Log immediately on entry (before anything else)
+    print("[SSE] >>> chat_stream called", flush=True)
     body = await request.json()
     messages = body.get("messages", [])
     files = body.get("files", [])
     model = body.get("model", "openrouter/auto")
     provider_name = body.get("provider", "openrouter")
+    print("[SSE] >>> parsed body: msgs=" + str(len(messages)) + ", model=" + str(model), flush=True)
 
     api_key = None
     auth_header = request.headers.get("authorization", "")
