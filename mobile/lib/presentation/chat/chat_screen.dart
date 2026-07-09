@@ -585,7 +585,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               code: TextStyle(color: VegaTheme.accent, backgroundColor: VegaTheme.surface, fontFamily: 'monospace', fontSize: 13),
                                               codeblockDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: VegaTheme.border)),
                                               blockquoteDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(4), border: Border(left: BorderSide(color: VegaTheme.accent, width: 3))),
-                                              listBullet: TextStyle(color: VegaTheme.accent, fontSize: 15, fontWeight: FontWeight.bold),Style(color: VegaTheme.textPrimary, fontSize: 15),
+                                              listBullet: TextStyle(color: VegaTheme.accent, fontSize: 15, fontWeight: FontWeight.bold),
                                               a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
                                             ),
                                           ),
