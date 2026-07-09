@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/theme.dart';
 
@@ -11,6 +12,7 @@ class TerminalScreen extends StatefulWidget {
 
 class _TerminalScreenState extends State<TerminalScreen> {
   final _controller = TextEditingController();
+  final _scrollController = ScrollController();
   final _output = <String>[];
   WebSocketChannel? _channel;
   bool _connected = false;
@@ -21,12 +23,33 @@ class _TerminalScreenState extends State<TerminalScreen> {
     _connect();
   }
 
-  void _connect() {
+  Future<void> _connect() async {
     try {
-      _channel = WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:8765/ws/terminal'));
+      final prefs = await SharedPreferences.getInstance();
+      String baseUrl = prefs.getString('base_url') ?? 'https://vega-chats-production.up.railway.app';
+      
+      // Convert http(s) to ws(s)
+      String wsUrl;
+      if (baseUrl.startsWith('https://')) {
+        wsUrl = 'wss://' + baseUrl.substring(8);
+      } else if (baseUrl.startsWith('http://')) {
+        wsUrl = 'ws://' + baseUrl.substring(7);
+      } else {
+        wsUrl = 'wss://' + baseUrl;
+      }
+      // Remove trailing slash
+      if (wsUrl.endsWith('/')) wsUrl = wsUrl.substring(0, wsUrl.length - 1);
+      wsUrl += '/ws/terminal';
+
+      setState(() => _output.add('Connecting to $wsUrl...'));
+
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
       _channel!.stream.listen(
         (data) {
-          setState(() => _output.add(data.toString()));
+          setState(() {
+            _output.add(data.toString());
+            _scrollToBottom();
+          });
         },
         onError: (e) {
           setState(() {
@@ -35,7 +58,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
           });
         },
         onDone: () {
-          setState(() => _connected = false);
+          setState(() {
+            _output.add('Disconnected.');
+            _connected = false;
+          });
         },
       );
       setState(() => _connected = true);
@@ -47,11 +73,26 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   void _sendCommand() {
     final cmd = _controller.text.trim();
     if (cmd.isEmpty || _channel == null) return;
     _channel!.sink.add(cmd);
-    setState(() => _output.add(r'$ ' + cmd));
+    setState(() {
+      _output.add(r'$ ' + cmd);
+      _scrollToBottom();
+    });
     _controller.clear();
   }
 
@@ -62,6 +103,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
       appBar: AppBar(
         title: Text('Terminal', style: TextStyle(color: VegaTheme.textPrimary)),
         actions: [
+          if (!_connected)
+            IconButton(
+              icon: Icon(Icons.refresh, color: VegaTheme.textSecondary),
+              onPressed: _connect,
+            ),
           Container(
             margin: EdgeInsets.only(right: 16),
             width: 8,
@@ -77,9 +123,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
         children: [
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.all(12),
               itemCount: _output.length,
-              itemBuilder: (ctx, i) => Text(
+              itemBuilder: (ctx, i) => SelectableText(
                 _output[i],
                 style: TextStyle(
                   color: _output[i].startsWith(r'$ ') ? VegaTheme.accent : VegaTheme.textPrimary,
@@ -123,6 +170,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void dispose() {
     _channel?.sink.close();
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 }

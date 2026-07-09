@@ -35,6 +35,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _thinkingTimer;
   int _thinkingDots = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _isSearching = false;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -50,6 +53,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _searchController.dispose();
     _thinkingTimer?.cancel();
     super.dispose();
   }
@@ -473,8 +477,16 @@ class _ChatScreenState extends State<ChatScreen> {
                     Row(
                       children: [
                         IconButton(
-                          icon: Icon(Icons.search, color: VegaTheme.textSecondary, size: 22),
-                          onPressed: () {},
+                          icon: Icon(_isSearching ? Icons.close : Icons.search, color: VegaTheme.textSecondary, size: 22),
+                          onPressed: () {
+                            setState(() {
+                              _isSearching = !_isSearching;
+                              if (!_isSearching) {
+                                _searchController.clear();
+                                _searchQuery = '';
+                              }
+                            });
+                          },
                         ),
                         IconButton(
                           icon: Icon(Icons.add, color: VegaTheme.accent),
@@ -485,13 +497,39 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ),
               ),
+              if (_isSearching)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Search chats...',
+                      hintStyle: TextStyle(color: VegaTheme.textSecondary),
+                      filled: true,
+                      fillColor: VegaTheme.card,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      prefixIcon: Icon(Icons.search, color: VegaTheme.textSecondary, size: 20),
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()),
+                  ),
+                ),
               Expanded(
                 child: _chats.isEmpty
                     ? Center(child: Text('No chats yet', style: TextStyle(color: VegaTheme.textSecondary)))
-                    : ListView.builder(
-                        itemCount: _chats.length,
+                    : Builder(builder: (ctx) {
+                        final filtered = _searchQuery.isEmpty
+                            ? _chats
+                            : _chats.where((c) => (c['title'] ?? '').toString().toLowerCase().contains(_searchQuery)).toList();
+                        if (filtered.isEmpty) {
+                          return Center(child: Text('Nothing found', style: TextStyle(color: VegaTheme.textSecondary)));
+                        }
+                        return ListView.builder(
+                        itemCount: filtered.length,
                         itemBuilder: (ctx, i) {
-                          final chat = _chats[i];
+                          final chat = filtered[i];
                           final isActive = chat['id'] == _currentChatId;
                           return ListTile(
                             selected: isActive,
@@ -506,7 +544,8 @@ class _ChatScreenState extends State<ChatScreen> {
                             onTap: () => _openChat(chat['id']),
                           );
                         },
-                      ),
+                      );
+                      }),
               ),
               Divider(color: VegaTheme.border),
               ListTile(
@@ -618,7 +657,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       : Padding(
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
                                           child: MarkdownBody(
-                                            selectable: false,
+                                            selectable: true,
                                             data: _stripImageMarkdown(msg['content'] ?? ''),
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
