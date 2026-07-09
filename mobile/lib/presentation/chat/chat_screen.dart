@@ -576,7 +576,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                             data: _stripImageMarkdown(msg['content'] ?? ''),
                                             shrinkWrap: true,
                                             styleSheet: MarkdownStyleSheet(
-                                              p: TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.5),
+                                              p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.5),
                                               h1: TextStyle(color: VegaTheme.textPrimary, fontSize: 28, fontWeight: FontWeight.bold, height: 1.3),
                                               h2: TextStyle(color: VegaTheme.textPrimary, fontSize: 24, fontWeight: FontWeight.bold, height: 1.3),
                                               h3: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold, height: 1.3),
@@ -600,8 +600,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               h2Padding: const EdgeInsets.only(top: 14, bottom: 8),
                                               h3Padding: const EdgeInsets.only(top: 12, bottom: 6),
                                               pPadding: const EdgeInsets.only(bottom: 8),
-                                              blockSpacing: 8,
-                                              listSpacing: 4,
+                                              blockSpacing: 8
                                               listBullet: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
                                               a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
                                             ),
