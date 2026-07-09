@@ -168,20 +168,41 @@ class _ChatScreenState extends State<ChatScreen> {
         'role': m['role'].toString(),
         'content': m['content'].toString(),
       }).toList();
-      // Use non-streaming chat for proper markdown rendering
-      final response = await _client.chat(messages: messagesForBackend, model: _model, files: files);
-      _stopThinking();
-      if (mounted) {
-        setState(() {
-          if (_messages.isNotEmpty && _messages.last['role'] == 'assistant') {
-            _messages.last['content'] = response;
-          } else {
-            _messages.add({'role': 'assistant', 'content': response});
+      // Add empty assistant message for streaming
+      setState(() {
+        _messages.add({'role': 'assistant', 'content': ''});
+      });
+      final responseBuffer = StringBuffer();
+      bool firstChunk = true;
+      await _client.streamChat(
+        messages: messagesForBackend,
+        model: _model,
+        files: files,
+        onChunk: (chunk) {
+          if (firstChunk) {
+            _stopThinking();
+            firstChunk = false;
           }
-        });
-        if (_currentChatId != null && response.isNotEmpty) {
-          await ChatHistory.addMessage(_currentChatId!, 'assistant', response);
-        }
+          responseBuffer.write(chunk);
+          if (mounted) {
+            setState(() {
+              _messages.last['content'] = responseBuffer.toString();
+            });
+          }
+        },
+        onError: (error) {
+          _stopThinking();
+          if (mounted) {
+            setState(() {
+              _messages.last['content'] = 'Error: $error';
+            });
+          }
+        },
+      );
+      _stopThinking();
+      final finalResponse = responseBuffer.toString();
+      if (_currentChatId != null && finalResponse.isNotEmpty) {
+        await ChatHistory.addMessage(_currentChatId!, 'assistant', finalResponse);
       }
     } catch (e) {
       _stopThinking();
@@ -223,18 +244,37 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final msgs = _messages.sublist(0, userIndex + 1).map((m) =>
         {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
-      final response = await _client.chat(messages: msgs, model: _model, files: regenFiles);
-      if (mounted) {
-        setState(() {
-          if (_messages.isNotEmpty && _messages.last['role'] == 'assistant') {
-            _messages.last['content'] = response;
-          } else {
-            _messages.add({'role': 'assistant', 'content': response});
+      final responseBuffer = StringBuffer();
+      bool firstChunk = true;
+      await _client.streamChat(
+        messages: msgs,
+        model: _model,
+        files: regenFiles,
+        onChunk: (chunk) {
+          if (firstChunk) {
+            _stopThinking();
+            firstChunk = false;
           }
-        });
-        if (_currentChatId != null && response.isNotEmpty) {
-          await ChatHistory.addMessage(_currentChatId!, 'assistant', response);
-        }
+          responseBuffer.write(chunk);
+          if (mounted) {
+            setState(() {
+              _messages.last['content'] = responseBuffer.toString();
+            });
+          }
+        },
+        onError: (error) {
+          _stopThinking();
+          if (mounted) {
+            setState(() {
+              _messages.last['content'] = 'Error: $error';
+            });
+          }
+        },
+      );
+      _stopThinking();
+      final finalResponse = responseBuffer.toString();
+      if (_currentChatId != null && finalResponse.isNotEmpty) {
+        await ChatHistory.addMessage(_currentChatId!, 'assistant', finalResponse);
       }
     } catch (e) {
       if (mounted) setState(() { _messages.last["content"] = "Error: $e"; });
