@@ -9,7 +9,7 @@ class ApiClient {
 
   Future<void> streamChat({
     required List<Map<String, dynamic>> messages,
-    String model = 'owl-alpha',
+    String model = 'openrouter/auto',
     List<Map<String, String>>? files,
     required void Function(String chunk) onChunk,
     required Function onError,
@@ -114,7 +114,7 @@ class ApiClient {
 
   Future<String> chat({
     required List<Map<String, dynamic>> messages,
-    String model = 'owl-alpha',
+    String model = 'openrouter/auto',
     List<Map<String, String>>? files,
   }) async {
     final body = <String, dynamic>{'messages': messages, 'model': model};

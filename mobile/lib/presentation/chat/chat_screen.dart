@@ -29,7 +29,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _attachedFile;
   String? _attachedFileName;
   bool _attachedIsImage = false;
-  String _model = 'openrouter/owl-alpha';
+  String _model = 'openrouter/auto';
   int? _currentChatId;
   List<Map<String, dynamic>> _chats = [];
   Timer? _thinkingTimer;
@@ -63,7 +63,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await prefs.setString('base_url', baseUrl);
     }
     setState(() {
-      _model = prefs.getString('model') ?? 'openrouter/owl-alpha';
+      _model = prefs.getString('model') ?? 'openrouter/auto';
       _client.apiKey = prefs.getString('api_key') ?? '';
       _client.baseUrl = baseUrl;
     });
@@ -218,26 +218,32 @@ class _ChatScreenState extends State<ChatScreen> {
     int userIndex = assistantIndex - 1;
     while (userIndex >= 0 && _messages[userIndex]['role'] != 'user') { userIndex--; }
     if (userIndex < 0) return;
+
+    // Remove old assistant messages after the user message
     while (_messages.length > userIndex + 1) { _messages.removeLast(); }
-    // Extract files from the user message
+
+    // Re-read text file from disk if needed (images are already embedded in content)
     List<Map<String, String>>? regenFiles;
     final userMsg = _messages[userIndex];
-    if (userMsg['isImage'] == true && userMsg['content'] != null) {
-      final content = userMsg['content'].toString();
-      if (content.contains('base64,')) {
+    if (userMsg['isImage'] != true &&
+        userMsg['filePath'] != null &&
+        userMsg['filePath'].toString().isNotEmpty) {
+      try {
+        final fileBytes = await File(userMsg['filePath'].toString()).readAsBytes();
         regenFiles = [{
-          'name': userMsg['fileName']?.toString() ?? 'image.png',
-          'content': content.split('base64,').last,
-          'isImage': 'true',
+          'name': userMsg['fileName']?.toString() ?? 'file',
+          'content': base64Encode(fileBytes),
         }];
+      } catch (_) {
+        // File no longer accessible, rely on message content
       }
-    } else if (userMsg['filePath'] != null && userMsg['filePath'].toString().isNotEmpty) {
-      regenFiles = [{
-        'name': userMsg['fileName']?.toString() ?? 'file',
-        'content': userMsg['filePath'].toString(),
-        'isImage': 'false',
-      }];
     }
+
+    // Remove old assistant message from history
+    if (_currentChatId != null) {
+      await ChatHistory.removeLastAssistantMessage(_currentChatId!);
+    }
+
     _stopThinking();
     setState(() { _loading = true; _messages.add({'role': 'assistant', 'content': ''}); });
     _startThinking();

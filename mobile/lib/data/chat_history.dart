@@ -83,6 +83,31 @@ class ChatHistory {
     return [];
   }
 
+  static Future<void> removeLastAssistantMessage(int chatId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString(_key);
+    if (data == null) return;
+    List<dynamic> chats;
+    try {
+      chats = jsonDecode(data) as List<dynamic>;
+    } catch (e) {
+      return;
+    }
+    for (int i = 0; i < chats.length; i++) {
+      if (chats[i] is Map && chats[i]['id'] == chatId) {
+        final chat = chats[i] as Map<String, dynamic>;
+        final messages = (chat['messages'] as List?) ?? [];
+        // Remove last message if it's from assistant
+        if (messages.isNotEmpty && messages.last['role'] == 'assistant') {
+          messages.removeLast();
+          chat['messages'] = messages;
+          await prefs.setString(_key, jsonEncode(chats));
+        }
+        return;
+      }
+    }
+  }
+
   static Future<void> deleteChat(int chatId) async {
     final chats = await getChats();
     chats.removeWhere((c) => c['id'] == chatId);

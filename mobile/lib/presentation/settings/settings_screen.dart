@@ -19,8 +19,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'openai/gpt-4o-mini',
     'anthropic/claude-sonnet-4',
     'deepseek/deepseek-chat',
-    'google/gemini-2.0-flash',
-    'owl-alpha',
+    'google/gemini-2.0-flash-exp:free',
+    'google/gemma-3-27b-it:free',
+    'meta-llama/llama-4-maverick:free',
+    'deepseek/deepseek-r1:free',
+    'qwen/qwen3-235b-a22b:free',
   ];
 
   @override
@@ -34,7 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _apiKeyController.text = prefs.getString('api_key') ?? '';
       _baseUrlController.text = prefs.getString('base_url') ?? 'https://vega-chat-production.up.railway.app';
-      _selectedModel = prefs.getString('model') ?? 'owl-alpha';
+      _selectedModel = prefs.getString('model') ?? 'openrouter/auto';
     });
   }
 
