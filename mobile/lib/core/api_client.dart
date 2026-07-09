@@ -134,12 +134,15 @@ class ApiClient {
     );
 
     if (response.statusCode != 200) {
+      print('[CHAT] HTTP error: ${response.statusCode} ${response.body.substring(0, 200)}');
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
     }
 
+    print('[CHAT] Got response, body length: ${response.body.length}');
     // Parse SSE response to extract final content
     final lines = response.body.split('\n');
     final buffer = StringBuffer();
+    int chunkCount = 0;
     for (final line in lines) {
       if (line.startsWith('data: ')) {
         final data = line.substring(6).trim();
@@ -147,10 +150,16 @@ class ApiClient {
         try {
           final json = jsonDecode(data);
           final content = json['content'];
-          if (content != null) buffer.write(content);
+          if (content != null) {
+            buffer.write(content);
+            chunkCount++;
+          }
         } catch (_) {}
       }
     }
-    return buffer.toString();
+    print('[CHAT] Parsed $chunkCount chunks, total length: ${buffer.length}');
+    final result = buffer.toString();
+    print('[CHAT] First 200 chars: ${result.substring(0, result.length > 200 ? 200 : result.length)}');
+    return result;
   }
 }
