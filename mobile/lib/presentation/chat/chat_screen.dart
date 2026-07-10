@@ -163,10 +163,22 @@ class _ChatScreenState extends State<ChatScreen> {
       filePath: firstFilePath, fileName: firstFileName, isImage: firstIsImage,
     );
     await _loadChats();
+    // Collect all file paths for display in chat bubble
+    final List<String> allFilePaths = attachedSnapshot
+        .where((f) => f['isImage'] != true)
+        .map((f) => f['path'] as String)
+        .toList();
+    final List<String> allFileNames = attachedSnapshot
+        .where((f) => f['isImage'] != true)
+        .map((f) => f['name'] as String)
+        .toList();
     setState(() {
       _messages.add({
         'role': 'user', 'content': msgContent,
         'filePath': firstFilePath, 'fileName': firstFileName, 'isImage': firstIsImage,
+        // Store ALL file paths/names for multi-file display
+        'filePaths': allFilePaths,
+        'fileNames': allFileNames,
       });
       _attachedFiles.clear();
       _loading = true;
@@ -225,21 +237,29 @@ class _ChatScreenState extends State<ChatScreen> {
     // Remove old assistant messages after the user message
     while (_messages.length > userIndex + 1) { _messages.removeLast(); }
 
-    // Re-read text file from disk if needed (images are already embedded in content)
+    // Re-read ALL files from msg['filePaths'] (non-image files)
     List<Map<String, String>>? regenFiles;
     final userMsg = _messages[userIndex];
-    if (userMsg['isImage'] != true &&
-        userMsg['filePath'] != null &&
-        userMsg['filePath'].toString().isNotEmpty) {
-      try {
-        final fileBytes = await File(userMsg['filePath'].toString()).readAsBytes();
-        regenFiles = [{
-          'name': userMsg['fileName']?.toString() ?? 'file',
-          'content': base64Encode(fileBytes),
-        }];
-      } catch (_) {
-        // File no longer accessible, rely on message content
+    final filePaths = userMsg['filePaths'] as List<String>? ?? [];
+    final fileNames = userMsg['fileNames'] as List<String>? ?? [];
+    // Legacy single-file support
+    final singlePath = userMsg['filePath']?.toString() ?? '';
+    final singleName = userMsg['fileName']?.toString() ?? 'file';
+    if (filePaths.isNotEmpty) {
+      regenFiles = [];
+      for (int i = 0; i < filePaths.length; i++) {
+        try {
+          final bytes = await File(filePaths[i]).readAsBytes();
+          regenFiles!.add({'name': fileNames.length > i ? fileNames[i] : 'file', 'content': base64Encode(bytes)});
+        } catch (_) {}
       }
+      if (regenFiles!.isEmpty) regenFiles = null;
+    } else if (userMsg['isImage'] != true && singlePath.isNotEmpty) {
+      // Legacy single-file fallback
+      try {
+        final bytes = await File(singlePath).readAsBytes();
+        regenFiles = [{'name': singleName, 'content': base64Encode(bytes)}];
+      } catch (_) {}
     }
 
     // Remove old assistant message from history
@@ -591,59 +611,100 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   /// Parses ALL base64 images from message content and returns
-  /// a horizontally scrollable strip of image thumbnails.
+  /// a horizontally scrollable strip. Uses RepaintBoundary + ValueKey
+  /// to prevent flickering when parent setState is called during streaming.
   Widget _buildImagesRow(Map<String, dynamic> msg) {
     final content = (msg['content'] ?? '') as String;
-    // Extract all base64 data URIs from markdown: ![image](data:mime;base64,DATA)
     final pattern = RegExp(r'!\[image\]\(data:([^;]+);base64,([^)]+)\)');
     final matches = pattern.allMatches(content).toList();
 
     if (matches.isNotEmpty) {
-      final images = matches.map((m) {
-        try {
-          return base64Decode(m.group(2)!);
-        } catch (_) {
-          return null;
-        }
-      }).where((b) => b != null).toList();
-
-      if (images.isEmpty) return const SizedBox.shrink();
-
-      if (images.length == 1) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(images.first!, width: 250, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+      if (matches.length == 1) {
+        final b64 = matches.first.group(2)!;
+        return RepaintBoundary(
+          key: ValueKey('img_${b64.substring(0, b64.length.clamp(0, 20))}'),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(
+              base64Decode(b64),
+              width: 250, fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+            ),
+          ),
         );
       }
 
       // Multiple images — horizontal scroll
-      return SizedBox(
-        height: 180,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: images.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (ctx, i) => ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.memory(images[i]!, width: 160, height: 180, fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+      return RepaintBoundary(
+        key: ValueKey('imgs_${matches.length}'),
+        child: SizedBox(
+          height: 180,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            shrinkWrap: true,
+            itemCount: matches.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (ctx, i) {
+              final b64 = matches[i].group(2)!;
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.memory(
+                  base64Decode(b64),
+                  width: 160, height: 180, fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+                ),
+              );
+            },
           ),
         ),
       );
     }
 
-    // Fallback to file path (single image from disk)
+    // Fallback: single image from file path
     final filePath = (msg['filePath'] ?? '') as String;
-    if (filePath.isNotEmpty) {
+    if (filePath.isNotEmpty && msg['isImage'] == true) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Image.file(File(filePath), width: 250, fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
       );
     }
 
     return const SizedBox.shrink();
+  }
+
+  /// Builds a list of non-image file chips for user messages.
+  Widget _buildFileChips(Map<String, dynamic> msg) {
+    final fileNames = msg['fileNames'] as List<dynamic>?;
+    final fileNamesLegacy = msg['fileName'] as String?;
+
+    final names = fileNames != null && fileNames.isNotEmpty
+        ? fileNames.cast<String>()
+        : (fileNamesLegacy != null && fileNamesLegacy.isNotEmpty && msg['isImage'] != true
+            ? [fileNamesLegacy]
+            : <String>[]);
+
+    if (names.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: names.map((name) => Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: VegaTheme.card.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 16),
+          const SizedBox(width: 6),
+          Text(name, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+        ]),
+      )).toList(),
+    );
   }
 
   @override
@@ -791,10 +852,18 @@ class _ChatScreenState extends State<ChatScreen> {
         actions: [
           if (!_showNewChatScreen)
             IconButton(
-              icon: const Icon(Icons.drive_file_rename_outline, size: 24),
-              color: VegaTheme.textSecondary,
-              tooltip: 'Новый чат',
               onPressed: _startNewChat,
+              tooltip: 'Новый чат',
+              icon: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(Icons.square_outlined, color: VegaTheme.textSecondary, size: 22),
+                  Positioned(
+                    right: 0, bottom: 0,
+                    child: Icon(Icons.edit, color: VegaTheme.textSecondary, size: 13),
+                  ),
+                ],
+              ),
             ),
         ],
       ),
@@ -840,17 +909,15 @@ class _ChatScreenState extends State<ChatScreen> {
                                      margin: const EdgeInsets.only(bottom: 8),
                                      child: _buildImagesRow(msg),
                                    ),
-                                if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != true)
-                                  Container(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(color: VegaTheme.card.withOpacity(0.3), borderRadius: BorderRadius.circular(12)),
-                                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                      const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24),
-                                      const SizedBox(width: 8),
-                                      Text(msg['fileName'] ?? 'File', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
-                                    ]),
-                                  ),
+                                 // Non-image files — show chips for ALL files
+                                 if (msg['role'] == 'user' && msg['isImage'] != true && (
+                                   (msg['filePaths'] as List<dynamic>?)?.isNotEmpty == true ||
+                                   ((msg['filePath'] ?? '') as String).isNotEmpty
+                                 ))
+                                   Padding(
+                                     padding: const EdgeInsets.only(bottom: 8),
+                                     child: _buildFileChips(msg),
+                                   ),
                                 // Text message
                                 if (_stripImageMarkdown(msg['content'] ?? '').isNotEmpty)
                                   isUser
