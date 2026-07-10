@@ -98,17 +98,29 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> readFile(String path) async {
-    final resp = await http.post(Uri.parse('$baseUrl/api/files/read'), body: jsonEncode({'path': path}));
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/files/read'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'path': path}),
+    );
     return jsonDecode(resp.body);
   }
 
   Future<Map<String, dynamic>> writeFile(String path, String content) async {
-    final resp = await http.post(Uri.parse('$baseUrl/api/files/write'), body: jsonEncode({'path': path, 'content': content}));
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/files/write'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'path': path, 'content': content}),
+    );
     return jsonDecode(resp.body);
   }
 
   Future<Map<String, dynamic>> listFiles(String path) async {
-    final resp = await http.post(Uri.parse('$baseUrl/api/files/list'), body: jsonEncode({'path': path}));
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/files/list'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'path': path}),
+    );
     return jsonDecode(resp.body);
   }
 
