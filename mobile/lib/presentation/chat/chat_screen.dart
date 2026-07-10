@@ -590,22 +590,60 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildImageWidget(Map<String, dynamic> msg) {
-    final content = msg['content'] ?? '';
-    if (content.contains('base64,')) {
-      try {
-        final base64Str = content.split('base64,')[1];
-        final bytes = base64Decode(base64Str);
-        return Image.memory(bytes, width: 250, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
-      } catch (_) {}
+  /// Parses ALL base64 images from message content and returns
+  /// a horizontally scrollable strip of image thumbnails.
+  Widget _buildImagesRow(Map<String, dynamic> msg) {
+    final content = (msg['content'] ?? '') as String;
+    // Extract all base64 data URIs from markdown: ![image](data:mime;base64,DATA)
+    final pattern = RegExp(r'!\[image\]\(data:([^;]+);base64,([^)]+)\)');
+    final matches = pattern.allMatches(content).toList();
+
+    if (matches.isNotEmpty) {
+      final images = matches.map((m) {
+        try {
+          return base64Decode(m.group(2)!);
+        } catch (_) {
+          return null;
+        }
+      }).where((b) => b != null).toList();
+
+      if (images.isEmpty) return const SizedBox.shrink();
+
+      if (images.length == 1) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.memory(images.first!, width: 250, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+        );
+      }
+
+      // Multiple images — horizontal scroll
+      return SizedBox(
+        height: 180,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: images.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (ctx, i) => ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(images[i]!, width: 160, height: 180, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+          ),
+        ),
+      );
     }
-    final filePath = msg['filePath'] ?? '';
+
+    // Fallback to file path (single image from disk)
+    final filePath = (msg['filePath'] ?? '') as String;
     if (filePath.isNotEmpty) {
-      return Image.file(File(filePath), width: 250, fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.broken_image, color: VegaTheme.textSecondary)));
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.file(File(filePath), width: 250, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+      );
     }
-    return Container(width: 250, height: 100, color: VegaTheme.card, child: Icon(Icons.image, color: VegaTheme.textSecondary));
+
+    return const SizedBox.shrink();
   }
 
   @override
@@ -751,11 +789,13 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: Icon(Icons.edit_note_rounded, color: VegaTheme.textSecondary, size: 26),
-            tooltip: 'Новый чат',
-            onPressed: _startNewChat,
-          ),
+          if (!_showNewChatScreen)
+            IconButton(
+              icon: const Icon(Icons.drive_file_rename_outline, size: 24),
+              color: VegaTheme.textSecondary,
+              tooltip: 'Новый чат',
+              onPressed: _startNewChat,
+            ),
         ],
       ),
       body: Column(
@@ -795,15 +835,11 @@ class _ChatScreenState extends State<ChatScreen> {
                               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // File/image preview (no border)
-                                if (msg['isImage'] == true)
-                                  Container(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: _buildImageWidget(msg),
-                                    ),
-                                  ),
+                                if (msg['isImage'] == true || (msg['content'] as String? ?? '').contains('base64,'))
+                                   Container(
+                                     margin: const EdgeInsets.only(bottom: 8),
+                                     child: _buildImagesRow(msg),
+                                   ),
                                 if ((msg['filePath'] ?? '').isNotEmpty && msg['isImage'] != true)
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 8),
