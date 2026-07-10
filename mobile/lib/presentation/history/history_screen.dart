@@ -44,10 +44,37 @@ class _HistoryScreenState extends State<HistoryScreen> {
               itemBuilder: (ctx, i) {
                 final chat = _chats[i];
                 return ListTile(
-                  leading: Icon(Icons.chat_bubble_outline, color: VegaTheme.accent),
-                  title: Text(chat['title'] ?? 'Untitled', style: TextStyle(color: VegaTheme.textPrimary)),
+                  title: Text(
+                    chat['title'] ?? 'Untitled',
+                    style: TextStyle(color: VegaTheme.textPrimary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   subtitle: Text(chat['createdAt']?.toString().substring(0, 10) ?? '', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
-                  trailing: IconButton(icon: Icon(Icons.delete_outline, color: VegaTheme.textSecondary), onPressed: () => _deleteChat(chat['id'])),
+                  trailing: PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onSelected: (value) {
+                      if (value == 'delete') {
+                        _deleteChat(chat['id']);
+                      }
+                    },
+                    itemBuilder: (BuildContext context) {
+                      return [
+                        PopupMenuItem<String>(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                              const SizedBox(width: 8),
+                              Text('Delete', style: TextStyle(color: VegaTheme.textPrimary)),
+                            ],
+                          ),
+                        ),
+                      ];
+                    },
+                  ),
                   onTap: () => context.push('/chat', extra: chat['id']),
                 );
               },

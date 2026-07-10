@@ -15,6 +15,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_file_plus/open_file_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:markdown/markdown.dart' as md;
 
 class ChatScreen extends StatefulWidget {
@@ -136,60 +137,16 @@ class _ChatScreenState extends State<ChatScreen> {
   String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
 
   Future<void> _handleLinkTap(String url) async {
-    if (url.contains('/api/files/download')) {
-      final uri = Uri.parse(url);
-      final filePathParam = uri.queryParameters['path'] ?? 'downloaded_file';
-      final fileName = p.basename(filePathParam);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Скачивание файла $fileName...')),
-      );
-
-      try {
-        final fullUrl = url.startsWith('/') ? '${_client.baseUrl}$url' : url;
-        final response = await http.get(
-          Uri.parse(fullUrl),
-          headers: _client.apiKey.isNotEmpty ? {'Authorization': 'Bearer ${_client.apiKey}'} : {},
-        );
-
-        if (response.statusCode == 200) {
-          Directory? downloadDir;
-          if (Platform.isAndroid) {
-            downloadDir = Directory('/storage/emulated/0/Download');
-            if (!downloadDir.existsSync()) {
-              downloadDir = Directory('/sdcard/Download');
-            }
-          }
-          if (downloadDir == null || !downloadDir.existsSync()) {
-            downloadDir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
-          }
-
-          final savePath = p.join(downloadDir.path, fileName);
-          final file = File(savePath);
-          await file.writeAsBytes(response.bodyBytes);
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Файл сохранен: $savePath'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          throw Exception('HTTP ${response.statusCode}');
-        }
-      } catch (e) {
+    try {
+      final fullUrl = (url.startsWith('/') && !url.startsWith('//')) ? '${_client.baseUrl}$url' : url;
+      await launchUrl(Uri.parse(fullUrl), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      await Clipboard.setData(ClipboardData(text: url));
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка скачивания: $e'),
-            backgroundColor: Colors.redAccent,
-          ),
+          const SnackBar(content: Text('Ссылка скопирована в буфер обмена')),
         );
       }
-    } else {
-      await Clipboard.setData(ClipboardData(text: url));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ссылка скопирована в буфер обмена')),
-      );
     }
   }
 
@@ -815,7 +772,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Downloads the generated file to the standard Downloads folder (sequential fallbacks for modern Android).
+  /// Downloads the generated file (triggers native system browser download manager to bypass Scoped Storage).
   Future<void> _downloadGeneratedFile(String filePath, String fileName) async {
     setState(() {
       _fileDownloadStatus[filePath] = 'loading';
@@ -824,56 +781,28 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final downloadUrl = '/api/files/download?path=$filePath';
       final fullUrl = '${_client.baseUrl}$downloadUrl';
-      final response = await http.get(
-        Uri.parse(fullUrl),
-        headers: _client.apiKey.isNotEmpty ? {'Authorization': 'Bearer ${_client.apiKey}'} : {},
-      );
+      final uri = Uri.parse(fullUrl);
 
-      if (response.statusCode == 200) {
-        List<String> targetDirs = [];
-        if (Platform.isAndroid) {
-          targetDirs.add('/storage/emulated/0/Download');
-          targetDirs.add('/storage/emulated/0/Vega_Chat');
-          targetDirs.add('/sdcard/Download');
-        }
-        
-        final extDir = await getExternalStorageDirectory();
-        if (extDir != null) targetDirs.add(extDir.path);
-        final docDir = await getApplicationDocumentsDirectory();
-        targetDirs.add(docDir.path);
+      // Open the URL in the system browser to trigger a native download to the user's Downloads folder
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
 
-        bool success = false;
-        for (final dirPath in targetDirs) {
-          final dir = Directory(dirPath);
-          try {
-            if (!dir.existsSync()) {
-              dir.createSync(recursive: true);
-            }
-            final file = File(p.join(dir.path, fileName));
-            await file.writeAsBytes(response.bodyBytes);
-            success = true;
-            break;
-          } catch (e) {
-            print('Failed to write to $dirPath: $e');
-          }
-        }
-
-        if (success) {
+      // Show success animation state briefly
+      setState(() {
+        _fileDownloadStatus[filePath] = 'success';
+      });
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
           setState(() {
-            _fileDownloadStatus[filePath] = 'success';
+            _fileDownloadStatus[filePath] = 'idle';
           });
-        } else {
-          throw Exception('Не удалось сохранить файл. Пожалуйста, разрешите доступ к памяти в настройках Vega Chat.');
         }
-      } else {
-        throw Exception('HTTP ${response.statusCode}');
-      }
+      });
     } catch (e) {
       setState(() {
         _fileDownloadStatus[filePath] = 'idle';
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка скачивания: $e')),
+        SnackBar(content: Text('Ошибка запуска загрузки: $e')),
       );
     }
   }
@@ -1098,12 +1027,36 @@ class _ChatScreenState extends State<ChatScreen> {
                           return ListTile(
                             selected: isActive,
                             selectedTileColor: VegaTheme.card,
-                            leading: Icon(Icons.chat_bubble_outline, color: isActive ? VegaTheme.accent : VegaTheme.textSecondary),
-                            title: Text(chat['title'] ?? 'Untitled', style: TextStyle(color: isActive ? VegaTheme.accent : VegaTheme.textPrimary)),
+                            title: Text(
+                              chat['title'] ?? 'Untitled',
+                              style: TextStyle(color: isActive ? VegaTheme.accent : VegaTheme.textPrimary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             subtitle: Text(chat['createdAt']?.toString().substring(0, 10) ?? '', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
-                            trailing: IconButton(
-                              icon: Icon(Icons.delete_outline, color: VegaTheme.textSecondary, size: 20),
-                              onPressed: () => _deleteChat(chat['id']),
+                            trailing: PopupMenuButton<String>(
+                              icon: Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 20),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onSelected: (value) {
+                                if (value == 'delete') {
+                                  _deleteChat(chat['id']);
+                                }
+                              },
+                              itemBuilder: (BuildContext context) {
+                                return [
+                                  PopupMenuItem<String>(
+                                    value: 'delete',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text('Delete', style: TextStyle(color: VegaTheme.textPrimary)),
+                                      ],
+                                    ),
+                                  ),
+                                ];
+                              },
                             ),
                             onTap: () => _openChat(chat['id']),
                           );
