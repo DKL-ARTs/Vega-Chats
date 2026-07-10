@@ -37,6 +37,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSearching = false;
   String _searchQuery = '';
   final _searchController = TextEditingController();
+  bool _isTyping = false; // tracks whether user has typed anything
 
   @override
   void initState() {
@@ -47,6 +48,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
     }
+    _controller.addListener(() {
+      final typing = _controller.text.isNotEmpty;
+      if (typing != _isTyping) setState(() => _isTyping = typing);
+    });
   }
 
   @override
@@ -534,7 +539,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Logo from asset
+                // Logo, greeting, subtitle — always visible
                 TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0.85, end: 1.0),
                   duration: const Duration(milliseconds: 2000),
@@ -563,58 +568,67 @@ class _ChatScreenState extends State<ChatScreen> {
                   },
                 ),
                 const SizedBox(height: 20),
-                // Greeting — main title
-                Text(
-                  _getGreeting(),
-                  style: const TextStyle(
-                    color: VegaTheme.textPrimary,
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Пишу код, ищу ошибки, отвечаю\nна вопросы и генерирую идеи',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: VegaTheme.textSecondary,
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                // 2x2 suggestion grid
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 2.6,
-                  children: suggestions.map((s) => GestureDetector(
-                    onTap: () {
-                      _controller.text = s['prompt']!;
-                      _controller.selection = TextSelection.fromPosition(
-                        TextPosition(offset: _controller.text.length),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: VegaTheme.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: VegaTheme.border, width: 0.5),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(s['icon']!, style: const TextStyle(fontSize: 18)),
-                          const SizedBox(width: 8),
-                          Flexible(child: Text(s['text']!, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                        ],
-                      ),
+                // Greeting + subtitle — hidden while typing
+                if (!_isTyping) ...[
+                  Text(
+                    _getGreeting(),
+                    style: const TextStyle(
+                      color: VegaTheme.textPrimary,
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
                     ),
-                  )).toList(),
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Пишу код, ищу ошибки, отвечаю\nна вопросы и генерирую идеи',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: VegaTheme.textSecondary,
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // 2x2 suggestion grid
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 2.6,
+                    children: suggestions.map((s) => GestureDetector(
+                      onTap: () {
+                        _controller.text = s['prompt']!;
+                        _controller.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _controller.text.length),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: VegaTheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: VegaTheme.border, width: 0.5),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(s['icon']!, style: const TextStyle(fontSize: 18)),
+                            const SizedBox(width: 8),
+                            Flexible(child: Text(s['text']!, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+                ], // end if !_isTyping
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
               ],
             ),
           ),
@@ -1063,24 +1077,32 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
+          // Bottom gradient — sits on TOP of input bar, fades the last messages
+          // IgnorePointer so clicks still reach input bar below
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            child: IgnorePointer(
+              child: Container(
+                height: 90,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      VegaTheme.dark.withOpacity(0.92),
+                      VegaTheme.dark.withOpacity(0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Input bar + attachment strip — floats at the bottom
           Positioned(
             left: 0, right: 0, bottom: 0,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IgnorePointer(
-                  child: Container(
-                    height: 40,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [VegaTheme.dark, VegaTheme.dark.withOpacity(0)],
-                      ),
-                    ),
-                  ),
-                ),
-                if (_attachedFiles.isNotEmpty)
                   Container(
                     height: 80,
                     color: VegaTheme.surface,
@@ -1171,20 +1193,28 @@ class _ChatScreenState extends State<ChatScreen> {
                               child: const Icon(Icons.stop_rounded, color: VegaTheme.accent, size: 22),
                             ),
                           )
-                        : Container(
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xFF7C4DFF), Color(0xFF5C6BC0)],
+                        : Builder(builder: (ctx) {
+                            final hasContent = _controller.text.trim().isNotEmpty || _attachedFiles.isNotEmpty;
+                            return Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: hasContent
+                                  ? const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [Color(0xFF7C4DFF), Color(0xFF5C6BC0)],
+                                    )
+                                  : null,
+                                color: hasContent ? null : VegaTheme.surface,
                               ),
-                            ),
-                            child: IconButton(
-                              onPressed: _send,
-                              icon: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 22),
-                            ),
-                          ),
+                              child: IconButton(
+                                onPressed: hasContent ? _send : null,
+                                icon: Icon(Icons.arrow_upward_rounded,
+                                  color: hasContent ? Colors.white : VegaTheme.textSecondary,
+                                  size: 22),
+                              ),
+                            );
+                          }),
                     ]),
                   ),
                 ),
