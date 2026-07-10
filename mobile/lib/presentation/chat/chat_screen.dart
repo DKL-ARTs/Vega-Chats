@@ -27,7 +27,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final _client = ApiClient();
   bool _loading = false;
   bool _cancelStream = false;
-  // Multiple attachments: each entry has 'path', 'name', 'isImage'
   final List<Map<String, dynamic>> _attachedFiles = [];
   String _model = 'openrouter/auto';
   int? _currentChatId;
@@ -48,6 +47,14 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_currentChatId != null) {
       _loadChat(_currentChatId!);
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload settings (model etc.) every time this screen becomes active
+    // e.g. after returning from Settings page
+    _loadSettings();
   }
 
   @override
@@ -83,12 +90,17 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.clear();
       for (final msg in messages) {
+        // Restore filePaths/fileNames lists (new format)
+        final rawPaths = msg['filePaths'];
+        final rawNames = msg['fileNames'];
         _messages.add({
           'role': msg['role'] ?? '',
           'content': msg['content'] ?? '',
           'filePath': msg['filePath'] ?? '',
           'fileName': msg['fileName'] ?? '',
           'isImage': msg['isImage'] ?? false,
+          'filePaths': rawPaths is List ? rawPaths.cast<String>() : <String>[],
+          'fileNames': rawNames is List ? rawNames.cast<String>() : <String>[],
         });
       }
     });
@@ -161,6 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await ChatHistory.addMessage(
       _currentChatId!, 'user', msgContent,
       filePath: firstFilePath, fileName: firstFileName, isImage: firstIsImage,
+      filePaths: allFilePaths, fileNames: allFileNames,
     );
     await _loadChats();
     // Collect all file paths for display in chat bubble
@@ -676,7 +689,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return const SizedBox.shrink();
   }
 
-  /// Builds a list of non-image file chips for user messages.
+  /// Builds a horizontal scrollable row of non-image file chips.
   Widget _buildFileChips(Map<String, dynamic> msg) {
     final fileNames = msg['fileNames'] as List<dynamic>?;
     final fileNamesLegacy = msg['fileName'] as String?;
@@ -689,21 +702,23 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (names.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: names.map((name) => Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: VegaTheme.card.withOpacity(0.4),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 16),
-          const SizedBox(width: 6),
-          Text(name, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-        ]),
-      )).toList(),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: names.map((name) => Container(
+          margin: const EdgeInsets.only(right: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: VegaTheme.card.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 15),
+            const SizedBox(width: 5),
+            Text(name, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 12)),
+          ]),
+        )).toList(),
+      ),
     );
   }
 
@@ -821,6 +836,7 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         backgroundColor: VegaTheme.dark,
         elevation: 0,
+        titleSpacing: 0,
         leading: Builder(
           builder: (ctx) => IconButton(
             icon: Icon(Icons.menu, color: VegaTheme.textSecondary),
@@ -848,21 +864,33 @@ class _ChatScreenState extends State<ChatScreen> {
             ],
           ),
         ),
-        centerTitle: true,
         actions: [
           if (!_showNewChatScreen)
-            IconButton(
-              onPressed: _startNewChat,
-              tooltip: 'Новый чат',
-              icon: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(Icons.square_outlined, color: VegaTheme.textSecondary, size: 22),
-                  Positioned(
-                    right: 0, bottom: 0,
-                    child: Icon(Icons.edit, color: VegaTheme.textSecondary, size: 13),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                onPressed: _startNewChat,
+                tooltip: 'Новый чат',
+                icon: SizedBox(
+                  width: 24, height: 24,
+                  child: Stack(
+                    children: [
+                      // Rounded square border
+                      Container(
+                        width: 22, height: 22,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: VegaTheme.textSecondary, width: 1.8),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                      // Pencil centered inside
+                      const Positioned(
+                        right: 1, bottom: 1,
+                        child: Icon(Icons.edit, color: VegaTheme.textSecondary, size: 12),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
         ],

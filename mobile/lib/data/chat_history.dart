@@ -43,6 +43,8 @@ class ChatHistory {
     String filePath = '',
     String fileName = '',
     bool isImage = false,
+    List<String> filePaths = const [],
+    List<String> fileNames = const [],
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString(_key);
@@ -63,6 +65,8 @@ class ChatHistory {
           'filePath': filePath,
           'fileName': fileName,
           'isImage': isImage,
+          'filePaths': filePaths,
+          'fileNames': fileNames,
           'createdAt': DateTime.now().toIso8601String(),
         });
         chat['messages'] = messages;
