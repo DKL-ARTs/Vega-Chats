@@ -629,13 +629,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ],
     );
   }
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   /// Parses ALL base64 images from message content and returns
   /// a horizontally scrollable strip. Uses RepaintBoundary + ValueKey
