@@ -14,6 +14,8 @@ import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:open_file_plus/open_file_plus.dart';
+import 'package:markdown/markdown.dart' as md;
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -784,56 +786,23 @@ class _ChatScreenState extends State<ChatScreen> {
     return cleaned.trim();
   }
 
-  /// Opens the generated file directly inside the chat screen using a text editor dialog.
+  /// Opens the generated file directly using native Android intent chooser.
   void _openGeneratedFile(String path, String name) async {
     try {
-      final result = await _client.readFile(path);
-      final controller = TextEditingController(text: result['content'] ?? '');
-      if (!mounted) return;
+      final tempDir = await getTemporaryDirectory();
+      final localFile = File(p.join(tempDir.path, name));
       
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: VegaTheme.surface,
-          title: Row(
-            children: [
-              Expanded(child: Text(name, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14))),
-              IconButton(
-                icon: const Icon(Icons.save, color: VegaTheme.accent, size: 20),
-                onPressed: () async {
-                  await _client.writeFile(path, controller.text);
-                  Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Файл сохранен в рабочей директории'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-          content: Container(
-            width: double.maxFinite,
-            height: MediaQuery.of(context).size.height * 0.5,
-            child: TextField(
-              controller: controller,
-              maxLines: null,
-              keyboardType: TextInputType.multiline,
-              style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontFamily: 'monospace'),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Закрыть', style: TextStyle(color: VegaTheme.textSecondary)),
-            ),
-          ],
-        ),
-      );
+      // Cache file locally if it's not downloaded
+      if (!localFile.existsSync()) {
+        final result = await _client.readFile(path);
+        final content = result['content'] ?? '';
+        await localFile.writeAsString(content, encoding: utf8);
+      }
+      
+      final openResult = await OpenFile.open(localFile.path);
+      if (openResult.type != ResultType.done) {
+        throw Exception(openResult.message);
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Не удалось открыть файл: $e')),
@@ -841,7 +810,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Downloads the generated file to the standard Downloads folder.
+  /// Downloads the generated file to the standard Downloads folder (sequential fallbacks for modern Android).
   Future<void> _downloadGeneratedFile(String filePath, String fileName) async {
     setState(() {
       _fileDownloadStatus[filePath] = 'loading';
@@ -856,24 +825,41 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       if (response.statusCode == 200) {
-        Directory? downloadDir;
+        List<String> targetDirs = [];
         if (Platform.isAndroid) {
-          downloadDir = Directory('/storage/emulated/0/Download');
-          if (!downloadDir.existsSync()) {
-            downloadDir = Directory('/sdcard/Download');
+          targetDirs.add('/storage/emulated/0/Download');
+          targetDirs.add('/storage/emulated/0/Vega_Chat');
+          targetDirs.add('/sdcard/Download');
+        }
+        
+        final extDir = await getExternalStorageDirectory();
+        if (extDir != null) targetDirs.add(extDir.path);
+        final docDir = await getApplicationDocumentsDirectory();
+        targetDirs.add(docDir.path);
+
+        bool success = false;
+        for (final dirPath in targetDirs) {
+          final dir = Directory(dirPath);
+          try {
+            if (!dir.existsSync()) {
+              dir.createSync(recursive: true);
+            }
+            final file = File(p.join(dir.path, fileName));
+            await file.writeAsBytes(response.bodyBytes);
+            success = true;
+            break;
+          } catch (e) {
+            print('Failed to write to $dirPath: $e');
           }
         }
-        if (downloadDir == null || !downloadDir.existsSync()) {
-          downloadDir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+
+        if (success) {
+          setState(() {
+            _fileDownloadStatus[filePath] = 'success';
+          });
+        } else {
+          throw Exception('Не удалось записать файл в доступные папки');
         }
-
-        final savePath = p.join(downloadDir.path, fileName);
-        final file = File(savePath);
-        await file.writeAsBytes(response.bodyBytes);
-
-        setState(() {
-          _fileDownloadStatus[filePath] = 'success';
-        });
       } else {
         throw Exception('HTTP ${response.statusCode}');
       }
@@ -1286,6 +1272,14 @@ class _ChatScreenState extends State<ChatScreen> {
                                                      _handleLinkTap(href);
                                                    }
                                                  },
+                                                 builders: {
+                                                   'pre': CodeBlockBuilder(onCopy: (code) {
+                                                     Clipboard.setData(ClipboardData(text: code));
+                                                     ScaffoldMessenger.of(context).showSnackBar(
+                                                       const SnackBar(content: Text('Код скопирован в буфер обмена')),
+                                                     );
+                                                   }),
+                                                 },
                                                  styleSheet: MarkdownStyleSheet(
                                                    p: TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.6),
                                                    h1: TextStyle(color: VegaTheme.textPrimary, fontSize: 28, fontWeight: FontWeight.bold, height: 1.3),
@@ -1516,6 +1510,85 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Custom markdown element builder for block code with Copy button and language tag.
+class CodeBlockBuilder extends MarkdownElementBuilder {
+  final void Function(String code) onCopy;
+  CodeBlockBuilder({required this.onCopy});
+
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    final textContent = element.textContent;
+    String language = 'code';
+    if (element.children != null && element.children!.isNotEmpty) {
+      final child = element.children!.first;
+      if (child is md.Element && child.attributes.containsKey('class')) {
+        final className = child.attributes['class'] ?? '';
+        if (className.startsWith('language-')) {
+          language = className.substring(9);
+        }
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: VegaTheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: VegaTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: VegaTheme.card.withOpacity(0.5),
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8)),
+              border: Border(bottom: BorderSide(color: VegaTheme.border, width: 0.5)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  language.toUpperCase(),
+                  style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+                GestureDetector(
+                  onTap: () => onCopy(textContent),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.copy, size: 14, color: VegaTheme.textSecondary),
+                      const SizedBox(width: 4),
+                      Text('Copy', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Code Display
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(
+                textContent.trimRight(),
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: VegaTheme.accent,
+                ),
+              ),
             ),
           ),
         ],
