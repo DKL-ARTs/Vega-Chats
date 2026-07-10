@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -130,6 +131,64 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
+
+  Future<void> _handleLinkTap(String url) async {
+    if (url.contains('/api/files/download')) {
+      final uri = Uri.parse(url);
+      final filePathParam = uri.queryParameters['path'] ?? 'downloaded_file';
+      final fileName = p.basename(filePathParam);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Скачивание файла $fileName...')),
+      );
+
+      try {
+        final fullUrl = url.startsWith('/') ? '${_client.baseUrl}$url' : url;
+        final response = await http.get(
+          Uri.parse(fullUrl),
+          headers: _client.apiKey.isNotEmpty ? {'Authorization': 'Bearer ${_client.apiKey}'} : {},
+        );
+
+        if (response.statusCode == 200) {
+          Directory? downloadDir;
+          if (Platform.isAndroid) {
+            downloadDir = Directory('/storage/emulated/0/Download');
+            if (!downloadDir.existsSync()) {
+              downloadDir = Directory('/sdcard/Download');
+            }
+          }
+          if (downloadDir == null || !downloadDir.existsSync()) {
+            downloadDir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+          }
+
+          final savePath = p.join(downloadDir.path, fileName);
+          final file = File(savePath);
+          await file.writeAsBytes(response.bodyBytes);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Файл сохранен: $savePath'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          throw Exception('HTTP ${response.statusCode}');
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка скачивания: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } else {
+      await Clipboard.setData(ClipboardData(text: url));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ссылка скопирована в буфер обмена')),
+      );
+    }
+  }
 
   Future<void> _send() async {
     final text = _controller.text.trim();
@@ -567,7 +626,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     );
                   },
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 10),
                 // Greeting + subtitle — hidden while typing
                 if (!_isTyping) ...[
                   Text(
@@ -588,11 +647,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       height: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   // 2x2 suggestion grid
                   GridView.count(
                     crossAxisCount: 2,
                     shrinkWrap: true,
+                    padding: EdgeInsets.zero,
                     physics: const NeverScrollableScrollPhysics(),
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
@@ -983,11 +1043,16 @@ class _ChatScreenState extends State<ChatScreen> {
                                         )
                                       : Padding(
                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-                                          child: MarkdownBody(
-                                            selectable: true,
-                                            data: _stripImageMarkdown(msg['content'] ?? ''),
-                                            shrinkWrap: true,
-                                            styleSheet: MarkdownStyleSheet(
+                                           child: MarkdownBody(
+                                             selectable: true,
+                                             data: _stripImageMarkdown(msg['content'] ?? ''),
+                                             shrinkWrap: true,
+                                             onTapLink: (text, href, title) {
+                                               if (href != null) {
+                                                 _handleLinkTap(href);
+                                               }
+                                             },
+                                             styleSheet: MarkdownStyleSheet(
                                               p: TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.6),
                                               h1: TextStyle(color: VegaTheme.textPrimary, fontSize: 28, fontWeight: FontWeight.bold, height: 1.3),
                                               h1Padding: const EdgeInsets.only(top: 16, bottom: 8),
@@ -1070,8 +1135,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-          // Bottom gradient — sits on TOP of input bar, fades the last messages
-          // IgnorePointer so clicks still reach input bar below
           Positioned(
             left: 0, right: 0, bottom: 0,
             child: IgnorePointer(
@@ -1082,7 +1145,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      VegaTheme.dark.withOpacity(0.92),
+                      VegaTheme.dark,
                       VegaTheme.dark.withOpacity(0),
                     ],
                   ),
@@ -1090,12 +1153,12 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-          // Input bar + attachment strip — floats at the bottom
           Positioned(
             left: 0, right: 0, bottom: 0,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (_attachedFiles.isNotEmpty)
                   Container(
                     height: 80,
                     color: VegaTheme.surface,
@@ -1121,7 +1184,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)),
                                     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                                       Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24),
-                                      const SizedBox(height: 2),
+                                      const SizedBox(height: 10),
                                       Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 4),
                                         child: Text(

@@ -88,7 +88,7 @@ async def chat_stream(request: Request):
         if api_key.startswith("skorv1"):
             api_key = "sk-or-v1-" + api_key[6:]
 
-    # Add system message for text-only responses
+    # Add system message for text-only responses + tools instructions
     system_msg = {
         "role": "system",
         "content": (
@@ -102,9 +102,37 @@ async def chat_stream(request: Request):
             "- --- горизонтальные разделители между крупными секциями\n"
             "- Таблицы когда нужно сравнение\n"
             "Когда пользователь отправляет изображение, опиши что на нём видишь текстом. "
-            "Не используй JSON, координаты или структурированные форматы."
+            "Не используй JSON, координаты или структурированные форматы.\n\n"
+            "СОЗДАНИЕ ФАЙЛОВ: Если пользователь просит тебя: 'сохрани код в файл', 'создай файл', 'напиши скрипт в файле', 'скачать код' или сделать что-то в отдельном файле, ты ДОЛЖЕН вызвать инструмент write_file(path, content).\n"
+            "Если твоя модель не поддерживает вызовы инструментов напрямую, выведи специальный текстовый блок прямо в ответе в таком формате:\n"
+            "[WRITE_FILE:имя_файла.расширение]\nсодержимое файла\n[/WRITE_FILE]"
         )
     }
+
+    # Define write_file tool
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "description": "Записать контент в файл на диск и предоставить ссылку для скачивания пользователю.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Имя файла или относительный путь (например, code.py, docs/readme.md)"
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Полное содержимое файла"
+                        }
+                    },
+                    "required": ["path", "content"]
+                }
+            }
+        }
+    ]
 
     # Process files (text files only)
     import base64
@@ -141,7 +169,10 @@ async def chat_stream(request: Request):
 
     async def generate():
         try:
-            async for raw_chunk in provider.stream(processed_messages, model, api_key=api_key):
+            tool_calls_accumulator = {}
+            accumulated_text = ""
+
+            async for raw_chunk in provider.stream(processed_messages, model, api_key=api_key, tools=tools):
                 # Handle multi-line chunks (provider may yield multiple lines at once)
                 lines = raw_chunk.split("\n")
                 for chunk in lines:
@@ -159,11 +190,71 @@ async def chat_stream(request: Request):
                                 delta = choices[0].get("delta", {})
                                 delta_content = delta.get("content", "")
                                 if delta_content:
+                                    accumulated_text += delta_content
                                     yield "data: " + json.dumps({"content": delta_content}, ensure_ascii=False) + "\n\n"
+                                
+                                # Accumulate tool calls
+                                tool_calls = delta.get("tool_calls", [])
+                                for tc in tool_calls:
+                                    idx = tc.get("index", 0)
+                                    if idx not in tool_calls_accumulator:
+                                        tool_calls_accumulator[idx] = {"id": "", "name": "", "arguments": ""}
+                                    if tc.get("id"):
+                                        tool_calls_accumulator[idx]["id"] = tc["id"]
+                                    if tc.get("function", {}).get("name"):
+                                        tool_calls_accumulator[idx]["name"] = tc["function"]["name"]
+                                    if tc.get("function", {}).get("arguments"):
+                                        tool_calls_accumulator[idx]["arguments"] += tc["function"]["arguments"]
                         except Exception:
                             pass
                     elif not chunk.startswith("Error:") and not chunk.startswith(":"):
                         yield "data: " + json.dumps({"content": chunk}, ensure_ascii=False) + "\n\n"
+            
+            # 1. Process structured tool calls (if model used tools)
+            for idx, tc in sorted(tool_calls_accumulator.items()):
+                name = tc.get("name")
+                args_str = tc.get("arguments", "")
+                if name == "write_file" and args_str:
+                    try:
+                        args = json.loads(args_str)
+                        file_path = args.get("path")
+                        file_content = args.get("content")
+                        if file_path and file_content is not None:
+                            from app.files.manager import safe_path
+                            p = safe_path(file_path)
+                            p.parent.mkdir(parents=True, exist_ok=True)
+                            p.write_text(file_content, encoding="utf-8")
+                            download_url = f"/api/files/download?path={file_path}"
+                            msg = (
+                                f"\n\n### 💾 Создан файл: `{p.name}`\n"
+                                f"Вы можете [Скачать `{p.name}`]({download_url})\n"
+                            )
+                            yield "data: " + json.dumps({"content": msg}, ensure_ascii=False) + "\n\n"
+                    except Exception as e:
+                        err_msg = f"\n\n❌ Ошибка создания файла `{args.get('path', 'unknown')}`: {str(e)}\n"
+                        yield "data: " + json.dumps({"content": err_msg}, ensure_ascii=False) + "\n\n"
+
+            # 2. Process text tags fallback
+            import re
+            tag_pattern = re.compile(r'\[WRITE_FILE:(.*?)\]([\s\S]*?)\[/WRITE_FILE\]')
+            matches = tag_pattern.findall(accumulated_text)
+            for file_path, file_content in matches:
+                file_path = file_path.strip()
+                try:
+                    from app.files.manager import safe_path
+                    p = safe_path(file_path)
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_text(file_content, encoding="utf-8")
+                    download_url = f"/api/files/download?path={file_path}"
+                    msg = (
+                        f"\n\n### 💾 Создан файл из блока: `{p.name}`\n"
+                        f"Вы можете [Скачать `{p.name}`]({download_url})\n"
+                    )
+                    yield "data: " + json.dumps({"content": msg}, ensure_ascii=False) + "\n\n"
+                except Exception as e:
+                    err_msg = f"\n\n❌ Ошибка создания файла `{file_path}`: {str(e)}\n"
+                    yield "data: " + json.dumps({"content": err_msg}, ensure_ascii=False) + "\n\n"
+
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: Error: {str(e)}\n\n"

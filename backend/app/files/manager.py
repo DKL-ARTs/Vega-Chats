@@ -50,3 +50,17 @@ async def list_files(req: FileRead):
             "size": child.stat().st_size if child.is_file() else 0,
         })
     return {"items": items, "path": str(p)}
+
+from fastapi.responses import FileResponse
+
+@router.get("/files/download")
+async def download_file(path: str):
+    p = safe_path(path)
+    if not p.exists() or not p.is_file():
+        raise HTTPException(404, "File not found")
+    return FileResponse(
+        path=p,
+        filename=p.name,
+        media_type="application/octet-stream"
+    )
+
