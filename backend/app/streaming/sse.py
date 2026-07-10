@@ -310,6 +310,20 @@ async def chat_stream(request: Request):
             import re
             tag_pattern = re.compile(r'\[WRITE_FILE:(.*?)\]([\s\S]*?)(?:\[/WRITE_FILE\]|$)')
             matches = tag_pattern.findall(accumulated_text)
+
+            # Write debug logs to a file in the workspace
+            try:
+                import os
+                from app.config import settings
+                debug_dir = settings.workspace_root
+                os.makedirs(debug_dir, exist_ok=True)
+                with open(os.path.join(debug_dir, "backend_logs.txt"), "w", encoding="utf-8") as f:
+                    f.write(f"ACCUMULATED_TEXT:\n{accumulated_text}\n\n")
+                    f.write(f"MATCHES: {str(matches)}\n")
+            except Exception as log_err:
+                import sys
+                sys.stderr.write(f"[DEBUG_LOG_ERROR] {log_err}\n")
+                sys.stderr.flush()
             for file_path, file_content in matches:
                 file_path = file_path.strip()
                 if not file_path:
