@@ -737,6 +737,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: VegaTheme.dark,
+      extendBodyBehindAppBar: true,
       drawer: Drawer(
         width: MediaQuery.of(context).size.width * 0.75,
         backgroundColor: VegaTheme.surface,
@@ -844,8 +845,10 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
       appBar: AppBar(
-        backgroundColor: VegaTheme.dark,
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         titleSpacing: 0,
         leading: Builder(
           builder: (ctx) => IconButton(
@@ -915,7 +918,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
                     child: ListView.builder(
                       padding: EdgeInsets.fromLTRB(
-                        16, 16, 16,
+                        16,
+                        MediaQuery.of(context).padding.top + kToolbarHeight + 8,
+                        16,
                         16 + 70 + (_attachedFiles.isNotEmpty ? 88 : 0),
                       ),
                       itemCount: _messages.length + (_loading ? 1 : 0),
@@ -1042,12 +1047,17 @@ class _ChatScreenState extends State<ChatScreen> {
             top: 0, left: 0, right: 0,
             child: IgnorePointer(
               child: Container(
-                height: 32,
+                height: MediaQuery.of(context).padding.top + kToolbarHeight + 16,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [VegaTheme.dark, VegaTheme.dark.withOpacity(0)],
+                    colors: [
+                      VegaTheme.dark,
+                      VegaTheme.dark.withOpacity(0.85),
+                      VegaTheme.dark.withOpacity(0),
+                    ],
+                    stops: const [0.0, 0.65, 1.0],
                   ),
                 ),
               ),
@@ -1125,9 +1135,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       },
                     ),
                   ),
+                // Input bar — transparent background
                 Container(
-                  decoration: const BoxDecoration(color: VegaTheme.dark),
-                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
+                  decoration: const BoxDecoration(color: Colors.transparent),
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
                   child: SafeArea(
                     top: false,
                     child: Row(children: [
