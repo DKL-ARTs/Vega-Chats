@@ -314,11 +314,24 @@ async def chat_stream(request: Request):
                 file_path = file_path.strip()
                 if not file_path:
                     continue
+                
+                # Strip markdown code block backticks from file content if present
+                clean_content = file_content.strip()
+                if clean_content.startswith("```"):
+                    first_newline = clean_content.find("\n")
+                    if first_newline != -1:
+                        clean_content = clean_content[first_newline+1:]
+                    if clean_content.endswith("```"):
+                        clean_content = clean_content[:-3]
+                    elif clean_content.rstrip().endswith("```"):
+                        clean_content = clean_content.rstrip()[:-3]
+                clean_content = clean_content.strip()
+
                 try:
                     from app.files.manager import safe_path
                     p = safe_path(file_path)
                     p.parent.mkdir(parents=True, exist_ok=True)
-                    p.write_text(file_content, encoding="utf-8")
+                    p.write_text(clean_content, encoding="utf-8")
                     download_url = f"/api/files/download?path={file_path}"
                     msg = (
                         f"\n\n### 💾 Создан файл из блока: `{p.name}`\n"

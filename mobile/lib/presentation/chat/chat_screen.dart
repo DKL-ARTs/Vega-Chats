@@ -778,6 +778,13 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Cleans the raw file download markdown block from assistant message content.
   String _cleanMessageContent(String content) {
     String cleaned = content;
+    // Strip write file tags
+    cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\]'), '');
+    cleaned = cleaned.replaceAll('[/WRITE_FILE]', '');
+    cleaned = cleaned.replaceAll(RegExp(r'WRITE_FILE:.*?\]'), '');
+    // Strip markdown code blocks
+    cleaned = cleaned.replaceAll(RegExp(r'```[\s\S]*?```'), '');
+    // Strip download links
     cleaned = cleaned.replaceAll(RegExp(r'\[[^\]]*?\]\(/api/files/download\?path=[^)]+\)'), '');
     cleaned = cleaned.replaceAll(RegExp(r'Вы можете\s*$'), '');
     cleaned = cleaned.replaceAll(RegExp(r'Вы можете\s*\n'), '');
@@ -1287,7 +1294,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                                    em: TextStyle(color: VegaTheme.textPrimary, fontStyle: FontStyle.italic),
                                                    blockSpacing: 14,
                                                    code: TextStyle(color: VegaTheme.accent, backgroundColor: VegaTheme.surface, fontFamily: 'monospace', fontSize: 13),
-                                                   codeblockDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: VegaTheme.border)),
+                                                   codeblockDecoration: const BoxDecoration(color: Colors.transparent),
                                                    codeblockPadding: const EdgeInsets.all(14),
                                                    blockquoteDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(4), border: Border(left: BorderSide(color: VegaTheme.accent, width: 3))),
                                                    blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
