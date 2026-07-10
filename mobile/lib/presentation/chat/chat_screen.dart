@@ -39,6 +39,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _searchQuery = '';
   final _searchController = TextEditingController();
   bool _isTyping = false; // tracks whether user has typed anything
+  final Map<String, String> _fileDownloadStatus = {}; // tracks 'path' -> 'idle' | 'loading' | 'success'
 
   @override
   void initState() {
@@ -756,6 +757,235 @@ class _ChatScreenState extends State<ChatScreen> {
     return const SizedBox.shrink();
   }
 
+  /// Parses list of generated files from assistant content.
+  List<Map<String, String>> _extractGeneratedFiles(String content) {
+    final List<Map<String, String>> list = [];
+    final pattern = RegExp(r'\[([^\]]*?)\]\(/api/files/download\?path=([^)]+)\)');
+    for (final match in pattern.allMatches(content)) {
+      final name = match.group(1) ?? 'file';
+      final path = match.group(2) ?? '';
+      if (path.isNotEmpty) {
+        // Extract original name from text (e.g. "Скачать filename" or "Скачать `filename`" -> "filename")
+        String cleanName = name.replaceAll('Скачать ', '').replaceAll('файл ', '').replaceAll('`', '').trim();
+        list.add({'name': cleanName, 'path': path});
+      }
+    }
+    return list;
+  }
+
+  /// Cleans the raw file download markdown block from assistant message content.
+  String _cleanMessageContent(String content) {
+    String cleaned = content;
+    cleaned = cleaned.replaceAll(RegExp(r'\[[^\]]*?\]\(/api/files/download\?path=[^)]+\)'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'Вы можете\s*$'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'Вы можете\s*\n'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'### 💾 Создан файл.*?\n'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'### 💾 Создан файл.*?$'), '');
+    return cleaned.trim();
+  }
+
+  /// Opens the generated file directly inside the chat screen using a text editor dialog.
+  void _openGeneratedFile(String path, String name) async {
+    try {
+      final result = await _client.readFile(path);
+      final controller = TextEditingController(text: result['content'] ?? '');
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: VegaTheme.surface,
+          title: Row(
+            children: [
+              Expanded(child: Text(name, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14))),
+              IconButton(
+                icon: const Icon(Icons.save, color: VegaTheme.accent, size: 20),
+                onPressed: () async {
+                  await _client.writeFile(path, controller.text);
+                  Navigator.of(ctx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Файл сохранен в рабочей директории'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          content: Container(
+            width: double.maxFinite,
+            height: MediaQuery.of(context).size.height * 0.5,
+            child: TextField(
+              controller: controller,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontFamily: 'monospace'),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Закрыть', style: TextStyle(color: VegaTheme.textSecondary)),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось открыть файл: $e')),
+      );
+    }
+  }
+
+  /// Downloads the generated file to the standard Downloads folder.
+  Future<void> _downloadGeneratedFile(String filePath, String fileName) async {
+    setState(() {
+      _fileDownloadStatus[filePath] = 'loading';
+    });
+
+    try {
+      final downloadUrl = '/api/files/download?path=$filePath';
+      final fullUrl = '${_client.baseUrl}$downloadUrl';
+      final response = await http.get(
+        Uri.parse(fullUrl),
+        headers: _client.apiKey.isNotEmpty ? {'Authorization': 'Bearer ${_client.apiKey}'} : {},
+      );
+
+      if (response.statusCode == 200) {
+        Directory? downloadDir;
+        if (Platform.isAndroid) {
+          downloadDir = Directory('/storage/emulated/0/Download');
+          if (!downloadDir.existsSync()) {
+            downloadDir = Directory('/sdcard/Download');
+          }
+        }
+        if (downloadDir == null || !downloadDir.existsSync()) {
+          downloadDir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+        }
+
+        final savePath = p.join(downloadDir.path, fileName);
+        final file = File(savePath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        setState(() {
+          _fileDownloadStatus[filePath] = 'success';
+        });
+      } else {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      setState(() {
+        _fileDownloadStatus[filePath] = 'idle';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка скачивания: $e')),
+      );
+    }
+  }
+
+  /// Builds a custom generated file card (looks exactly like picked files).
+  Widget _buildGeneratedFileCard(String fileName, String filePath) {
+    final status = _fileDownloadStatus[filePath] ?? 'idle';
+    
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: VegaTheme.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: VegaTheme.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: VegaTheme.accent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 28),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fileName,
+                      style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Generated File',
+                      style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: () => _openGeneratedFile(filePath, fileName),
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('Открыть'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: VegaTheme.textPrimary,
+                    backgroundColor: VegaTheme.surface,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: status == 'loading' ? null : () => _downloadGeneratedFile(filePath, fileName),
+                  icon: status == 'loading'
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: VegaTheme.accent),
+                        )
+                      : Icon(
+                          status == 'success' ? Icons.check : Icons.download,
+                          color: status == 'success' ? Colors.green : VegaTheme.accent,
+                          size: 16,
+                        ),
+                  label: Text(
+                    status == 'loading'
+                        ? 'Скачивание...'
+                        : (status == 'success' ? 'Скачано' : 'Скачать'),
+                    style: TextStyle(
+                      color: status == 'success' ? Colors.green : VegaTheme.textPrimary,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: VegaTheme.textPrimary,
+                    backgroundColor: VegaTheme.surface,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Builds a horizontal scrollable row of non-image file chips (large, like single-file).
   Widget _buildFileChips(Map<String, dynamic> msg) {
     final fileNames = msg['fileNames'] as List<dynamic>?;
@@ -1041,45 +1271,56 @@ class _ChatScreenState extends State<ChatScreen> {
                                           ),
                                           child: Text(_stripImageMarkdown(msg['content'] ?? ''), style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15)),
                                         )
-                                      : Padding(
-                                          padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-                                           child: MarkdownBody(
-                                             selectable: true,
-                                             data: _stripImageMarkdown(msg['content'] ?? ''),
-                                             shrinkWrap: true,
-                                             onTapLink: (text, href, title) {
-                                               if (href != null) {
-                                                 _handleLinkTap(href);
-                                               }
-                                             },
-                                             styleSheet: MarkdownStyleSheet(
-                                              p: TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.6),
-                                              h1: TextStyle(color: VegaTheme.textPrimary, fontSize: 28, fontWeight: FontWeight.bold, height: 1.3),
-                                              h1Padding: const EdgeInsets.only(top: 16, bottom: 8),
-                                              h2: TextStyle(color: VegaTheme.textPrimary, fontSize: 24, fontWeight: FontWeight.bold, height: 1.3),
-                                              h2Padding: const EdgeInsets.only(top: 14, bottom: 6),
-                                              h3: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold, height: 1.3),
-                                              h3Padding: const EdgeInsets.only(top: 12, bottom: 4),
-                                              strong: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold),
-                                              em: TextStyle(color: VegaTheme.textPrimary, fontStyle: FontStyle.italic),
-                                              blockSpacing: 14,
-                                              code: TextStyle(color: VegaTheme.accent, backgroundColor: VegaTheme.surface, fontFamily: 'monospace', fontSize: 13),
-                                              codeblockDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: VegaTheme.border)),
-                                              codeblockPadding: const EdgeInsets.all(14),
-                                              blockquoteDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(4), border: Border(left: BorderSide(color: VegaTheme.accent, width: 3))),
-                                              blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-                                              horizontalRuleDecoration: BoxDecoration(border: Border(top: BorderSide(color: VegaTheme.border, width: 1))),
-                                              listBullet: TextStyle(color: VegaTheme.accent, fontSize: 15, fontWeight: FontWeight.bold),
-                                              listBulletPadding: const EdgeInsets.only(right: 6),
-                                              listIndent: 20,
-                                              tableHead: TextStyle(color: VegaTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
-                                              tableBody: TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-                                              tableBorder: TableBorder.all(color: VegaTheme.border, width: 0.5),
-                                              tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                              a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
-                                            ),
-                                          ),
-                                        ),
+                                       : Padding(
+                                           padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+                                           child: Column(
+                                             crossAxisAlignment: CrossAxisAlignment.start,
+                                             mainAxisSize: MainAxisSize.min,
+                                             children: [
+                                               MarkdownBody(
+                                                 selectable: true,
+                                                 data: _stripImageMarkdown(_cleanMessageContent(msg['content'] ?? '')),
+                                                 shrinkWrap: true,
+                                                 onTapLink: (text, href, title) {
+                                                   if (href != null) {
+                                                     _handleLinkTap(href);
+                                                   }
+                                                 },
+                                                 styleSheet: MarkdownStyleSheet(
+                                                   p: TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.6),
+                                                   h1: TextStyle(color: VegaTheme.textPrimary, fontSize: 28, fontWeight: FontWeight.bold, height: 1.3),
+                                                   h1Padding: const EdgeInsets.only(top: 16, bottom: 8),
+                                                   h2: TextStyle(color: VegaTheme.textPrimary, fontSize: 24, fontWeight: FontWeight.bold, height: 1.3),
+                                                   h2Padding: const EdgeInsets.only(top: 14, bottom: 6),
+                                                   h3: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold, height: 1.3),
+                                                   h3Padding: const EdgeInsets.only(top: 12, bottom: 4),
+                                                   strong: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold),
+                                                   em: TextStyle(color: VegaTheme.textPrimary, fontStyle: FontStyle.italic),
+                                                   blockSpacing: 14,
+                                                   code: TextStyle(color: VegaTheme.accent, backgroundColor: VegaTheme.surface, fontFamily: 'monospace', fontSize: 13),
+                                                   codeblockDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: VegaTheme.border)),
+                                                   codeblockPadding: const EdgeInsets.all(14),
+                                                   blockquoteDecoration: BoxDecoration(color: VegaTheme.surface, borderRadius: BorderRadius.circular(4), border: Border(left: BorderSide(color: VegaTheme.accent, width: 3))),
+                                                   blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                                                   horizontalRuleDecoration: BoxDecoration(border: Border(top: BorderSide(color: VegaTheme.border, width: 1))),
+                                                   listBullet: TextStyle(color: VegaTheme.accent, fontSize: 15, fontWeight: FontWeight.bold),
+                                                   listBulletPadding: const EdgeInsets.only(right: 6),
+                                                   listIndent: 20,
+                                                   tableHead: TextStyle(color: VegaTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+                                                   tableBody: TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+                                                   tableBorder: TableBorder.all(color: VegaTheme.border, width: 0.5),
+                                                   tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                   a: const TextStyle(color: VegaTheme.accent, decoration: TextDecoration.underline),
+                                                 ),
+                                               ),
+                                               ..._extractGeneratedFiles(msg['content'] ?? '').map((file) {
+                                                 final fileName = file['name'] ?? 'file';
+                                                 final filePath = file['path'] ?? '';
+                                                 return _buildGeneratedFileCard(fileName, filePath);
+                                               }).toList(),
+                                             ],
+                                           ),
+                                         ),
                               ],
                             ),
                           ),
