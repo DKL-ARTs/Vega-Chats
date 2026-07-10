@@ -793,18 +793,16 @@ class _ChatScreenState extends State<ChatScreen> {
     return cleaned.trim();
   }
 
-  /// Opens the generated file directly using native Android intent chooser.
+  /// Opens the generated file directly using native Android intent chooser (always fetches fresh content).
   void _openGeneratedFile(String path, String name) async {
     try {
       final tempDir = await getTemporaryDirectory();
       final localFile = File(p.join(tempDir.path, name));
       
-      // Cache file locally if it's not downloaded
-      if (!localFile.existsSync()) {
-        final result = await _client.readFile(path);
-        final content = result['content'] ?? '';
-        await localFile.writeAsString(content, encoding: utf8);
-      }
+      // Always fetch fresh content to bypass persistent local cache bugs
+      final result = await _client.readFile(path);
+      final content = result['content'] ?? '';
+      await localFile.writeAsString(content, encoding: utf8);
       
       final openResult = await OpenFile.open(localFile.path);
       if (openResult.type != ResultType.done) {
@@ -865,7 +863,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _fileDownloadStatus[filePath] = 'success';
           });
         } else {
-          throw Exception('Не удалось записать файл в доступные папки');
+          throw Exception('Не удалось сохранить файл. Пожалуйста, разрешите доступ к памяти в настройках Vega Chat.');
         }
       } else {
         throw Exception('HTTP ${response.statusCode}');
