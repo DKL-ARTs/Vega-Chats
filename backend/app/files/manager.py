@@ -12,7 +12,11 @@ class FileWrite(BaseModel):
     path: str
     content: str
 
-def safe_path(path: str, root: str = "/root/workspace") -> Path:
+from app.config import settings
+
+def safe_path(path: str, root: str = None) -> Path:
+    if root is None:
+        root = settings.workspace_root
     p = Path(path)
     if p.is_absolute():
         p = Path(root) / p.relative_to("/") if str(p).startswith("/") else p
