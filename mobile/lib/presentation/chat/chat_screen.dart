@@ -449,10 +449,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildWelcomeScreen() {
     final suggestions = [
-      {'icon': '💻', 'text': 'Помоги написать код', 'prompt': 'Помоги мне написать код на '},
-      {'icon': '📚', 'text': 'Объясни тему', 'prompt': 'Объясни мне простыми словами что такое '},
+      {'icon': '💻', 'text': 'Написать код', 'prompt': 'Помоги мне написать код на '},
+      {'icon': '📚', 'text': 'Объяснить тему', 'prompt': 'Объясни мне простыми словами что такое '},
       {'icon': '✍️', 'text': 'Написать текст', 'prompt': 'Напиши текст на тему '},
-      {'icon': '💡', 'text': 'Придумай идею', 'prompt': 'Придумай интересную идею для '},
+      {'icon': '💡', 'text': 'Придумать идею', 'prompt': 'Придумай интересную идею для '},
     ];
 
     return Stack(
@@ -491,14 +491,15 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ),
-        // Content
-        Center(
+        // Content — positioned slightly above center
+        Align(
+          alignment: const Alignment(0, -0.15),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Animated logo
+                // Logo from asset
                 TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0.85, end: 1.0),
                   duration: const Duration(milliseconds: 2000),
@@ -507,49 +508,33 @@ class _ChatScreenState extends State<ChatScreen> {
                     return Transform.scale(
                       scale: value,
                       child: Container(
-                        width: 80,
-                        height: 80,
+                        width: 72,
+                        height: 72,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFF7C4DFF), Color(0xFF2196F3)],
-                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: VegaTheme.accent.withOpacity(0.3 * value),
-                              blurRadius: 30 * value,
-                              spreadRadius: 5 * value,
+                              color: VegaTheme.accent.withOpacity(0.25 * value),
+                              blurRadius: 28 * value,
+                              spreadRadius: 4 * value,
                             ),
                           ],
                         ),
-                        child: const Center(
-                          child: Text('✦', style: TextStyle(fontSize: 36, color: Colors.white)),
+                        child: ClipOval(
+                          child: Image.asset('assets/logo.png', fit: BoxFit.cover),
                         ),
                       ),
                     );
                   },
                 ),
-                const SizedBox(height: 24),
-                // App name
-                const Text(
-                  'Vega AI',
-                  style: TextStyle(
-                    color: VegaTheme.textPrimary,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Greeting
+                const SizedBox(height: 20),
+                // Greeting — main title
                 Text(
                   _getGreeting(),
                   style: const TextStyle(
-                    color: VegaTheme.accent,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
+                    color: VegaTheme.textPrimary,
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -562,60 +547,38 @@ class _ChatScreenState extends State<ChatScreen> {
                     height: 1.5,
                   ),
                 ),
-                const SizedBox(height: 36),
-                // Suggestion chips
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  alignment: WrapAlignment.center,
+                const SizedBox(height: 28),
+                // 2x2 suggestion grid
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 2.6,
                   children: suggestions.map((s) => GestureDetector(
                     onTap: () {
                       _controller.text = s['prompt']!;
                       _controller.selection = TextSelection.fromPosition(
                         TextPosition(offset: _controller.text.length),
                       );
-                      FocusScope.of(context).requestFocus(FocusNode()); // trigger keyboard indirectly
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: VegaTheme.surface,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: VegaTheme.border, width: 0.5),
                       ),
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(s['icon']!, style: const TextStyle(fontSize: 18)),
-                          const SizedBox(width: 10),
-                          Text(s['text']!, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
+                          const SizedBox(width: 8),
+                          Flexible(child: Text(s['text']!, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
                         ],
                       ),
                     ),
                   )).toList(),
-                ),
-                const SizedBox(height: 32),
-                // Model indicator
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: VegaTheme.card,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 6, height: 6,
-                        decoration: const BoxDecoration(shape: BoxShape.circle, color: VegaTheme.accent),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _model.split('/').last,
-                        style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
-                      ),
-                    ],
-                  ),
                 ),
               ],
             ),
@@ -763,6 +726,28 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: () => _scaffoldKey.currentState?.openDrawer(),
           ),
         ),
+        title: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: VegaTheme.card,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6, height: 6,
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: VegaTheme.accent),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _model.split('/').last,
+                style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        centerTitle: true,
         actions: [
           if (!_showNewChatScreen)
             IconButton(
