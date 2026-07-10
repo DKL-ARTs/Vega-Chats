@@ -1152,6 +1152,33 @@ class _ChatScreenState extends State<ChatScreen> {
                         ? GestureDetector(
                             onTap: _stopGeneration,
                             child: Container(
+                              width: 46, height: 46,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: VegaTheme.accent, width: 2),
+                              ),
+                              child: const Icon(Icons.stop_rounded, color: VegaTheme.accent, size: 22),
+                            ),
+                          )
+                        : Container(
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [Color(0xFF7C4DFF), Color(0xFF5C6BC0)],
+                              ),
+                            ),
+                            child: IconButton(
+                              onPressed: _send,
+                              icon: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 22),
+                            ),
+                          ),
+                    ]),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
