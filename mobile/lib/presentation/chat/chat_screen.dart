@@ -170,13 +170,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    await ChatHistory.addMessage(
-      _currentChatId!, 'user', msgContent,
-      filePath: firstFilePath, fileName: firstFileName, isImage: firstIsImage,
-      filePaths: allFilePaths, fileNames: allFileNames,
-    );
-    await _loadChats();
-    // Collect all file paths for display in chat bubble
+    // Collect all non-image file paths for display + persistence
     final List<String> allFilePaths = attachedSnapshot
         .where((f) => f['isImage'] != true)
         .map((f) => f['path'] as String)
@@ -185,11 +179,17 @@ class _ChatScreenState extends State<ChatScreen> {
         .where((f) => f['isImage'] != true)
         .map((f) => f['name'] as String)
         .toList();
+
+    await ChatHistory.addMessage(
+      _currentChatId!, 'user', msgContent,
+      filePath: firstFilePath, fileName: firstFileName, isImage: firstIsImage,
+      filePaths: allFilePaths, fileNames: allFileNames,
+    );
+    await _loadChats();
     setState(() {
       _messages.add({
         'role': 'user', 'content': msgContent,
         'filePath': firstFilePath, 'fileName': firstFileName, 'isImage': firstIsImage,
-        // Store ALL file paths/names for multi-file display
         'filePaths': allFilePaths,
         'fileNames': allFileNames,
       });
