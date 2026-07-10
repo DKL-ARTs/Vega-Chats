@@ -439,6 +439,192 @@ class _ChatScreenState extends State<ChatScreen> {
     return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
   }
 
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 6) return 'Доброй ночи 🌙';
+    if (hour < 12) return 'Доброе утро ☀️';
+    if (hour < 18) return 'Добрый день 👋';
+    return 'Добрый вечер ✨';
+  }
+
+  Widget _buildWelcomeScreen() {
+    final suggestions = [
+      {'icon': '💻', 'text': 'Помоги написать код', 'prompt': 'Помоги мне написать код на '},
+      {'icon': '📚', 'text': 'Объясни тему', 'prompt': 'Объясни мне простыми словами что такое '},
+      {'icon': '✍️', 'text': 'Написать текст', 'prompt': 'Напиши текст на тему '},
+      {'icon': '💡', 'text': 'Придумай идею', 'prompt': 'Придумай интересную идею для '},
+    ];
+
+    return Stack(
+      children: [
+        // Ambient glow background
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(0.7, -0.4),
+                radius: 1.2,
+                colors: [Color(0x147C4DFF), Color(0x00000000)],
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(-0.8, 0.6),
+                radius: 1.0,
+                colors: [Color(0x102196F3), Color(0x00000000)],
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(0.0, 1.0),
+                radius: 0.8,
+                colors: [Color(0x0A00BCD4), Color(0x00000000)],
+              ),
+            ),
+          ),
+        ),
+        // Content
+        Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Animated logo
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.85, end: 1.0),
+                  duration: const Duration(milliseconds: 2000),
+                  curve: Curves.easeInOut,
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF7C4DFF), Color(0xFF2196F3)],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: VegaTheme.accent.withOpacity(0.3 * value),
+                              blurRadius: 30 * value,
+                              spreadRadius: 5 * value,
+                            ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Text('✦', style: TextStyle(fontSize: 36, color: Colors.white)),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                // App name
+                const Text(
+                  'Vega AI',
+                  style: TextStyle(
+                    color: VegaTheme.textPrimary,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Greeting
+                Text(
+                  _getGreeting(),
+                  style: const TextStyle(
+                    color: VegaTheme.accent,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Пишу код, ищу ошибки, отвечаю\nна вопросы и генерирую идеи',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: VegaTheme.textSecondary,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 36),
+                // Suggestion chips
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.center,
+                  children: suggestions.map((s) => GestureDetector(
+                    onTap: () {
+                      _controller.text = s['prompt']!;
+                      _controller.selection = TextSelection.fromPosition(
+                        TextPosition(offset: _controller.text.length),
+                      );
+                      FocusScope.of(context).requestFocus(FocusNode()); // trigger keyboard indirectly
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: VegaTheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: VegaTheme.border, width: 0.5),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(s['icon']!, style: const TextStyle(fontSize: 18)),
+                          const SizedBox(width: 10),
+                          Text(s['text']!, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
+                        ],
+                      ),
+                    ),
+                  )).toList(),
+                ),
+                const SizedBox(height: 32),
+                // Model indicator
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: VegaTheme.card,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6, height: 6,
+                        decoration: const BoxDecoration(shape: BoxShape.circle, color: VegaTheme.accent),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _model.split('/').last,
+                        style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildImageWidget(Map<String, dynamic> msg) {
     final content = msg['content'] ?? '';
     if (content.contains('base64,')) {
@@ -589,7 +775,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Expanded(
             child: _showNewChatScreen
-                ? Center(child: Text('Start a conversation', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 16)))
+                ? _buildWelcomeScreen()
                 : GestureDetector(
                     behavior: HitTestBehavior.translucent,
                     onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -741,14 +927,54 @@ class _ChatScreenState extends State<ChatScreen> {
               ]),
             ),
           Container(
-            padding: const EdgeInsets.all(12),
-            color: VegaTheme.dark,
-            child: Row(children: [
-              IconButton(icon: Icon(Icons.attach_file, color: VegaTheme.textSecondary), onPressed: _showAttachMenu),
-              Expanded(child: TextField(controller: _controller, style: TextStyle(color: VegaTheme.textPrimary), decoration: InputDecoration(hintText: 'Message...', hintStyle: TextStyle(color: VegaTheme.textSecondary), filled: true, fillColor: VegaTheme.surface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)), onSubmitted: (_) => _send())),
-              const SizedBox(width: 8),
-              IconButton(onPressed: _loading ? null : _send, icon: Icon(Icons.send, color: VegaTheme.accent)),
-            ]),
+            decoration: BoxDecoration(
+              color: VegaTheme.dark,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+            child: SafeArea(
+              top: false,
+              child: Row(children: [
+                IconButton(icon: Icon(Icons.attach_file, color: VegaTheme.textSecondary), onPressed: _showAttachMenu),
+                Expanded(child: TextField(
+                  controller: _controller,
+                  style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15),
+                  maxLines: 4,
+                  minLines: 1,
+                  decoration: InputDecoration(
+                    hintText: 'Сообщение...',
+                    hintStyle: TextStyle(color: VegaTheme.textSecondary),
+                    filled: true,
+                    fillColor: VegaTheme.surface,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  ),
+                  onSubmitted: (_) => _send(),
+                )),
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: _loading ? null : const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF7C4DFF), Color(0xFF5C6BC0)],
+                    ),
+                    color: _loading ? VegaTheme.card : null,
+                  ),
+                  child: IconButton(
+                    onPressed: _loading ? null : _send,
+                    icon: Icon(Icons.arrow_upward_rounded, color: _loading ? VegaTheme.textSecondary : Colors.white, size: 22),
+                  ),
+                ),
+              ]),
+            ),
           ),
         ],
       ),
