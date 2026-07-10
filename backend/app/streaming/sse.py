@@ -37,6 +37,40 @@ def parse_message_content(content):
     return clean_text, images
 
 
+def parse_arguments_fallback(args_str: str) -> tuple[str, str]:
+    path = ""
+    content = ""
+    # Try to find path
+    path_match = re.search(r'"path"\s*:\s*"(.*?)"', args_str)
+    if path_match:
+        path = path_match.group(1)
+    
+    # Try to find content
+    content_match = re.search(r'"content"\s*:\s*"([\s\S]*?)"\s*}?$', args_str)
+    if content_match:
+        content = content_match.group(1)
+    else:
+        content_start = re.search(r'"content"\s*:\s*"', args_str)
+        if content_start:
+            start_idx = content_start.end()
+            end_idx = args_str.rfind('"')
+            if end_idx > start_idx:
+                content = args_str[start_idx:end_idx]
+            else:
+                content = args_str[start_idx:]
+                
+    try:
+        # Wrap in quotes and load as JSON to unescape properly
+        import json
+        escaped_content = content.replace('\n', '\\n').replace('\r', '\\r')
+        content = json.loads(f'"{escaped_content}"')
+    except Exception:
+        # Manual replacement fallback
+        content = content.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
+        
+    return path, content
+
+
 @router.post("/chat/stream")
 async def chat_stream(request: Request):
     # Log immediately on entry (before anything else)
@@ -241,11 +275,23 @@ async def chat_stream(request: Request):
                 name = tc.get("name")
                 args_str = tc.get("arguments", "")
                 if name == "write_file" and args_str:
+                    file_path = None
+                    file_content = None
                     try:
                         args = json.loads(args_str)
                         file_path = args.get("path")
                         file_content = args.get("content")
-                        if file_path and file_content is not None:
+                    except Exception as json_err:
+                        # Try manual fallback recovery for raw newlines/unescaped json
+                        try:
+                            file_path, file_content = parse_arguments_fallback(args_str)
+                        except Exception as fallback_err:
+                            err_msg = f"\n\n❌ Ошибка разбора параметров файла: {str(json_err)} (Fallback: {str(fallback_err)})\n"
+                            yield "data: " + json.dumps({"content": err_msg}, ensure_ascii=False) + "\n\n"
+                            continue
+
+                    if file_path and file_content is not None:
+                        try:
                             from app.files.manager import safe_path
                             p = safe_path(file_path)
                             p.parent.mkdir(parents=True, exist_ok=True)
@@ -256,16 +302,18 @@ async def chat_stream(request: Request):
                                 f"Вы можете [Скачать `{p.name}`]({download_url})\n"
                             )
                             yield "data: " + json.dumps({"content": msg}, ensure_ascii=False) + "\n\n"
-                    except Exception as e:
-                        err_msg = f"\n\n❌ Ошибка создания файла `{args.get('path', 'unknown')}`: {str(e)}\n"
-                        yield "data: " + json.dumps({"content": err_msg}, ensure_ascii=False) + "\n\n"
+                        except Exception as e:
+                            err_msg = f"\n\n❌ Ошибка создания файла `{file_path}`: {str(e)}\n"
+                            yield "data: " + json.dumps({"content": err_msg}, ensure_ascii=False) + "\n\n"
 
-            # 2. Process text tags fallback
+            # 2. Process text tags fallback (handles unclosed tags too)
             import re
-            tag_pattern = re.compile(r'\[WRITE_FILE:(.*?)\]([\s\S]*?)\[/WRITE_FILE\]')
+            tag_pattern = re.compile(r'\[WRITE_FILE:(.*?)\]([\s\S]*?)(?:\[/WRITE_FILE\]|$)')
             matches = tag_pattern.findall(accumulated_text)
             for file_path, file_content in matches:
                 file_path = file_path.strip()
+                if not file_path:
+                    continue
                 try:
                     from app.files.manager import safe_path
                     p = safe_path(file_path)

@@ -1273,12 +1273,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                                    }
                                                  },
                                                  builders: {
-                                                   'pre': CodeBlockBuilder(onCopy: (code) {
-                                                     Clipboard.setData(ClipboardData(text: code));
-                                                     ScaffoldMessenger.of(context).showSnackBar(
-                                                       const SnackBar(content: Text('Код скопирован в буфер обмена')),
-                                                     );
-                                                   }),
+                                                   'pre': CodeBlockBuilder(),
                                                  },
                                                  styleSheet: MarkdownStyleSheet(
                                                    p: TextStyle(color: VegaTheme.textPrimary, fontSize: 15, height: 1.6),
@@ -1520,8 +1515,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
 /// Custom markdown element builder for block code with Copy button and language tag.
 class CodeBlockBuilder extends MarkdownElementBuilder {
-  final void Function(String code) onCopy;
-  CodeBlockBuilder({required this.onCopy});
+  CodeBlockBuilder();
 
   @override
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
@@ -1549,7 +1543,7 @@ class CodeBlockBuilder extends MarkdownElementBuilder {
         children: [
           // Header Bar
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
               color: VegaTheme.card.withOpacity(0.5),
               borderRadius: const BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8)),
@@ -1562,17 +1556,7 @@ class CodeBlockBuilder extends MarkdownElementBuilder {
                   language.toUpperCase(),
                   style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.bold),
                 ),
-                GestureDetector(
-                  onTap: () => onCopy(textContent),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.copy, size: 14, color: VegaTheme.textSecondary),
-                      const SizedBox(width: 4),
-                      Text('Copy', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11)),
-                    ],
-                  ),
-                ),
+                CopyButton(text: textContent),
               ],
             ),
           ),
@@ -1592,6 +1576,62 @@ class CodeBlockBuilder extends MarkdownElementBuilder {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A stateful Copy Button with a tap animation and transition to a checkmark on success.
+class CopyButton extends StatefulWidget {
+  final String text;
+  const CopyButton({super.key, required this.text});
+
+  @override
+  State<CopyButton> createState() => _CopyButtonState();
+}
+
+class _CopyButtonState extends State<CopyButton> {
+  bool _copied = false;
+
+  void _doCopy() async {
+    await Clipboard.setData(ClipboardData(text: widget.text));
+    setState(() => _copied = true);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() => _copied = false);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _doCopy,
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _copied ? Icons.check : Icons.copy,
+                size: 14,
+                color: _copied ? Colors.green : VegaTheme.textSecondary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                _copied ? 'Copied!' : 'Copy',
+                style: TextStyle(
+                  color: _copied ? Colors.green : VegaTheme.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
