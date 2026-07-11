@@ -30,7 +30,7 @@ jobs:
 
       - name: Build APK
         working-directory: ./mobile
-        run: flutter build apk --release --split-per-abi -v
+        run: flutter build apk --release --split-per-abi
 
       - name: Release APK
         run: |
