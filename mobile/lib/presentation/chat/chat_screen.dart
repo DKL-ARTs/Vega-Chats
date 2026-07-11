@@ -249,6 +249,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final finalResponse = responseBuffer.toString();
       if (_currentChatId != null && finalResponse.isNotEmpty) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', finalResponse);
+        _autoUpdateChatTitle(_currentChatId!);
       }
     } catch (e) {
       _stopThinking();
@@ -341,6 +342,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final finalResponse = responseBuffer.toString();
       if (_currentChatId != null && finalResponse.isNotEmpty) {
         await ChatHistory.addMessage(_currentChatId!, 'assistant', finalResponse);
+        _autoUpdateChatTitle(_currentChatId!);
       }
     } catch (e) {
       if (mounted) setState(() { _messages.last["content"] = "Error: $e"; });
@@ -418,6 +420,91 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_currentChatId == chatId) {
         _startNewChat();
       }
+    }
+  }
+
+  Future<void> _togglePinChat(int chatId) async {
+    await ChatHistory.togglePinChat(chatId);
+    await _loadChats();
+  }
+
+  Future<void> _renameChat(int chatId, String currentTitle) async {
+    final textController = TextEditingController(text: currentTitle);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Text('Переименовать чат', style: TextStyle(color: VegaTheme.textPrimary)),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          style: const TextStyle(color: VegaTheme.textPrimary),
+          decoration: const InputDecoration(
+            hintText: 'Введите название',
+            hintStyle: TextStyle(color: VegaTheme.textSecondary),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final newTitle = textController.text.trim();
+              if (newTitle.isNotEmpty) {
+                await ChatHistory.updateChatTitle(chatId, newTitle);
+                await _loadChats();
+              }
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Сохранить', style: TextStyle(color: VegaTheme.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _autoUpdateChatTitle(int chatId) async {
+    try {
+      final messages = await ChatHistory.getMessages(chatId);
+      if (messages.isEmpty) return;
+      
+      final len = messages.length;
+      if (len != 2 && len % 10 != 0) return;
+      
+      final List<Map<String, dynamic>> summaryMessages = [
+        {
+          'role': 'system',
+          'content': 'Вы — полезный ассистент. Твоя единственная задача — придумать ОЧЕНЬ короткое и емкое название (2-4 слова) на русском языке для диалога по его началу или продолжению. Ответь ТОЛЬКО названием, БЕЗ кавычек, БЕЗ знаков препинания на конце и БЕЗ пояснений.',
+        }
+      ];
+      
+      final startIdx = len > 10 ? len - 10 : 0;
+      for (int i = startIdx; i < len; i++) {
+        final m = messages[i];
+        final content = m['content'] as String? ?? '';
+        final cleanContent = content.replaceAll(RegExp(r'```[\s\S]*?```'), '[код]');
+        summaryMessages.add({
+          'role': m['role'] ?? 'user',
+          'content': cleanContent.length > 200 ? cleanContent.substring(0, 200) + '...' : cleanContent,
+        });
+      }
+      
+      final titleResponse = await _client.chat(
+        messages: summaryMessages,
+        model: _model,
+      );
+      
+      final cleanTitle = titleResponse.trim().replaceAll('"', '').replaceAll("'", '').replaceAll('.', '');
+      if (cleanTitle.isNotEmpty && cleanTitle.length < 50 && !cleanTitle.startsWith('Error:')) {
+        await ChatHistory.updateChatTitle(chatId, cleanTitle);
+        await _loadChats();
+      }
+    } catch (e) {
+      print('Auto-title update failed: $e');
     }
   }
 
@@ -967,7 +1054,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Chats', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text('Vega Chat', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
                     Row(
                       children: [
                         IconButton(
@@ -1031,11 +1118,21 @@ class _ChatScreenState extends State<ChatScreen> {
                             dense: true,
                             visualDensity: const VisualDensity(vertical: -2),
                             contentPadding: const EdgeInsets.only(left: 16, right: 4),
-                            title: Text(
-                              chat['title'] ?? 'Untitled',
-                              style: TextStyle(color: isActive ? VegaTheme.accent : VegaTheme.textPrimary, fontSize: 14),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            title: Row(
+                              children: [
+                                if (chat['pinned'] == true) ...[
+                                  Icon(Icons.push_pin, color: VegaTheme.accent, size: 12),
+                                  const SizedBox(width: 4),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    chat['title'] ?? 'Untitled',
+                                    style: TextStyle(color: isActive ? VegaTheme.accent : VegaTheme.textPrimary, fontSize: 14),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
                             trailing: PopupMenuButton<String>(
                               icon: Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 18),
@@ -1044,10 +1141,35 @@ class _ChatScreenState extends State<ChatScreen> {
                               onSelected: (value) {
                                 if (value == 'delete') {
                                   _deleteChat(chat['id']);
+                                } else if (value == 'pin') {
+                                  _togglePinChat(chat['id']);
+                                } else if (value == 'rename') {
+                                  _renameChat(chat['id'], chat['title'] ?? 'Untitled');
                                 }
                               },
                               itemBuilder: (BuildContext context) {
+                                final isPinned = chat['pinned'] == true;
                                 return [
+                                  PopupMenuItem<String>(
+                                    value: 'pin',
+                                    child: Row(
+                                      children: [
+                                        Icon(isPinned ? Icons.push_pin_outlined : Icons.push_pin, color: VegaTheme.accent, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text(isPinned ? 'Открепить' : 'Закрепить', style: TextStyle(color: VegaTheme.textPrimary)),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem<String>(
+                                    value: 'rename',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.edit_outlined, color: VegaTheme.textSecondary, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text('Переименовать', style: TextStyle(color: VegaTheme.textPrimary)),
+                                      ],
+                                    ),
+                                  ),
                                   PopupMenuItem<String>(
                                     value: 'delete',
                                     child: Row(

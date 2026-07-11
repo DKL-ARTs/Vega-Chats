@@ -11,7 +11,17 @@ class ChatHistory {
     try {
       final decoded = jsonDecode(data);
       if (decoded is! List) return [];
-      return decoded.cast<Map<String, dynamic>>();
+      final list = decoded.cast<Map<String, dynamic>>();
+      list.sort((a, b) {
+        final aPinned = a['pinned'] == true;
+        final bPinned = b['pinned'] == true;
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        final aId = a['id'] as int? ?? 0;
+        final bId = b['id'] as int? ?? 0;
+        return bId.compareTo(aId);
+      });
+      return list;
     } catch (e) {
       return [];
     }
@@ -116,5 +126,28 @@ class ChatHistory {
     final chats = await getChats();
     chats.removeWhere((c) => c['id'] == chatId);
     await saveChats(chats);
+  }
+
+  static Future<void> updateChatTitle(int chatId, String newTitle) async {
+    final chats = await getChats();
+    for (int i = 0; i < chats.length; i++) {
+      if (chats[i]['id'] == chatId) {
+        chats[i]['title'] = newTitle;
+        await saveChats(chats);
+        return;
+      }
+    }
+  }
+
+  static Future<void> togglePinChat(int chatId) async {
+    final chats = await getChats();
+    for (int i = 0; i < chats.length; i++) {
+      if (chats[i]['id'] == chatId) {
+        final current = chats[i]['pinned'] ?? false;
+        chats[i]['pinned'] = !current;
+        await saveChats(chats);
+        return;
+      }
+    }
   }
 }
