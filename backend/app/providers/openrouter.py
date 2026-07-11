@@ -53,18 +53,18 @@ class OpenRouterProvider:
             timeout=120.0,
         )
         try:
-            resp = await client.post("/chat/completions", json={
+            async with client.stream("POST", "/chat/completions", json={
                 "model": model,
                 "messages": messages,
                 "stream": True,
                 **kwargs,
-            })
-            if resp.status_code != 200:
-                error_text = await resp.aread()
-                yield f"Error: HTTP {resp.status_code}: {error_text[:200]}"
-                return
-            async for line in resp.aiter_lines():
-                if line:
-                    yield line
+            }) as resp:
+                if resp.status_code != 200:
+                    error_text = await resp.aread()
+                    yield f"Error: HTTP {resp.status_code}: {error_text[:200]}"
+                    return
+                async for line in resp.aiter_lines():
+                    if line:
+                        yield line
         except Exception as e:
             yield f"Error: {str(e)}"
