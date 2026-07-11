@@ -719,12 +719,13 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Parses list of generated files from assistant content.
   List<Map<String, String>> _extractGeneratedFiles(String content) {
     final List<Map<String, String>> list = [];
+    final Set<String> seenPaths = {};
     final pattern = RegExp(r'\[([^\]]*?)\]\(/api/files/download\?path=([^)]+)\)');
     for (final match in pattern.allMatches(content)) {
       final name = match.group(1) ?? 'file';
       final path = match.group(2) ?? '';
-      if (path.isNotEmpty) {
-        // Extract original name from text (e.g. "Скачать filename" or "Скачать `filename`" -> "filename")
+      if (path.isNotEmpty && !seenPaths.contains(path)) {
+        seenPaths.add(path);
         String cleanName = name.replaceAll('Скачать ', '').replaceAll('файл ', '').replaceAll('`', '').trim();
         list.add({'name': cleanName, 'path': path});
       }
@@ -956,7 +957,7 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: VegaTheme.dark,
       extendBodyBehindAppBar: true,
       drawer: Drawer(
-        width: MediaQuery.of(context).size.width * 0.75,
+        width: MediaQuery.of(context).size.width * 0.65,
         backgroundColor: VegaTheme.surface,
         child: SafeArea(
           child: Column(
@@ -1027,15 +1028,17 @@ class _ChatScreenState extends State<ChatScreen> {
                           return ListTile(
                             selected: isActive,
                             selectedTileColor: VegaTheme.card,
+                            dense: true,
+                            visualDensity: const VisualDensity(vertical: -2),
+                            contentPadding: const EdgeInsets.only(left: 16, right: 4),
                             title: Text(
                               chat['title'] ?? 'Untitled',
-                              style: TextStyle(color: isActive ? VegaTheme.accent : VegaTheme.textPrimary),
+                              style: TextStyle(color: isActive ? VegaTheme.accent : VegaTheme.textPrimary, fontSize: 14),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            subtitle: Text(chat['createdAt']?.toString().substring(0, 10) ?? '', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
                             trailing: PopupMenuButton<String>(
-                              icon: Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 20),
+                              icon: Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 18),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               onSelected: (value) {
@@ -1051,7 +1054,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       children: [
                                         Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
                                         const SizedBox(width: 8),
-                                        Text('Delete', style: TextStyle(color: VegaTheme.textPrimary)),
+                                        Text('Удалить', style: TextStyle(color: VegaTheme.textPrimary)),
                                       ],
                                     ),
                                   ),

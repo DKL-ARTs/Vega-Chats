@@ -44,15 +44,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
               itemBuilder: (ctx, i) {
                 final chat = _chats[i];
                 return ListTile(
+                  dense: true,
+                  visualDensity: const VisualDensity(vertical: -2),
+                  contentPadding: const EdgeInsets.only(left: 16, right: 4),
                   title: Text(
                     chat['title'] ?? 'Untitled',
-                    style: TextStyle(color: VegaTheme.textPrimary),
+                    style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  subtitle: Text(chat['createdAt']?.toString().substring(0, 10) ?? '', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
                   trailing: PopupMenuButton<String>(
-                    icon: Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 20),
+                    icon: Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 18),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     onSelected: (value) {
@@ -68,7 +70,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             children: [
                               Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
                               const SizedBox(width: 8),
-                              Text('Delete', style: TextStyle(color: VegaTheme.textPrimary)),
+                              Text('Удалить', style: TextStyle(color: VegaTheme.textPrimary)),
                             ],
                           ),
                         ),
