@@ -4,6 +4,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+flutter {
+    source = "../.."
+}
+
 android {
     namespace = "com.vega.vega_chat"
     compileSdk = 34
@@ -36,8 +40,4 @@ android {
 
 kotlin {
     jvmToolchain(17)
-}
-
-flutter {
-    source = "../.."
 }
