@@ -61,10 +61,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _loadChat(_currentChatId!);
     }
     _controller.addListener(() {
-      final typing = _controller.text.isNotEmpty;
+      final typing = _controller.text.trim().isNotEmpty;
       if (typing != _isTyping) setState(() => _isTyping = typing);
     });
-    _initSpeech();
   }
 
   Future<void> _initSpeech() async {
@@ -1630,7 +1629,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           )
                         : Builder(builder: (ctx) {
-                            final hasContent = _controller.text.trim().isNotEmpty || _attachedFiles.isNotEmpty;
+                            final hasContent = _isTyping || _attachedFiles.isNotEmpty;
                             return Container(
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
