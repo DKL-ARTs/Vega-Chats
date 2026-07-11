@@ -17,6 +17,7 @@ import 'package:http/http.dart' as http;
 import 'package:open_file_plus/open_file_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:speech_to_text/speech_to_text.dart' as speechToText;
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -44,6 +45,12 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isTyping = false; // tracks whether user has typed anything
   final Map<String, String> _fileDownloadStatus = {}; // tracks 'path' -> 'idle' | 'loading' | 'success'
 
+  // Speech to Text variables
+  final speechToText.SpeechToText _speechToText = speechToText.SpeechToText();
+  bool _speechEnabled = false;
+  bool _isListening = false;
+  String _lastWords = '';
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +64,54 @@ class _ChatScreenState extends State<ChatScreen> {
       final typing = _controller.text.isNotEmpty;
       if (typing != _isTyping) setState(() => _isTyping = typing);
     });
+    _initSpeech();
+  }
+
+  Future<void> _initSpeech() async {
+    try {
+      _speechEnabled = await _speechToText.initialize(
+        onError: (val) => debugPrint('Speech initialization error: $val'),
+        onStatus: (val) {
+          debugPrint('Speech status: $val');
+          if (val == 'done' || val == 'notListening') {
+            if (mounted) setState(() => _isListening = false);
+          }
+        },
+      );
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Speech init exception: $e');
+    }
+  }
+
+  void _startListening() async {
+    if (!_speechEnabled) {
+      await _initSpeech();
+    }
+    if (_speechEnabled) {
+      setState(() => _isListening = true);
+      await _speechToText.listen(
+        onResult: (result) {
+          setState(() {
+            _lastWords = result.recognizedWords;
+            if (_lastWords.isNotEmpty) {
+              _controller.text = _lastWords;
+              _controller.selection = TextSelection.fromPosition(
+                TextPosition(offset: _controller.text.length),
+              );
+            }
+          });
+        },
+        listenMode: speechToText.ListenMode.dictation,
+        pauseFor: const Duration(seconds: 5),
+      );
+    }
+  }
+
+  void _stopListening() async {
+    await _speechToText.stop();
+    setState(() => _isListening = false);
+  }
   }
 
   @override
@@ -69,6 +124,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    if (_isListening) {
+      _speechToText.stop();
+    }
     _controller.dispose();
     _searchController.dispose();
     _thinkingTimer?.cancel();
@@ -1540,12 +1598,22 @@ class _ChatScreenState extends State<ChatScreen> {
                         maxLines: 4,
                         minLines: 1,
                         decoration: InputDecoration(
-                          hintText: 'Сообщение...',
-                          hintStyle: TextStyle(color: VegaTheme.textSecondary),
+                          hintText: _isListening ? 'Слушаю...' : 'Сообщение...',
+                          hintStyle: TextStyle(color: _isListening ? VegaTheme.accent : VegaTheme.textSecondary),
                           filled: true,
                           fillColor: VegaTheme.surface,
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _isListening ? Icons.mic : Icons.mic_none,
+                              color: _isListening ? VegaTheme.accent : VegaTheme.textSecondary,
+                              size: 20,
+                            ),
+                            onPressed: _isListening ? _stopListening : _startListening,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
                         ),
                         onSubmitted: (_) => _send(),
                       )),
