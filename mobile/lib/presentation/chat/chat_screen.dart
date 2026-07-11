@@ -112,7 +112,6 @@ class _ChatScreenState extends State<ChatScreen> {
     await _speechToText.stop();
     setState(() => _isListening = false);
   }
-  }
 
   @override
   void didChangeDependencies() {
