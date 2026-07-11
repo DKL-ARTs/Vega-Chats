@@ -50,6 +50,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _speechEnabled = false;
   bool _isListening = false;
   String _lastWords = '';
+  String _speechLocale = 'ru_RU';
 
   @override
   void initState() {
@@ -103,6 +104,7 @@ class _ChatScreenState extends State<ChatScreen> {
         },
         listenMode: speechToText.ListenMode.dictation,
         pauseFor: const Duration(seconds: 5),
+        localeId: _speechLocale == 'auto' ? null : _speechLocale,
       );
     }
   }
@@ -143,6 +145,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _model = prefs.getString('model') ?? 'openrouter/auto';
       _client.apiKey = prefs.getString('api_key') ?? '';
       _client.baseUrl = baseUrl;
+      _speechLocale = prefs.getString('speech_locale') ?? 'ru_RU';
     });
   }
 
