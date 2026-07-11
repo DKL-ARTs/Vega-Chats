@@ -1186,11 +1186,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
                           GestureDetector(
-                            onLongPress: () {
-                              if (isUser) {
-                                _showUserMessageMenu(context, msg, i);
-                              }
-                            },
+                            onLongPress: isUser
+                                ? () => _showUserMessageMenu(context, msg, i)
+                                : null,
                             child: Column(
                               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
