@@ -7,7 +7,8 @@ allprojects {
         extra["flutter"] = mapOf(
             "compileSdkVersion" to 34,
             "minSdkVersion" to 21,
-            "targetSdkVersion" to 34
+            "targetSdkVersion" to 34,
+            "ndkVersion" to "23.1.7779620"
         )
     }
 }
