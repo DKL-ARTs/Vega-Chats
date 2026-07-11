@@ -1160,7 +1160,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 : GestureDetector(
                     behavior: HitTestBehavior.translucent,
                     onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                    child: ListView.builder(
+                    child: SelectionArea(
+                      child: ListView.builder(
                       padding: EdgeInsets.fromLTRB(
                         16,
                         MediaQuery.of(context).padding.top + kToolbarHeight + 8,
@@ -1225,7 +1226,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                              mainAxisSize: MainAxisSize.min,
                                              children: [
                                                MarkdownBody(
-                                                 selectable: true,
+                                                 selectable: false,
                                                  data: _stripImageMarkdown(_cleanMessageContent(msg['content'] ?? '')),
                                                  shrinkWrap: true,
                                                  onTapLink: (text, href, title) {
@@ -1304,8 +1305,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       );
                     },
                   ),
-                  ),
-          ),
+                ),
+              ),
+            ),
           Positioned(
             top: 0, left: 0, right: 0,
             child: IgnorePointer(
