@@ -200,7 +200,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _thinkingDots = 0;
   }
 
-  String get _thinkingText => 'Thinking' + '.' * _thinkingDots;
+  String get _thinkingText => 'Думаю' + '.' * _thinkingDots;
 
   Future<void> _handleLinkTap(String url) async {
     try {
@@ -436,7 +436,7 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             ListTile(
               leading: Icon(Icons.edit, color: VegaTheme.accent),
-              title: Text('Edit', style: TextStyle(color: VegaTheme.textPrimary)),
+              title: Text('Редактировать', style: TextStyle(color: VegaTheme.textPrimary)),
               onTap: () {
                 Navigator.pop(ctx);
                 _editMessage(index, message['content'] ?? '');
@@ -444,7 +444,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             ListTile(
               leading: Icon(Icons.copy, color: VegaTheme.accent),
-              title: Text('Copy', style: TextStyle(color: VegaTheme.textPrimary)),
+              title: Text('Копировать', style: TextStyle(color: VegaTheme.textPrimary)),
               onTap: () {
                 Navigator.pop(ctx);
                 _copyMessage(message['content'] ?? '');
@@ -459,7 +459,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _editMessage(int index, String currentText) {
     _controller.text = currentText;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Edit mode - type new message'), duration: Duration(seconds: 2)),
+      SnackBar(content: Text('Режим редактирования — введите новое сообщение'), duration: Duration(seconds: 2)),
     );
   }
 
@@ -468,16 +468,16 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: VegaTheme.surface,
-        title: Text('Delete chat?', style: TextStyle(color: VegaTheme.textPrimary)),
-        content: Text('This action cannot be undone.', style: TextStyle(color: VegaTheme.textSecondary)),
+        title: Text('Удалить чат?', style: TextStyle(color: VegaTheme.textPrimary)),
+        content: Text('Это действие нельзя отменить.', style: TextStyle(color: VegaTheme.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: VegaTheme.textSecondary)),
+            child: Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: TextStyle(color: Colors.red)),
+            child: Text('Удалить', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -1003,7 +1003,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Generated File',
+                      'Сгенерированный файл',
                       style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11),
                     ),
                   ],
@@ -1156,7 +1156,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     autofocus: true,
                     style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: 'Search chats...',
+                      hintText: 'Поиск чатов...',
                       hintStyle: TextStyle(color: VegaTheme.textSecondary),
                       filled: true,
                       fillColor: VegaTheme.card,
@@ -1169,13 +1169,13 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               Expanded(
                 child: _chats.isEmpty
-                    ? Center(child: Text('No chats yet', style: TextStyle(color: VegaTheme.textSecondary)))
+                    ? Center(child: Text('Нет чатов', style: TextStyle(color: VegaTheme.textSecondary)))
                     : Builder(builder: (ctx) {
                         final filtered = _searchQuery.isEmpty
                             ? _chats
                             : _chats.where((c) => (c['title'] ?? '').toString().toLowerCase().contains(_searchQuery)).toList();
                         if (filtered.isEmpty) {
-                          return Center(child: Text('Nothing found', style: TextStyle(color: VegaTheme.textSecondary)));
+                          return Center(child: Text('Ничего не найдено', style: TextStyle(color: VegaTheme.textSecondary)));
                         }
                         return ListView.builder(
                         itemCount: filtered.length,
@@ -1196,7 +1196,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ],
                                 Expanded(
                                   child: Text(
-                                    chat['title'] ?? 'Untitled',
+                                    chat['title'] ?? 'Без названия',
                                     style: TextStyle(color: isActive ? VegaTheme.accent : VegaTheme.textPrimary, fontSize: 14),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -1214,7 +1214,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 } else if (value == 'pin') {
                                   _togglePinChat(chat['id']);
                                 } else if (value == 'rename') {
-                                  _renameChat(chat['id'], chat['title'] ?? 'Untitled');
+                                  _renameChat(chat['id'], chat['title'] ?? 'Без названия');
                                 }
                               },
                               itemBuilder: (BuildContext context) {
@@ -1262,17 +1262,17 @@ class _ChatScreenState extends State<ChatScreen> {
               Divider(color: VegaTheme.border),
               ListTile(
                 leading: Icon(Icons.folder_outlined, color: VegaTheme.accent),
-                title: Text('Files', style: TextStyle(color: VegaTheme.textPrimary)),
+                title: Text('Файлы', style: TextStyle(color: VegaTheme.textPrimary)),
                 onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/ide'); },
               ),
               ListTile(
                 leading: Icon(Icons.terminal, color: VegaTheme.accent),
-                title: Text('Terminal', style: TextStyle(color: VegaTheme.textPrimary)),
+                title: Text('Терминал', style: TextStyle(color: VegaTheme.textPrimary)),
                 onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/terminal'); },
               ),
               ListTile(
                 leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
-                title: Text('Settings', style: TextStyle(color: VegaTheme.textPrimary)),
+                title: Text('Настройки', style: TextStyle(color: VegaTheme.textPrimary)),
                 onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/settings'); },
               ),
               const SizedBox(height: 16),
@@ -1785,7 +1785,7 @@ class _CopyButtonState extends State<CopyButton> {
               ),
               const SizedBox(width: 4),
               Text(
-                _copied ? 'Copied!' : 'Copy',
+                _copied ? 'Скопировано!' : 'Копировать',
                 style: TextStyle(
                   color: _copied ? Colors.green : VegaTheme.textSecondary,
                   fontSize: 11,
