@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:convert' as convert;
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -127,6 +127,21 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadSettings();
   }
 
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16.0, top: 12.0, bottom: 4.0),
+      child: Text(
+        title.toUpperCase(),
+        style: const TextStyle(
+          color: VegaTheme.accent,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     if (_isListening) {
@@ -145,7 +160,7 @@ class _ChatScreenState extends State<ChatScreen> {
     List<Map<String, dynamic>> loadedProjects = [];
     if (projectsJson != null) {
       try {
-        final decoded = convert.jsonDecode(projectsJson) as List<dynamic>;
+        final decoded = jsonDecode(projectsJson) as List<dynamic>;
         loadedProjects = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
       } catch (e) {
         debugPrint('Error decoding projects: $e');
@@ -175,7 +190,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'prompt': 'Ты — QA инженер. Помогай писать Unit-тесты, искать логические ошибки и граничные случаи в предоставленном коде.'
         }
       ];
-      await prefs.setString('projects_list', convert.jsonEncode(loadedProjects));
+      await prefs.setString('projects_list', jsonEncode(loadedProjects));
     }
 
     final activeId = prefs.getString('active_project_id') ?? 'default';
@@ -208,7 +223,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _projects.add(newProj);
     });
-    await prefs.setString('projects_list', convert.jsonEncode(_projects));
+    await prefs.setString('projects_list', jsonEncode(_projects));
     await _selectProject(newProj['id']!);
   }
 
@@ -218,7 +233,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _projects.removeWhere((p) => p['id'] == id);
     });
-    await prefs.setString('projects_list', convert.jsonEncode(_projects));
+    await prefs.setString('projects_list', jsonEncode(_projects));
     if (_activeProjectId == id) {
       await _selectProject('default');
     }
@@ -236,7 +251,7 @@ class _ChatScreenState extends State<ChatScreen> {
         };
       }
     });
-    await prefs.setString('projects_list', convert.jsonEncode(_projects));
+    await prefs.setString('projects_list', jsonEncode(_projects));
     if (_activeProjectId == id) {
       setState(() {
         _activeProjectPrompt = prompt;
