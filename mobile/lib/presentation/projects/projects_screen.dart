@@ -219,7 +219,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   @override
   Widget build(BuildContext context) {
     final customProjects = _projects.where((p) => p['id'] != 'default').toList();
-    final isDefaultActive = _activeProjectId == 'default';
 
     return Scaffold(
       backgroundColor: VegaTheme.dark,
