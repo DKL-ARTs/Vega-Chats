@@ -5,6 +5,7 @@ import '../presentation/ide/ide_screen.dart';
 import '../presentation/terminal/terminal_screen.dart';
 import '../presentation/settings/settings_screen.dart';
 import '../presentation/history/history_screen.dart';
+import 'package:vega_chat/presentation/projects/projects_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/chat',
@@ -31,6 +32,10 @@ final router = GoRouter(
     GoRoute(
       path: '/history',
       builder: (context, state) => const HistoryScreen(),
+    ),
+    GoRoute(
+      path: '/projects',
+      builder: (context, state) => const ProjectsScreen(),
     ),
   ],
 );

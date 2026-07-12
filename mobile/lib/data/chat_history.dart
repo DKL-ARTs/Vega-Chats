@@ -32,7 +32,7 @@ class ChatHistory {
     await prefs.setString(_key, jsonEncode(chats));
   }
 
-  static Future<int> createChat(String title) async {
+  static Future<int> createChat(String title, {String projectId = 'default'}) async {
     final chats = await getChats();
     final id = DateTime.now().millisecondsSinceEpoch;
     final newChat = <String, dynamic>{
@@ -40,6 +40,7 @@ class ChatHistory {
       'title': title,
       'messages': <Map<String, dynamic>>[],
       'createdAt': DateTime.now().toIso8601String(),
+      'projectId': projectId,
     };
     chats.insert(0, newChat);
     await saveChats(chats);

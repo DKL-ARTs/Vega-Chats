@@ -855,12 +855,15 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildWelcomeScreen() {
-    final suggestions = [
-      {'icon': '💻', 'text': 'Написать код', 'prompt': 'Помоги мне написать код на '},
-      {'icon': '📚', 'text': 'Объяснить тему', 'prompt': 'Объясни мне простыми словами что такое '},
-      {'icon': '✍️', 'text': 'Написать текст', 'prompt': 'Напиши текст на тему '},
-      {'icon': '💡', 'text': 'Придумать идею', 'prompt': 'Придумай интересную идею для '},
-    ];
+    final activeProj = _projects.firstWhere(
+      (p) => p['id'] == _activeProjectId, 
+      orElse: () => {
+        'name': 'Общий помощник',
+        'description': 'Универсальный ИИ-помощник без специфичных системных инструкций.'
+      }
+    );
+    final projName = activeProj['name'] ?? 'Общий помощник';
+    final projDesc = activeProj['description'] ?? '';
 
     return Stack(
       children: [
@@ -887,43 +890,31 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ),
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(0.0, 1.0),
-                radius: 0.8,
-                colors: [Color(0x0A00BCD4), Color(0x00000000)],
-              ),
-            ),
-          ),
-        ),
-        // Content — positioned slightly above center
+        // Content — positioned in center
         Align(
-          alignment: const Alignment(0, -0.15),
+          alignment: const Alignment(0, -0.1),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Logo, greeting, subtitle — always visible
                 TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0.85, end: 1.0),
-                  duration: const Duration(milliseconds: 2000),
+                  duration: const Duration(milliseconds: 1500),
                   curve: Curves.easeInOut,
                   builder: (context, value, child) {
                     return Transform.scale(
                       scale: value,
                       child: Container(
-                        width: 72,
-                        height: 72,
+                        width: 80,
+                        height: 80,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: VegaTheme.accent.withOpacity(0.25 * value),
-                              blurRadius: 28 * value,
-                              spreadRadius: 4 * value,
+                              color: VegaTheme.accent.withOpacity(0.2 * value),
+                              blurRadius: 32 * value,
+                              spreadRadius: 6 * value,
                             ),
                           ],
                         ),
@@ -934,62 +925,29 @@ class _ChatScreenState extends State<ChatScreen> {
                     );
                   },
                 ),
-                const SizedBox(height: 10),
-                // Greeting + subtitle — hidden while typing
+                const SizedBox(height: 24),
                 if (!_isTyping) ...[
                   Text(
-                    _getGreeting(),
+                    projName,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: VegaTheme.textPrimary,
-                      fontSize: 26,
+                      fontSize: 24,
                       fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Пишу код, ищу ошибки, отвечаю\nна вопросы и генерирую идеи',
+                  const SizedBox(height: 12),
+                  Text(
+                    projDesc.isNotEmpty ? projDesc : 'Без описания',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: VegaTheme.textSecondary,
                       fontSize: 14,
                       height: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  // 2x2 suggestion grid
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 2.6,
-                    children: suggestions.map((s) => GestureDetector(
-                      onTap: () {
-                        _controller.text = s['prompt']!;
-                        _controller.selection = TextSelection.fromPosition(
-                          TextPosition(offset: _controller.text.length),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: VegaTheme.surface,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: VegaTheme.border, width: 0.5),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(s['icon']!, style: const TextStyle(fontSize: 18)),
-                            const SizedBox(width: 8),
-                            Flexible(child: Text(s['text']!, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                          ],
-                        ),
-                      ),
-                    )).toList(),
-                  ),
-                ], // end if !_isTyping
+                ],
               ],
             ),
           ),
