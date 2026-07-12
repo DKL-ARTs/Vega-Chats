@@ -81,13 +81,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       _activeProjectId = id;
     });
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Выбран проект: ${activeProj['name']}'),
-          duration: const Duration(seconds: 1),
-          backgroundColor: VegaTheme.accent,
-        ),
-      );
       Navigator.pop(context, true); // Return true to trigger reload in chat
     }
   }
