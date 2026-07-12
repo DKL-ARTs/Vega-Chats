@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
+import '../../data/chat_history.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key});
@@ -12,6 +13,7 @@ class ProjectsScreen extends StatefulWidget {
 class _ProjectsScreenState extends State<ProjectsScreen> {
   List<Map<String, dynamic>> _projects = [];
   String _activeProjectId = 'default';
+  List<Map<String, dynamic>> _allChats = [];
 
   @override
   void initState() {
@@ -64,10 +66,12 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     }
 
     final activeId = prefs.getString('active_project_id') ?? 'default';
+    final chats = await ChatHistory.getChats();
 
     setState(() {
       _projects = loadedProjects;
       _activeProjectId = activeId;
+      _allChats = chats;
     });
   }
 
@@ -83,6 +87,47 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     if (mounted) {
       Navigator.pop(context, true); // Return true to trigger reload in chat
     }
+  }
+
+  Future<void> _selectProjectAndChat(String projId, int chatId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('active_project_id', projId);
+    final activeProj = _projects.firstWhere((p) => p['id'] == projId, orElse: () => _projects.first);
+    await prefs.setString('active_project_prompt', activeProj['prompt'] ?? '');
+    setState(() {
+      _activeProjectId = projId;
+    });
+    if (mounted) {
+      Navigator.pop(context, {
+        'projectId': projId,
+        'chatId': chatId,
+      });
+    }
+  }
+
+  void _showDeleteConfirmation(String id, String name) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Удаление проекта', style: TextStyle(color: VegaTheme.textPrimary, fontWeight: FontWeight.bold)),
+        content: Text('Вы действительно хотите удалить проект "$name"? Все чаты этого проекта останутся, но сам проект будет удален.', style: const TextStyle(color: VegaTheme.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteProject(id);
+            },
+            child: const Text('Удалить', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _createProject(String name, String description, String prompt) async {
@@ -318,6 +363,47 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                 ),
                               ),
                               const SizedBox(height: 12),
+                              const Text(
+                                'Чаты проекта:',
+                                style: TextStyle(color: VegaTheme.accent, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 6),
+                              Builder(builder: (ctx) {
+                                final projectChats = _allChats.where((c) => c['projectId'] == proj['id']).toList();
+                                if (projectChats.isEmpty) {
+                                  return const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 4),
+                                    child: Text(
+                                      'В этом проекте пока нет чатов',
+                                      style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12, fontStyle: FontStyle.italic),
+                                    ),
+                                  );
+                                }
+                                return ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: projectChats.length,
+                                  itemBuilder: (ctx, i) {
+                                    final chat = projectChats[i];
+                                    return ListTile(
+                                      dense: true,
+                                      visualDensity: const VisualDensity(vertical: -3),
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: const Icon(Icons.chat_bubble_outline_rounded, color: VegaTheme.textSecondary, size: 16),
+                                      title: Text(
+                                        chat['title'] ?? 'Без названия',
+                                        style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      onTap: () {
+                                        _selectProjectAndChat(proj['id']!, chat['id'] as int);
+                                      },
+                                    );
+                                  },
+                                );
+                              }),
+                              const SizedBox(height: 12),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
@@ -327,7 +413,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                    onPressed: () => _deleteProject(proj['id']!),
+                                    onPressed: () => _showDeleteConfirmation(proj['id']!, proj['name'] ?? ''),
                                   ),
                                   const SizedBox(width: 8),
                                   ElevatedButton.icon(

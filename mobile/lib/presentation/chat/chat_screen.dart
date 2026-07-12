@@ -1460,14 +1460,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Builder(builder: (ctx) {
                   final projectChats = _chats.where((c) {
                     final pId = c['projectId'];
-                    if (_activeProjectId == 'default') {
-                      return pId == null || pId == 'default' || pId == '';
-                    }
-                    return pId == _activeProjectId;
+                    return pId == null || pId == 'default' || pId == '';
                   }).toList();
 
                   if (projectChats.isEmpty) {
-                    return const Center(child: Text('Нет чатов в этом проекте', style: TextStyle(color: VegaTheme.textSecondary)));
+                    return const Center(child: Text('Нет чатов', style: TextStyle(color: VegaTheme.textSecondary)));
                   }
 
                   final filtered = _searchQuery.isEmpty
@@ -1566,8 +1563,36 @@ class _ChatScreenState extends State<ChatScreen> {
                   _scaffoldKey.currentState?.closeDrawer();
                   final reloaded = await context.push('/projects');
                   if (reloaded == true) {
+                    _startNewChat();
                     _loadSettings();
                     _loadChats();
+                  } else if (reloaded is Map) {
+                    final pId = reloaded['projectId'] as String;
+                    final cId = reloaded['chatId'] as int;
+                    
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString('active_project_id', pId);
+                    
+                    String prompt = '';
+                    final projectsJson = prefs.getString('projects_list');
+                    if (projectsJson != null) {
+                      try {
+                        final decoded = jsonDecode(projectsJson) as List<dynamic>;
+                        final proj = decoded.firstWhere((p) => p['id'] == pId, orElse: () => null);
+                        if (proj != null) {
+                          prompt = proj['prompt'] ?? '';
+                        }
+                      } catch (_) {}
+                    }
+                    await prefs.setString('active_project_prompt', prompt);
+
+                    setState(() {
+                      _activeProjectId = pId;
+                      _currentChatId = cId;
+                    });
+                    _loadSettings();
+                    _loadChats();
+                    _loadChat(cId);
                   }
                 },
               ),
