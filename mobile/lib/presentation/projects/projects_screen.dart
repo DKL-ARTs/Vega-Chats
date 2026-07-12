@@ -245,65 +245,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: customProjects.length + 1,
+              itemCount: customProjects.length,
               itemBuilder: (context, index) {
-                if (index == 0) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: isDefaultActive ? VegaTheme.accent.withOpacity(0.05) : VegaTheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isDefaultActive ? VegaTheme.accent : VegaTheme.border,
-                        width: isDefaultActive ? 1.5 : 0.5,
-                      ),
-                      boxShadow: isDefaultActive
-                          ? [
-                              BoxShadow(
-                                color: VegaTheme.accent.withOpacity(0.15),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              )
-                            ]
-                          : [],
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      leading: Icon(
-                        Icons.chat_bubble_outline_rounded,
-                        color: isDefaultActive ? VegaTheme.accent : VegaTheme.textSecondary,
-                        size: 26,
-                      ),
-                      title: const Text(
-                        'Обычный чат (Без проекта)',
-                        style: TextStyle(
-                          color: VegaTheme.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: const Text(
-                        'Использование ИИ-ассистента по умолчанию без применения инструкций конкретных проектов.',
-                        style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
-                      ),
-                      trailing: isDefaultActive
-                          ? const Icon(Icons.check_circle_rounded, color: VegaTheme.accent, size: 24)
-                          : ElevatedButton(
-                              onPressed: () => _selectProject('default'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: VegaTheme.accent,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              ),
-                              child: const Text('Выбрать'),
-                            ),
-                      onTap: isDefaultActive ? null : () => _selectProject('default'),
-                    ),
-                  );
-                }
-
-                final proj = customProjects[index - 1];
+                final proj = customProjects[index];
                 final isCurrent = proj['id'] == _activeProjectId;
                 return Container(
                   margin: const EdgeInsets.only(bottom: 16),

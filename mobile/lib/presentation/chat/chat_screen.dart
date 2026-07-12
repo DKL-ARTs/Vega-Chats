@@ -1625,7 +1625,25 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
-          if (!_showNewChatScreen)
+          if (_activeProjectId != 'default')
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: IconButton(
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('active_project_id', 'default');
+                  await prefs.setString('active_project_prompt', '');
+                  _startNewChat();
+                  setState(() {
+                    _activeProjectId = 'default';
+                  });
+                  _loadChats();
+                },
+                tooltip: 'Вернуться в обычный чат',
+                icon: const Icon(Icons.note_alt_outlined, color: VegaTheme.accent, size: 26),
+              ),
+            )
+          else if (!_showNewChatScreen)
             Padding(
               padding: const EdgeInsets.only(right: 4),
               child: IconButton(
