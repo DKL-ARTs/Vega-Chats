@@ -421,6 +421,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_currentChatId == null) {
       _currentChatId = await ChatHistory.createChat(
         displayText.length > 30 ? displayText.substring(0, 30) + '...' : displayText,
+        projectId: _activeProjectId,
       );
     }
 
@@ -1317,17 +1318,28 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
               Expanded(
-                child: _chats.isEmpty
-                    ? Center(child: Text('Нет чатов', style: TextStyle(color: VegaTheme.textSecondary)))
-                    : Builder(builder: (ctx) {
-                        final filtered = _searchQuery.isEmpty
-                            ? _chats
-                            : _chats.where((c) => (c['title'] ?? '').toString().toLowerCase().contains(_searchQuery)).toList();
-                        if (filtered.isEmpty) {
-                          return Center(child: Text('Ничего не найдено', style: TextStyle(color: VegaTheme.textSecondary)));
-                        }
-                        return ListView.builder(
-                        itemCount: filtered.length,
+                child: Builder(builder: (ctx) {
+                  final projectChats = _chats.where((c) {
+                    final pId = c['projectId'];
+                    if (_activeProjectId == 'default') {
+                      return pId == null || pId == 'default' || pId == '';
+                    }
+                    return pId == _activeProjectId;
+                  }).toList();
+
+                  if (projectChats.isEmpty) {
+                    return const Center(child: Text('Нет чатов в этом проекте', style: TextStyle(color: VegaTheme.textSecondary)));
+                  }
+
+                  final filtered = _searchQuery.isEmpty
+                      ? projectChats
+                      : projectChats.where((c) => (c['title'] ?? '').toString().toLowerCase().contains(_searchQuery)).toList();
+
+                  if (filtered.isEmpty) {
+                    return const Center(child: Text('Ничего не найдено', style: TextStyle(color: VegaTheme.textSecondary)));
+                  }
+                  return ListView.builder(
+                    itemCount: filtered.length,
                         itemBuilder: (ctx, i) {
                           final chat = filtered[i];
                           final isActive = chat['id'] == _currentChatId;
@@ -1409,77 +1421,21 @@ class _ChatScreenState extends State<ChatScreen> {
                       }),
               ),
               Divider(color: VegaTheme.border),
-              _buildSectionHeader('Проекты'),
-              const SizedBox(height: 6),
-              ..._projects.map((proj) {
-                final isCurrent = proj['id'] == _activeProjectId;
-                return ListTile(
-                  dense: true,
-                  visualDensity: const VisualDensity(vertical: -3),
-                  contentPadding: const EdgeInsets.only(left: 16, right: 4),
-                  selected: isCurrent,
-                  selectedTileColor: VegaTheme.card.withOpacity(0.4),
-                  leading: Icon(
-                    isCurrent ? Icons.folder_shared_rounded : Icons.folder_open_rounded,
-                    color: isCurrent ? VegaTheme.accent : VegaTheme.textSecondary,
-                    size: 18,
-                  ),
-                  title: Text(
-                    proj['name'] ?? '',
-                    style: TextStyle(
-                      color: isCurrent ? VegaTheme.accent : VegaTheme.textPrimary,
-                      fontSize: 13,
-                      fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    icon: Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 16),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onSelected: (value) {
-                      if (value == 'edit') {
-                        _showCreateProjectDialog(projectToEdit: proj);
-                      } else if (value == 'delete') {
-                        _deleteProject(proj['id']!);
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      PopupMenuItem<String>(
-                        value: 'edit',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit_outlined, color: VegaTheme.textSecondary, size: 16),
-                            const SizedBox(width: 8),
-                            Text('Изменить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                          ],
-                        ),
-                      ),
-                      if (proj['id'] != 'default')
-                        PopupMenuItem<String>(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete_outline, color: Colors.redAccent, size: 16),
-                              const SizedBox(width: 8),
-                              Text('Удалить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                  onTap: () => _selectProject(proj['id']!),
-                );
-              }).toList(),
               ListTile(
-                dense: true,
-                visualDensity: const VisualDensity(vertical: -3),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                leading: const Icon(Icons.add_rounded, color: VegaTheme.textSecondary, size: 18),
-                title: const Text(
-                  'Создать проект...',
-                  style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13, fontStyle: FontStyle.italic),
+                leading: const Icon(Icons.workspaces_outline, color: VegaTheme.accent),
+                title: const Text('Проекты', style: TextStyle(color: VegaTheme.textPrimary)),
+                trailing: Text(
+                  _projects.firstWhere((p) => p['id'] == _activeProjectId, orElse: () => {'name': ''})['name'] ?? '',
+                  style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
                 ),
-                onTap: () => _showCreateProjectDialog(),
+                onTap: () async {
+                  _scaffoldKey.currentState?.closeDrawer();
+                  final reloaded = await context.push('/projects');
+                  if (reloaded == true) {
+                    _loadSettings();
+                    _loadChats();
+                  }
+                },
               ),
               Divider(color: VegaTheme.border),
               ListTile(
