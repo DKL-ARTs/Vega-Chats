@@ -34,6 +34,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _cancelStream = false;
   final List<Map<String, dynamic>> _attachedFiles = [];
   String _model = 'openrouter/auto';
+  String _provider = 'openrouter';
+  String _geminiApiKey = '';
   int? _currentChatId;
   List<Map<String, dynamic>> _chats = [];
   Timer? _thinkingTimer;
@@ -136,13 +138,18 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     String baseUrl = prefs.getString('base_url') ?? 'https://vega-chats-production.up.railway.app';
-    // Normalize old URL (without 's') to the correct one
     if (baseUrl.contains('vega-chat-production') && !baseUrl.contains('vega-chats-production')) {
       baseUrl = 'https://vega-chats-production.up.railway.app';
       await prefs.setString('base_url', baseUrl);
     }
+    // Read the resolved model/provider saved by settings screen
+    final savedModel = prefs.getString('model') ?? 'openrouter/auto';
+    final provider = prefs.getString('provider') ?? 'openrouter';
+    final modelForBackend = prefs.getString('model_for_backend') ?? savedModel;
     setState(() {
-      _model = prefs.getString('model') ?? 'openrouter/auto';
+      _provider = provider;
+      _model = modelForBackend;
+      _geminiApiKey = prefs.getString('gemini_api_key') ?? '';
       _client.apiKey = prefs.getString('api_key') ?? '';
       _client.baseUrl = baseUrl;
       _speechLocale = prefs.getString('speech_locale') ?? 'ru_RU';
@@ -292,6 +299,8 @@ class _ChatScreenState extends State<ChatScreen> {
       await _client.streamChat(
         messages: messagesForBackend,
         model: _model,
+        provider: _provider,
+        geminiApiKey: _geminiApiKey,
         files: files.isEmpty ? null : files,
         onChunk: (chunk) {
           if (_cancelStream) return;
@@ -375,6 +384,8 @@ class _ChatScreenState extends State<ChatScreen> {
       await _client.streamChat(
         messages: msgs,
         model: _model,
+        provider: _provider,
+        geminiApiKey: _geminiApiKey,
         files: regenFiles,
         onChunk: (chunk) {
           if (firstChunk) {

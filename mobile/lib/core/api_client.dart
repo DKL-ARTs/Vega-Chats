@@ -11,6 +11,8 @@ class ApiClient {
   Future<void> streamChat({
     required List<Map<String, dynamic>> messages,
     String model = 'openrouter/auto',
+    String provider = 'openrouter',
+    String geminiApiKey = '',
     List<Map<String, String>>? files,
     required void Function(String chunk) onChunk,
     required Function onError,
@@ -24,11 +26,15 @@ class ApiClient {
       print('STREAM WS: Connecting to $wsUrl/api/chat/ws');
       channel = WebSocketChannel.connect(Uri.parse('$wsUrl/api/chat/ws'));
       
-      final requestPayload = {
+      final requestPayload = <String, dynamic>{
         'messages': messages,
         'model': model,
+        'provider': provider,
         'api_key': apiKey,
       };
+      if (geminiApiKey.isNotEmpty) {
+        requestPayload['gemini_api_key'] = geminiApiKey;
+      }
       if (files != null && files.isNotEmpty) {
         requestPayload['files'] = files;
       }

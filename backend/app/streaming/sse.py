@@ -92,10 +92,19 @@ async def chat_stream(request: Request):
     if not api_key:
         api_key = request.headers.get("x-api-key", "")
 
-    # Fallback to environment variable
-    if not api_key:
-        from app.config import settings
-        api_key = settings.openrouter_api_key
+    # For Gemini, also check gemini_api_key field in body
+    if provider_name == "gemini":
+        gemini_key = body.get("gemini_api_key", "").strip()
+        if gemini_key:
+            api_key = gemini_key
+        if not api_key:
+            from app.config import settings
+            api_key = settings.gemini_api_key
+    else:
+        # Fallback to environment variable for OpenRouter
+        if not api_key:
+            from app.config import settings
+            api_key = settings.openrouter_api_key
 
     # DEBUG: Log what we received (use stderr + logging to ensure Railway captures it)
     masked = api_key[:10] + "..." + api_key[-4:] if len(api_key) > 14 else api_key
@@ -377,11 +386,20 @@ async def chat_websocket(websocket: WebSocket):
         model = body.get("model", "openrouter/auto")
         provider_name = body.get("provider", "openrouter")
         api_key = body.get("api_key", "").strip()
-        
-        # Fallback to environment variable
-        if not api_key:
-            from app.config import settings
-            api_key = settings.openrouter_api_key
+
+        # Handle per-provider API keys
+        if provider_name == "gemini":
+            gemini_key = body.get("gemini_api_key", "").strip()
+            if gemini_key:
+                api_key = gemini_key
+            if not api_key:
+                from app.config import settings
+                api_key = settings.gemini_api_key
+        else:
+            # Fallback to environment variable for OpenRouter
+            if not api_key:
+                from app.config import settings
+                api_key = settings.openrouter_api_key
 
         if not api_key:
             print("[WS] ERROR: No API key provided!", flush=True)
@@ -389,8 +407,8 @@ async def chat_websocket(websocket: WebSocket):
             await websocket.close()
             return
 
-        # Reconstruct proper key format
-        if api_key and not api_key.startswith("sk-or-"):
+        # Reconstruct proper key format (OpenRouter only)
+        if provider_name != "gemini" and api_key and not api_key.startswith("sk-or-"):
             if api_key.startswith("skorv1"):
                 api_key = "sk-or-v1-" + api_key[6:]
 
