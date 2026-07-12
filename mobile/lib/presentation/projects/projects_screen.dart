@@ -46,20 +46,44 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         {
           'id': 'flutter',
           'name': 'Flutter-разработчик',
-          'description': 'Создание и отладка мобильных приложений на Flutter/Dart.',
+          'description': 'Проектирование архитектуры и написание кода мобильных приложений на Dart.',
           'prompt': 'Ты — эксперт по разработке мобильных приложений на Flutter и Dart. Пиши чистый, оптимизированный код, следуй правилам чистой архитектуры.'
         },
         {
           'id': 'python',
           'name': 'Python-разработчик',
-          'description': 'Разработка скриптов автоматизации, бэкенда на FastAPI, Django и парсеров.',
+          'description': 'Автоматизация задач, парсинг сайтов, разработка бэкенда на FastAPI/Django и работа с данными.',
           'prompt': 'Ты — опытный Senior Python разработчик. Пиши чистый, питоничный код (PEP 8), помогай писать автоматизацию и веб-приложения на FastAPI/Django.'
         },
         {
           'id': 'qa',
-          'name': 'Тестировщик кода',
-          'description': 'Анализ багов, написание unit-тестов и проверка алгоритмов.',
+          'name': 'Тестировщик кода (QA)',
+          'description': 'Написание Unit-тестов, поиск логических ошибок, багов и проверка граничных условий.',
           'prompt': 'Ты — QA инженер. Помогай писать Unit-тесты, искать логические ошибки и граничные случаи в предоставленном коде.'
+        },
+        {
+          'id': 'chef',
+          'name': 'Шеф-повар кулинарии',
+          'description': 'Подбор рецептов по ингредиентам, кулинарные советы и составление здорового меню.',
+          'prompt': 'Ты — профессиональный кулинарный шеф-повар. Помогай пользователю придумывать аппетитные рецепты из имеющихся продуктов, давай советы по технике приготовления, замене ингредиентов и красивой подаче блюд.'
+        },
+        {
+          'id': 'english',
+          'name': 'Репетитор английского',
+          'description': 'Практика общения, перевод, грамматика и мягкое исправление ошибок.',
+          'prompt': 'Ты — дружелюбный и поддерживающий репетитор английского языка. Помогай пользователю изучать язык: отвечай на английском, переводи предложения, понятно объясняй правила грамматики и исправляй ошибки в сообщениях пользователя.'
+        },
+        {
+          'id': 'copywriter',
+          'name': 'Креативный копирайтер',
+          'description': 'Создание текстов для постов, сценариев, статей, писем и праздничных поздравлений.',
+          'prompt': 'Ты — талантливый копирайтер и креативный писатель. Твоя задача — создавать вовлекающие и качественные тексты, посты для соцсетей, сценарии, статьи и стихи в различных тонах речи (официальный, дружелюбный, юмористический) по запросу пользователя.'
+        },
+        {
+          'id': 'fitness',
+          'name': 'Фитнес-тренер и нутрициолог',
+          'description': 'Составление безопасных тренировочных программ для дома/зала и расчет здорового рациона.',
+          'prompt': 'Ты — опытный персональный фитнес-тренер и нутрициолог. Составляй безопасные и эффективные планы тренировок для дома или зала, давай рекомендации по расчету КБЖУ, питьевому режиму и здоровому образу жизни.'
         }
       ];
       await prefs.setString('projects_list', jsonEncode(loadedProjects));
@@ -337,6 +361,51 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      trailing: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, color: VegaTheme.textSecondary),
+                        onSelected: (value) {
+                          if (value == 'select') {
+                            _selectProject(proj['id']!);
+                          } else if (value == 'edit') {
+                            _showCreateProjectDialog(projectToEdit: proj);
+                          } else if (value == 'delete') {
+                            _showDeleteConfirmation(proj['id']!, proj['name'] ?? '');
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem<String>(
+                            value: 'select',
+                            enabled: !isCurrent,
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle_outline_rounded, color: isCurrent ? VegaTheme.border : VegaTheme.accent, size: 18),
+                                const SizedBox(width: 8),
+                                Text(isCurrent ? 'Выбран' : 'Выбрать', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.edit_outlined, color: VegaTheme.textSecondary, size: 18),
+                                const SizedBox(width: 8),
+                                const Text('Изменить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                const SizedBox(width: 8),
+                                const Text('Удалить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                       children: [
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -344,35 +413,17 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               const Divider(color: VegaTheme.border),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Системный промпт:',
-                                style: TextStyle(color: VegaTheme.accentBlue, fontSize: 12, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: VegaTheme.dark,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: VegaTheme.border, width: 0.5),
-                                ),
-                                child: Text(
-                                  proj['prompt'] ?? 'Промпт не задан',
-                                  style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontFamily: 'monospace'),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 8),
                               const Text(
                                 'Чаты проекта:',
                                 style: TextStyle(color: VegaTheme.accent, fontSize: 12, fontWeight: FontWeight.bold),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 8),
                               Builder(builder: (ctx) {
                                 final projectChats = _allChats.where((c) => c['projectId'] == proj['id']).toList();
                                 if (projectChats.isEmpty) {
                                   return const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 4),
+                                    padding: EdgeInsets.symmetric(vertical: 8),
                                     child: Text(
                                       'В этом проекте пока нет чатов',
                                       style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12, fontStyle: FontStyle.italic),
@@ -385,52 +436,35 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                   itemCount: projectChats.length,
                                   itemBuilder: (ctx, i) {
                                     final chat = projectChats[i];
-                                    return ListTile(
-                                      dense: true,
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: EdgeInsets.zero,
-                                      leading: const Icon(Icons.chat_bubble_outline_rounded, color: VegaTheme.textSecondary, size: 16),
-                                      title: Text(
-                                        chat['title'] ?? 'Без названия',
-                                        style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      decoration: BoxDecoration(
+                                        color: VegaTheme.dark.withOpacity(0.4),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                      onTap: () {
-                                        _selectProjectAndChat(proj['id']!, chat['id'] as int);
-                                      },
+                                      child: ListTile(
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                        leading: const Icon(Icons.chat_bubble_outline_rounded, color: VegaTheme.accent, size: 20),
+                                        title: Text(
+                                          chat['title'] ?? 'Без названия',
+                                          style: const TextStyle(
+                                            color: VegaTheme.textPrimary,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        trailing: const Icon(Icons.chevron_right_rounded, color: VegaTheme.textSecondary, size: 18),
+                                        onTap: () {
+                                          _selectProjectAndChat(proj['id']!, chat['id'] as int);
+                                        },
+                                      ),
                                     );
                                   },
                                 );
                               }),
-                              const SizedBox(height: 12),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined, color: VegaTheme.textSecondary),
-                                    onPressed: () => _showCreateProjectDialog(projectToEdit: proj),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                    onPressed: () => _showDeleteConfirmation(proj['id']!, proj['name'] ?? ''),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton.icon(
-                                    onPressed: isCurrent ? null : () => _selectProject(proj['id']!),
-                                    icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
-                                    label: Text(isCurrent ? 'Выбран' : 'Выбрать'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: VegaTheme.accent,
-                                      foregroundColor: Colors.white,
-                                      disabledBackgroundColor: VegaTheme.border,
-                                      disabledForegroundColor: VegaTheme.textSecondary,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                              const SizedBox(height: 8),
                             ],
                           ),
                         ),
