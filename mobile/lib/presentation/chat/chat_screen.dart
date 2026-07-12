@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:convert';
+import 'dart:convert' as convert;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -46,6 +46,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final _searchController = TextEditingController();
   bool _isTyping = false; // tracks whether user has typed anything
   final Map<String, String> _fileDownloadStatus = {}; // tracks 'path' -> 'idle' | 'loading' | 'success'
+  List<Map<String, dynamic>> _projects = [];
+  String _activeProjectId = 'default';
+  String _activeProjectPrompt = '';
 
   // Speech to Text variables
   final speechToText.SpeechToText _speechToText = speechToText.SpeechToText();
@@ -135,6 +138,176 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  Future<void> _loadProjects() async {
+    final prefs = await SharedPreferences.getInstance();
+    final projectsJson = prefs.getString('projects_list');
+    
+    List<Map<String, dynamic>> loadedProjects = [];
+    if (projectsJson != null) {
+      try {
+        final decoded = convert.jsonDecode(projectsJson) as List<dynamic>;
+        loadedProjects = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+      } catch (e) {
+        debugPrint('Error decoding projects: $e');
+      }
+    }
+    
+    if (loadedProjects.isEmpty) {
+      loadedProjects = [
+        {
+          'id': 'default',
+          'name': 'Общий помощник',
+          'prompt': 'Ты — полезный, дружелюбный и умный ИИ-ассистент.'
+        },
+        {
+          'id': 'flutter',
+          'name': 'Flutter-разработчик',
+          'prompt': 'Ты — эксперт по разработке мобильных приложений на Flutter и Dart. Пиши чистый, оптимизированный код, следуй правилам чистой архитектуры.'
+        },
+        {
+          'id': 'python',
+          'name': 'Python-разработчик',
+          'prompt': 'Ты — опытный Senior Python разработчик. Пиши чистый, питоничный код (PEP 8), помогай писать автоматизацию и веб-приложения на FastAPI/Django.'
+        },
+        {
+          'id': 'qa',
+          'name': 'Тестировщик кода',
+          'prompt': 'Ты — QA инженер. Помогай писать Unit-тесты, искать логические ошибки и граничные случаи в предоставленном коде.'
+        }
+      ];
+      await prefs.setString('projects_list', convert.jsonEncode(loadedProjects));
+    }
+
+    final activeId = prefs.getString('active_project_id') ?? 'default';
+    final activeProj = loadedProjects.firstWhere((p) => p['id'] == activeId, orElse: () => loadedProjects.first);
+
+    setState(() {
+      _projects = loadedProjects;
+      _activeProjectId = activeProj['id'] ?? 'default';
+      _activeProjectPrompt = activeProj['prompt'] ?? '';
+    });
+  }
+
+  Future<void> _selectProject(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('active_project_id', id);
+    final activeProj = _projects.firstWhere((p) => p['id'] == id, orElse: () => _projects.first);
+    setState(() {
+      _activeProjectId = id;
+      _activeProjectPrompt = activeProj['prompt'] ?? '';
+    });
+  }
+
+  Future<void> _createProject(String name, String prompt) async {
+    final prefs = await SharedPreferences.getInstance();
+    final newProj = {
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'name': name,
+      'prompt': prompt,
+    };
+    setState(() {
+      _projects.add(newProj);
+    });
+    await prefs.setString('projects_list', convert.jsonEncode(_projects));
+    await _selectProject(newProj['id']!);
+  }
+
+  Future<void> _deleteProject(String id) async {
+    if (id == 'default') return;
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _projects.removeWhere((p) => p['id'] == id);
+    });
+    await prefs.setString('projects_list', convert.jsonEncode(_projects));
+    if (_activeProjectId == id) {
+      await _selectProject('default');
+    }
+  }
+
+  Future<void> _editProject(String id, String name, String prompt) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      final index = _projects.indexWhere((p) => p['id'] == id);
+      if (index != -1) {
+        _projects[index] = {
+          'id': id,
+          'name': name,
+          'prompt': prompt,
+        };
+      }
+    });
+    await prefs.setString('projects_list', convert.jsonEncode(_projects));
+    if (_activeProjectId == id) {
+      setState(() {
+        _activeProjectPrompt = prompt;
+      });
+    }
+  }
+
+  void _showCreateProjectDialog({Map<String, dynamic>? projectToEdit}) {
+    final isEdit = projectToEdit != null;
+    final nameCtrl = TextEditingController(text: isEdit ? projectToEdit['name'] : '');
+    final promptCtrl = TextEditingController(text: isEdit ? projectToEdit['prompt'] : '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: Text(isEdit ? 'Редактировать проект' : 'Создать проект', style: const TextStyle(color: VegaTheme.textPrimary)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+                decoration: const InputDecoration(
+                  labelText: 'Название проекта',
+                  labelStyle: TextStyle(color: VegaTheme.textSecondary),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: promptCtrl,
+                maxLines: 4,
+                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+                decoration: const InputDecoration(
+                  labelText: 'Системный промпт / Инструкции',
+                  labelStyle: TextStyle(color: VegaTheme.textSecondary),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              final prompt = promptCtrl.text.trim();
+              if (name.isNotEmpty) {
+                if (isEdit) {
+                  _editProject(projectToEdit['id']!, name, prompt);
+                } else {
+                  _createProject(name, prompt);
+                }
+                Navigator.pop(ctx);
+              }
+            },
+            child: Text(isEdit ? 'Сохранить' : 'Создать', style: const TextStyle(color: VegaTheme.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     String baseUrl = prefs.getString('base_url') ?? 'https://vega-chats-production.up.railway.app';
@@ -154,6 +327,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _client.baseUrl = baseUrl;
       _speechLocale = prefs.getString('speech_locale') ?? 'ru_RU';
     });
+    await _loadProjects();
   }
 
   Future<void> _loadChats() async {
@@ -301,6 +475,7 @@ class _ChatScreenState extends State<ChatScreen> {
         model: _model,
         provider: _provider,
         geminiApiKey: _geminiApiKey,
+        systemPrompt: _activeProjectPrompt,
         files: files.isEmpty ? null : files,
         onChunk: (chunk) {
           if (_cancelStream) return;
@@ -386,6 +561,7 @@ class _ChatScreenState extends State<ChatScreen> {
         model: _model,
         provider: _provider,
         geminiApiKey: _geminiApiKey,
+        systemPrompt: _activeProjectPrompt,
         files: regenFiles,
         onChunk: (chunk) {
           if (firstChunk) {
@@ -1260,9 +1436,82 @@ class _ChatScreenState extends State<ChatScreen> {
                       }),
               ),
               Divider(color: VegaTheme.border),
+              _buildSectionHeader('Проекты'),
+              const SizedBox(height: 6),
+              ..._projects.map((proj) {
+                final isCurrent = proj['id'] == _activeProjectId;
+                return ListTile(
+                  dense: true,
+                  visualDensity: const VisualDensity(vertical: -3),
+                  contentPadding: const EdgeInsets.only(left: 16, right: 4),
+                  selected: isCurrent,
+                  selectedTileColor: VegaTheme.card.withOpacity(0.4),
+                  leading: Icon(
+                    isCurrent ? Icons.folder_shared_rounded : Icons.folder_open_rounded,
+                    color: isCurrent ? VegaTheme.accent : VegaTheme.textSecondary,
+                    size: 18,
+                  ),
+                  title: Text(
+                    proj['name'] ?? '',
+                    style: TextStyle(
+                      color: isCurrent ? VegaTheme.accent : VegaTheme.textPrimary,
+                      fontSize: 13,
+                      fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                  trailing: PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _showCreateProjectDialog(projectToEdit: proj);
+                      } else if (value == 'delete') {
+                        _deleteProject(proj['id']!);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem<String>(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit_outlined, color: VegaTheme.textSecondary, size: 16),
+                            const SizedBox(width: 8),
+                            Text('Изменить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                      if (proj['id'] != 'default')
+                        PopupMenuItem<String>(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline, color: Colors.redAccent, size: 16),
+                              const SizedBox(width: 8),
+                              Text('Удалить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                  onTap: () => _selectProject(proj['id']!),
+                );
+              }).toList(),
               ListTile(
-                leading: Icon(Icons.folder_outlined, color: VegaTheme.accent),
-                title: Text('Файлы', style: TextStyle(color: VegaTheme.textPrimary)),
+                dense: true,
+                visualDensity: const VisualDensity(vertical: -3),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                leading: const Icon(Icons.add_rounded, color: VegaTheme.textSecondary, size: 18),
+                title: const Text(
+                  'Создать проект...',
+                  style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13, fontStyle: FontStyle.italic),
+                ),
+                onTap: () => _showCreateProjectDialog(),
+              ),
+              Divider(color: VegaTheme.border),
+              ListTile(
+                leading: const Icon(Icons.folder_outlined, color: VegaTheme.accent),
+                title: const Text('Файлы', style: TextStyle(color: VegaTheme.textPrimary)),
                 onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/ide'); },
               ),
               ListTile(

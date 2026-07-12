@@ -203,6 +203,10 @@ async def chat_stream(request: Request):
         }
         tools = None
 
+    custom_system_prompt = body.get("system_prompt", "").strip()
+    if custom_system_prompt:
+        system_msg["content"] += f"\n\n[Дополнительные инструкции проекта]\n{custom_system_prompt}"
+
     # Process files (text files only)
     import base64
     for file_data in files:
@@ -479,6 +483,10 @@ async def chat_websocket(websocket: WebSocket):
                 )
             }
             tools = None
+
+        custom_system_prompt = body.get("system_prompt", "").strip()
+        if custom_system_prompt:
+            system_msg["content"] += f"\n\n[Дополнительные инструкции проекта]\n{custom_system_prompt}"
 
         import base64
         for file_data in files:

@@ -13,6 +13,7 @@ class ApiClient {
     String model = 'openrouter/auto',
     String provider = 'openrouter',
     String geminiApiKey = '',
+    String systemPrompt = '',
     List<Map<String, String>>? files,
     required void Function(String chunk) onChunk,
     required Function onError,
@@ -32,6 +33,9 @@ class ApiClient {
         'provider': provider,
         'api_key': apiKey,
       };
+      if (systemPrompt.isNotEmpty) {
+        requestPayload['system_prompt'] = systemPrompt;
+      }
       if (geminiApiKey.isNotEmpty) {
         requestPayload['gemini_api_key'] = geminiApiKey;
       }
