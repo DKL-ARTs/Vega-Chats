@@ -207,8 +207,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
                 ),
                 value: _developerMode,
-                activeThumbColor: VegaTheme.accent,
-                activeTrackColor: VegaTheme.accent.withOpacity(0.5),
+                activeColor: VegaTheme.accent,
                 contentPadding: EdgeInsets.zero,
                 onChanged: (v) {
                   setState(() {
