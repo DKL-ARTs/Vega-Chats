@@ -2,10 +2,13 @@ import json
 import re
 import sys
 import logging
+import asyncio
 from fastapi import Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from app.providers import get_provider
 from fastapi import APIRouter
+from app.streaming.memory import get_formatted_profile, update_profile_in_background
+from app.streaming.search import decide_and_perform_search
 
 router = APIRouter()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stdout)
@@ -203,6 +206,13 @@ async def chat_stream(request: Request):
         }
         tools = None
 
+    # Внедряем долгосрочную память пользователя
+    try:
+        user_profile_data = get_formatted_profile()
+        system_msg["content"] += f"\n\n[Профиль пользователя Vega Chat для контекста]\n{user_profile_data}"
+    except Exception as e:
+        log.error(f"[SSE] Memory profiling injection error: {e}")
+
     custom_system_prompt = body.get("system_prompt", "").strip()
     if custom_system_prompt:
         system_msg["content"] += f"\n\n[Дополнительные инструкции проекта]\n{custom_system_prompt}"
@@ -240,8 +250,31 @@ async def chat_stream(request: Request):
         else:
             processed_messages.append({"role": role, "content": msg_content_str})
 
+    # Проверяем, требуется ли веб-поиск для ответа
+    search_query = None
+    search_results = None
+    try:
+        search_query, search_results = await decide_and_perform_search(
+            messages=messages,
+            model=model,
+            provider_name=provider_name,
+            api_key=api_key
+        )
+        if search_results:
+            processed_messages.append({
+                "role": "system",
+                "content": search_results
+            })
+    except Exception as e:
+        log.error(f"[SSE] Web search error: {e}")
+
     async def generate():
         try:
+            # Отправляем индикатор поиска в стрим
+            if search_query:
+                search_indicator = f"🔍 *Поиск в сети: \"{search_query}\"...*\n\n"
+                yield "data: " + json.dumps({"content": search_indicator}, ensure_ascii=False) + "\n\n"
+
             tool_calls_accumulator = {}
             accumulated_text = ""
 
@@ -369,6 +402,18 @@ async def chat_stream(request: Request):
                     err_msg = f"\n\n❌ Ошибка создания файла `{file_path}`: {str(e)}\n"
                     yield "data: " + json.dumps({"content": err_msg}, ensure_ascii=False) + "\n\n"
 
+            if accumulated_text:
+                try:
+                    asyncio.create_task(update_profile_in_background(
+                        messages=messages,
+                        accumulated_response=accumulated_text,
+                        model=model,
+                        provider_name=provider_name,
+                        api_key=api_key
+                    ))
+                except Exception as e:
+                    log.error(f"[SSE] Background memory update task failed: {e}")
+
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: Error: {str(e)}\n\n"
@@ -484,6 +529,13 @@ async def chat_websocket(websocket: WebSocket):
             }
             tools = None
 
+        # Внедряем долгосрочную память пользователя
+        try:
+            user_profile_data = get_formatted_profile()
+            system_msg["content"] += f"\n\n[Профиль пользователя Vega Chat для контекста]\n{user_profile_data}"
+        except Exception as e:
+            print(f"[WS] Memory profiling injection error: {e}", flush=True)
+
         custom_system_prompt = body.get("system_prompt", "").strip()
         if custom_system_prompt:
             system_msg["content"] += f"\n\n[Дополнительные инструкции проекта]\n{custom_system_prompt}"
@@ -517,9 +569,32 @@ async def chat_websocket(websocket: WebSocket):
             else:
                 processed_messages.append({"role": role, "content": msg_content_str})
 
+        # Проверяем, требуется ли веб-поиск для ответа
+        search_query = None
+        search_results = None
+        try:
+            search_query, search_results = await decide_and_perform_search(
+                messages=messages,
+                model=model,
+                provider_name=provider_name,
+                api_key=api_key
+            )
+            if search_results:
+                processed_messages.append({
+                    "role": "system",
+                    "content": search_results
+                })
+        except Exception as e:
+            print(f"[WS] Web search error: {e}", flush=True)
+
         provider = get_provider(provider_name)
         tool_calls_accumulator = {}
         accumulated_text = ""
+
+        # Если поиск выполнялся, отправляем индикатор поиска пользователю через вебсокет
+        if search_query:
+            search_indicator = f"🔍 *Поиск в сети: \"{search_query}\"...*\n\n"
+            await websocket.send_json({"content": search_indicator})
 
         async for raw_chunk in provider.stream(processed_messages, model, api_key=api_key, tools=tools):
             lines = raw_chunk.split("\n")
@@ -635,6 +710,18 @@ async def chat_websocket(websocket: WebSocket):
                 err_msg = f"\n\n❌ Ошибка создания файла `{file_path}`: {str(e)}\n"
                 await websocket.send_json({"content": err_msg})
 
+        if accumulated_text:
+            try:
+                asyncio.create_task(update_profile_in_background(
+                    messages=messages,
+                    accumulated_response=accumulated_text,
+                    model=model,
+                    provider_name=provider_name,
+                    api_key=api_key
+                ))
+            except Exception as e:
+                print(f"[WS] Background memory update task failed: {e}", flush=True)
+
         await websocket.send_json({"done": True})
 
     except WebSocketDisconnect:
@@ -650,3 +737,29 @@ async def chat_websocket(websocket: WebSocket):
             await websocket.close()
         except Exception:
             pass
+
+
+@router.get("/profile")
+async def get_profile_endpoint():
+    from app.streaming.memory import get_user_profile
+    return get_user_profile()
+
+
+@router.post("/profile")
+async def update_profile_endpoint(profile: dict):
+    from app.streaming.memory import save_user_profile
+    save_user_profile(profile)
+    return {"status": "ok"}
+
+
+@router.delete("/profile")
+async def clear_profile_endpoint():
+    from app.streaming.memory import PROFILE_FILE, DEFAULT_PROFILE
+    import os
+    if os.path.exists(PROFILE_FILE):
+        try:
+            os.remove(PROFILE_FILE)
+        except Exception:
+            pass
+    return DEFAULT_PROFILE
+

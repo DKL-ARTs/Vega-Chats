@@ -148,4 +148,22 @@ class ApiClient {
     print('[CHAT] First 200 chars: ${result.substring(0, result.length > 200 ? 200 : result.length)}');
     return result;
   }
+
+  Future<Map<String, dynamic>> getUserProfile() async {
+    final resp = await http.get(Uri.parse('$baseUrl/api/profile'));
+    return jsonDecode(utf8.decode(resp.bodyBytes));
+  }
+
+  Future<void> updateUserProfile(Map<String, dynamic> profile) async {
+    await http.post(
+      Uri.parse('$baseUrl/api/profile'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(profile),
+    );
+  }
+
+  Future<Map<String, dynamic>> deleteUserProfile() async {
+    final resp = await http.delete(Uri.parse('$baseUrl/api/profile'));
+    return jsonDecode(utf8.decode(resp.bodyBytes));
+  }
 }
