@@ -89,6 +89,83 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       await prefs.setString('projects_list', jsonEncode(loadedProjects));
     }
 
+    final List<Map<String, dynamic>> defaultList = [
+      {
+        'id': 'default',
+        'name': 'Общий помощник',
+        'description': 'Универсальный ИИ-помощник без специфичных системных инструкций.',
+        'prompt': 'Ты — полезный, дружелюбный и умный ИИ-ассистент.'
+      },
+      {
+        'id': 'flutter',
+        'name': 'Flutter-разработчик',
+        'description': 'Проектирование архитектуры и написание кода мобильных приложений на Dart.',
+        'prompt': 'Ты — эксперт по разработке мобильных приложений на Flutter и Dart. Пиши чистый, оптимизированный код, следуй правилам чистой архитектуры.'
+      },
+      {
+        'id': 'python',
+        'name': 'Python-разработчик',
+        'description': 'Автоматизация задач, парсинг сайтов, разработка бэкенда на FastAPI/Django и работа с данными.',
+        'prompt': 'Ты — опытный Senior Python разработчик. Пиши чистый, питоничный код (PEP 8), помогай писать автоматизацию и веб-приложения на FastAPI/Django.'
+      },
+      {
+        'id': 'qa',
+        'name': 'Тестировщик кода (QA)',
+        'description': 'Написание Unit-тестов, поиск логических ошибок, багов и проверка граничных условий.',
+        'prompt': 'Ты — QA инженер. Помогай писать Unit-тесты, искать логические ошибки и граничные случаи в предоставленном коде.'
+      },
+      {
+        'id': 'chef',
+        'name': 'Шеф-повар кулинарии',
+        'description': 'Подбор рецептов по ингредиентам, кулинарные советы и составление здорового меню.',
+        'prompt': 'Ты — профессиональный кулинарный шеф-повар. Помогай пользователю придумывать рецепты из имеющихся продуктов, давай советы по технике приготовления, замене ингредиентов и красивой подаче блюд.'
+      },
+      {
+        'id': 'english',
+        'name': 'Репетитор английского',
+        'description': 'Практика общения, перевод, грамматика и мягкое исправление ошибок.',
+        'prompt': 'Ты — дружелюбный и поддерживающий репетитор английского языка. Помогай пользователю изучать язык: отвечай на английском, переводи предложения, понятно объясняй правила грамматики и исправляй ошибки в сообщениях пользователя.'
+      },
+      {
+        'id': 'copywriter',
+        'name': 'Креативный копирайтер',
+        'description': 'Создание текстов для постов, сценариев, статей, писем и праздничных поздравлений.',
+        'prompt': 'Ты — талантливый копирайтер и креативный писатель. Твоя задача — создавать вовлекающие и качественные тексты, посты для соцсетей, сценарии, статьи и стихи в различных тонах речи (официальный, дружелюбный, юмористический) по запросу пользователя.'
+      },
+      {
+        'id': 'fitness',
+        'name': 'Фитнес-тренер и нутрициолог',
+        'description': 'Составление безопасных тренировочных программ для дома/зала и расчет здорового рациона.',
+        'prompt': 'Ты — опытный персональный фитнес-тренер и нутрициолог. Составляй безопасные и эффективные планы тренировок для дома или зала, давай рекомендации по расчету КБЖУ, питьевому режиму и здоровому образу жизни.'
+      }
+    ];
+
+    bool listChanged = false;
+    for (final def in defaultList) {
+      final existsIndex = loadedProjects.indexWhere((p) => p['id'] == def['id']);
+      if (existsIndex == -1) {
+        loadedProjects.add(def);
+        listChanged = true;
+      } else {
+        final current = loadedProjects[existsIndex];
+        if (current['id'] == 'flutter' && current['description'] == 'Создание и отладка мобильных приложений на Flutter/Dart.') {
+          loadedProjects[existsIndex]['description'] = def['description'];
+          listChanged = true;
+        } else if (current['id'] == 'python' && current['description'] == 'Разработка скриптов автоматизации, бэкенда на FastAPI, Django и парсеров.') {
+          loadedProjects[existsIndex]['description'] = def['description'];
+          listChanged = true;
+        } else if (current['id'] == 'qa' && (current['description'] == 'Анализ багов, написание unit-тестов и проверка алгоритмов.' || current['name'] == 'Тестировщик кода')) {
+          loadedProjects[existsIndex]['name'] = def['name'];
+          loadedProjects[existsIndex]['description'] = def['description'];
+          listChanged = true;
+        }
+      }
+    }
+
+    if (listChanged) {
+      await prefs.setString('projects_list', jsonEncode(loadedProjects));
+    }
+
     final activeId = prefs.getString('active_project_id') ?? 'default';
     final chats = await ChatHistory.getChats();
 
@@ -136,7 +213,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         backgroundColor: VegaTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Удаление проекта', style: TextStyle(color: VegaTheme.textPrimary, fontWeight: FontWeight.bold)),
-        content: Text('Вы действительно хотите удалить проект "$name"? Все чаты этого проекта останутся, но сам проект будет удален.', style: const TextStyle(color: VegaTheme.textSecondary)),
+        content: Text('Вы действительно хотите удалить проект "$name"? Все чаты, созданные в этом проекте, будут безвозвратно удалены вместе с ним.', style: const TextStyle(color: VegaTheme.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -172,6 +249,15 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   Future<void> _deleteProject(String id) async {
     if (id == 'default') return;
     final prefs = await SharedPreferences.getInstance();
+
+    final projectChats = _allChats.where((c) => c['projectId'] == id).toList();
+    for (final chat in projectChats) {
+      final cId = chat['id'];
+      if (cId is int) {
+        await ChatHistory.deleteChat(cId);
+      }
+    }
+
     setState(() {
       _projects.removeWhere((p) => p['id'] == id);
     });
@@ -361,48 +447,48 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      trailing: PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_vert, color: VegaTheme.textSecondary),
-                        onSelected: (value) {
-                          if (value == 'select') {
-                            _selectProject(proj['id']!);
-                          } else if (value == 'edit') {
-                            _showCreateProjectDialog(projectToEdit: proj);
-                          } else if (value == 'delete') {
-                            _showDeleteConfirmation(proj['id']!, proj['name'] ?? '');
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          PopupMenuItem<String>(
-                            value: 'select',
-                            enabled: !isCurrent,
-                            child: Row(
-                              children: [
-                                Icon(Icons.check_circle_outline_rounded, color: isCurrent ? VegaTheme.border : VegaTheme.accent, size: 18),
-                                const SizedBox(width: 8),
-                                Text(isCurrent ? 'Выбран' : 'Выбрать', style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                              ],
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton(
+                            onPressed: () => _selectProject(proj['id']!),
+                            style: TextButton.styleFrom(
+                              foregroundColor: VegaTheme.accent,
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
                             ),
+                            child: const Text('Новый чат', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                           ),
-                          PopupMenuItem<String>(
-                            value: 'edit',
-                            child: Row(
-                              children: [
-                                const Icon(Icons.edit_outlined, color: VegaTheme.textSecondary, size: 18),
-                                const SizedBox(width: 8),
-                                const Text('Изменить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
-                                const SizedBox(width: 8),
-                                const Text('Удалить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                              ],
-                            ),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert, color: VegaTheme.textSecondary),
+                            onSelected: (value) {
+                              if (value == 'edit') {
+                                _showCreateProjectDialog(projectToEdit: proj);
+                              } else if (value == 'delete') {
+                                _showDeleteConfirmation(proj['id']!, proj['name'] ?? '');
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              PopupMenuItem<String>(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.edit_outlined, color: VegaTheme.textSecondary, size: 18),
+                                    const SizedBox(width: 8),
+                                    const Text('Изменить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                    const SizedBox(width: 8),
+                                    const Text('Удалить', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
