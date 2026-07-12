@@ -13,8 +13,6 @@ class SettingsScreen extends StatefulWidget {
 class _ProviderInfo {
   final String id;
   final String label;
-  final String icon;
-  final Color color;
   final String keyHint;
   final String keyHelper;
   final Map<String, String> models;
@@ -22,8 +20,6 @@ class _ProviderInfo {
   const _ProviderInfo({
     required this.id,
     required this.label,
-    required this.icon,
-    required this.color,
     required this.keyHint,
     required this.keyHelper,
     required this.models,
@@ -34,35 +30,31 @@ final _providers = <_ProviderInfo>[
   _ProviderInfo(
     id: 'openrouter',
     label: 'OpenRouter',
-    icon: '⚡',
-    color: Color(0xFFFF6B35),
-    keyHint: 'OpenRouter API Key (sk-or-...)',
+    keyHint: 'API-ключ OpenRouter',
     keyHelper: 'Получить на openrouter.ai',
     models: {
-      'openrouter/auto': '⚡ Auto Router — лучшая модель автоматически',
-      'deepseek/deepseek-r1:free': '🧠 DeepSeek R1 — рассуждение (Free)',
-      'deepseek/deepseek-chat': '💬 DeepSeek V3 — чат (Premium)',
-      'openai/gpt-4o': '🤖 GPT-4o',
-      'openai/gpt-4o-mini': '🤖 GPT-4o Mini',
-      'anthropic/claude-3.5-sonnet': '🎭 Claude 3.5 Sonnet',
-      'anthropic/claude-3-haiku': '🎭 Claude 3 Haiku (быстрый)',
-      'meta-llama/llama-3.3-70b-instruct:free': '🦙 Llama 3.3 70B (Free)',
-      'qwen/qwen-2.5-72b-instruct:free': '🐉 Qwen 2.5 72B (Free)',
+      'openrouter/auto': 'Auto Router (Автовыбор модели)',
+      'deepseek/deepseek-r1:free': 'DeepSeek R1 (С рассуждением)',
+      'deepseek/deepseek-chat': 'DeepSeek V3 (Чат-модель)',
+      'openai/gpt-4o': 'GPT-4o',
+      'openai/gpt-4o-mini': 'GPT-4o Mini',
+      'anthropic/claude-3.5-sonnet': 'Claude 3.5 Sonnet',
+      'anthropic/claude-3-haiku': 'Claude 3 Haiku (Быстрый)',
+      'meta-llama/llama-3.3-70b-instruct:free': 'Llama 3.3 70B',
+      'qwen/qwen-2.5-72b-instruct:free': 'Qwen 2.5 72B',
     },
   ),
   _ProviderInfo(
     id: 'gemini',
     label: 'Google Gemini',
-    icon: '♊',
-    color: Color(0xFF4285F4),
-    keyHint: 'Gemini API Key (AIza...)',
+    keyHint: 'Gemini API Key',
     keyHelper: 'Получить на aistudio.google.com',
     models: {
-      'gemini-2.5-flash': '♊ Gemini 2.5 Flash — быстрый и умный',
-      'gemini-2.5-pro': '♊ Gemini 2.5 Pro — максимальные возможности',
-      'gemini-2.0-flash': '♊ Gemini 2.0 Flash',
-      'gemini-1.5-pro': '♊ Gemini 1.5 Pro — длинный контекст',
-      'gemini-1.5-flash': '♊ Gemini 1.5 Flash (лёгкий)',
+      'gemini-2.5-flash': 'Gemini 2.5 Flash',
+      'gemini-2.5-pro': 'Gemini 2.5 Pro',
+      'gemini-2.0-flash': 'Gemini 2.0 Flash',
+      'gemini-1.5-pro': 'Gemini 1.5 Pro',
+      'gemini-1.5-flash': 'Gemini 1.5 Flash',
     },
   ),
 ];
@@ -70,8 +62,7 @@ final _providers = <_ProviderInfo>[
 // ─── State ────────────────────────────────────────────────────────────────────
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _openrouterKeyCtrl = TextEditingController();
-  final _geminiKeyCtrl = TextEditingController();
+  final _apiKeyCtrl = TextEditingController();
   final _baseUrlCtrl = TextEditingController(
       text: 'https://vega-chats-production.up.railway.app');
 
@@ -79,6 +70,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _selectedModel = 'openrouter/auto';
   String _selectedLocale = 'ru_RU';
   bool _developerMode = false;
+
+  String _openrouterKey = '';
+  String _geminiKey = '';
 
   _ProviderInfo get _selectedProvider =>
       _providers.firstWhere((p) => p.id == _selectedProviderId,
@@ -89,7 +83,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String get _defaultModel => _selectedProvider.models.keys.first;
 
-  // For the chat screen — final model id and provider to backend
   String get _modelForBackend => _selectedModel;
   String get _provider => _selectedProviderId;
 
@@ -113,10 +106,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final baseUrl = prefs.getString('base_url') ??
         'https://vega-chats-production.up.railway.app';
 
-    // Resolve provider from saved data (backward compat with old 'model' key)
+    _openrouterKey = prefs.getString('api_key') ?? '';
+    _geminiKey = prefs.getString('gemini_api_key') ?? '';
+
+    // Resolve provider from saved data
     String resolvedProvider = providerId;
     String resolvedModel = model;
-    // If old format had 'gemini:' prefix
     final oldModel = prefs.getString('model') ?? '';
     if (oldModel.startsWith('gemini:') && resolvedProvider == 'openrouter') {
       resolvedProvider = 'gemini';
@@ -127,12 +122,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         orElse: () => _providers.first);
 
     setState(() {
-      _openrouterKeyCtrl.text = prefs.getString('api_key') ?? '';
-      _geminiKeyCtrl.text = prefs.getString('gemini_api_key') ?? '';
+      _selectedProviderId = providerInfo.id;
+      _apiKeyCtrl.text = _selectedProviderId == 'openrouter' ? _openrouterKey : _geminiKey;
       _baseUrlCtrl.text = baseUrl;
       _developerMode =
           baseUrl != 'https://vega-chats-production.up.railway.app';
-      _selectedProviderId = providerInfo.id;
       _selectedModel = providerInfo.models.containsKey(resolvedModel)
           ? resolvedModel
           : providerInfo.models.keys.first;
@@ -142,13 +136,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('api_key', _openrouterKeyCtrl.text);
-    await prefs.setString('gemini_api_key', _geminiKeyCtrl.text);
+    await prefs.setString('api_key', _openrouterKey);
+    await prefs.setString('gemini_api_key', _geminiKey);
     await prefs.setString('base_url', _baseUrlCtrl.text);
     await prefs.setString('speech_locale', _selectedLocale);
     await prefs.setString('provider', _provider);
     await prefs.setString('model_for_backend', _modelForBackend);
-    // Legacy key kept in sync
     await prefs.setString('model', _selectedModel);
   }
 
@@ -156,12 +149,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final provider = _providers.firstWhere((p) => p.id == id);
     setState(() {
       _selectedProviderId = id;
+      _apiKeyCtrl.text = id == 'openrouter' ? _openrouterKey : _geminiKey;
       _selectedModel = provider.models.keys.first;
     });
     _saveSettings();
   }
 
+  void _onApiKeyChanged(String val) {
+    if (_selectedProviderId == 'openrouter') {
+      _openrouterKey = val;
+    } else {
+      _geminiKey = val;
+    }
+    _saveSettings();
+  }
+
   void _dismissKeyboard() => FocusScope.of(context).unfocus();
+
+  // ─── Logo renderer ────────────────────────────────────────────────────────
+
+  Widget _buildProviderLogo(String providerId, {double size = 20}) {
+    if (providerId == 'openrouter') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFFFF8C00), Color(0xFFFF5252)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.hub_rounded, size: size * 0.6, color: Colors.white),
+      );
+    } else if (providerId == 'gemini') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFF1A73E8), Color(0xFF8AB4F8), Color(0xFFC58AF9)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.auto_awesome, size: size * 0.6, color: Colors.white),
+      );
+    }
+    return Icon(Icons.api_rounded, size: size);
+  }
 
   // ─── Build ───────────────────────────────────────────────────────────────
 
@@ -193,7 +233,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // ── 1. Provider selector ──────────────────────────────────────
             _buildSectionHeader('Провайдер ИИ'),
             const SizedBox(height: 12),
-            _buildProviderSelector(),
+            _buildCard([
+              const SizedBox(height: 4),
+              const Row(
+                children: [
+                  Icon(Icons.business_rounded, color: VegaTheme.accent, size: 20),
+                  SizedBox(width: 12),
+                  Text(
+                    'Выберите провайдера API',
+                    style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedProviderId,
+                  isExpanded: true,
+                  dropdownColor: VegaTheme.surface,
+                  style: const TextStyle(
+                      color: VegaTheme.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500),
+                  items: _providers.map((p) => DropdownMenuItem(
+                    value: p.id,
+                    child: Row(
+                      children: [
+                        _buildProviderLogo(p.id),
+                        const SizedBox(width: 12),
+                        Text(p.label),
+                      ],
+                    ),
+                  )).toList(),
+                  onChanged: (v) {
+                    if (v == null) return;
+                    _selectProvider(v);
+                  },
+                ),
+              ),
+              const SizedBox(height: 4),
+            ]),
             const SizedBox(height: 24),
 
             // ── 2. Model selector (depends on provider) ───────────────────
@@ -203,11 +282,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  Icon(Icons.auto_awesome_rounded,
-                      color: _selectedProvider.color, size: 20),
+                  _buildProviderLogo(_selectedProviderId, size: 18),
                   const SizedBox(width: 12),
                   Text(
-                    'Активная модель — ${_selectedProvider.label}',
+                    'Активная модель (${_selectedProvider.label})',
                     style: const TextStyle(
                         color: VegaTheme.textSecondary, fontSize: 13),
                   ),
@@ -242,24 +320,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ]),
             const SizedBox(height: 24),
 
-            // ── 3. API Keys ───────────────────────────────────────────────
-            _buildSectionHeader('API-ключи'),
+            // ── 3. API Key (Single context field) ─────────────────────────
+            _buildSectionHeader('Авторизация'),
             const SizedBox(height: 12),
             _buildCard([
-              _buildKeyField(
-                controller: _openrouterKeyCtrl,
-                label: 'OpenRouter API Key',
-                helper: 'Получить на openrouter.ai',
-                icon: Icons.key_rounded,
-                color: const Color(0xFFFF6B35),
-              ),
-              const Divider(height: 28, color: VegaTheme.border),
-              _buildKeyField(
-                controller: _geminiKeyCtrl,
-                label: 'Google Gemini API Key',
-                helper: 'Получить на aistudio.google.com',
-                icon: Icons.diamond_rounded,
-                color: const Color(0xFF4285F4),
+              TextField(
+                controller: _apiKeyCtrl,
+                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  labelText: 'API-ключ ${_selectedProvider.label}',
+                  labelStyle:
+                      const TextStyle(color: VegaTheme.textSecondary, fontSize: 13),
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: _buildProviderLogo(_selectedProviderId, size: 16),
+                  ),
+                  border: UnderlineInputBorder(
+                      borderSide: BorderSide(color: VegaTheme.border)),
+                  enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: VegaTheme.border)),
+                  focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: _selectedProviderId == 'openrouter' ? const Color(0xFFFF6B35) : const Color(0xFF4285F4))),
+                  helperText: _selectedProvider.keyHelper,
+                  helperStyle:
+                      const TextStyle(color: VegaTheme.textSecondary, fontSize: 11),
+                ),
+                obscureText: true,
+                onChanged: _onApiKeyChanged,
               ),
             ]),
             const SizedBox(height: 24),
@@ -377,7 +464,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             Center(
               child: Text(
-                'Vega Chat v1.2.0 • Сделано с ❤️',
+                'Vega Chat v1.2.1 • Сделано с ❤️',
                 style: TextStyle(
                     color: VegaTheme.textSecondary.withOpacity(0.6),
                     fontSize: 11),
@@ -389,151 +476,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ─── Provider selector ────────────────────────────────────────────────────
-
-  Widget _buildProviderSelector() {
-    return Row(
-      children: _providers.map((p) {
-        final isSelected = p.id == _selectedProviderId;
-        return Expanded(
-          child: GestureDetector(
-            onTap: () => _selectProvider(p.id),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: EdgeInsets.only(
-                  right: p == _providers.last ? 0 : 10),
-              padding:
-                  const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? p.color.withOpacity(0.15)
-                    : VegaTheme.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: isSelected ? p.color : VegaTheme.border,
-                  width: isSelected ? 1.5 : 0.5,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: p.color.withOpacity(0.25),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        )
-                      ]
-                    : [],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(p.icon, style: const TextStyle(fontSize: 26)),
-                  const SizedBox(height: 6),
-                  Text(
-                    p.label,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color:
-                          isSelected ? p.color : VegaTheme.textSecondary,
-                      fontSize: 12,
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                    ),
-                  ),
-                  if (isSelected) ...[
-                    const SizedBox(height: 4),
-                    Container(
-                      width: 24,
-                      height: 3,
-                      decoration: BoxDecoration(
-                        color: p.color,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ]
-                ],
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  Widget _buildKeyField({
-    required TextEditingController controller,
-    required String label,
-    required String helper,
-    required IconData icon,
-    required Color color,
-  }) {
-    return TextField(
-      controller: controller,
-      style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle:
-            const TextStyle(color: VegaTheme.textSecondary, fontSize: 13),
-        prefixIcon: Icon(icon, color: color, size: 20),
-        border: UnderlineInputBorder(
-            borderSide: BorderSide(color: VegaTheme.border)),
-        enabledBorder: UnderlineInputBorder(
-            borderSide: BorderSide(color: VegaTheme.border)),
-        focusedBorder:
-            UnderlineInputBorder(borderSide: BorderSide(color: color)),
-        helperText: helper,
-        helperStyle:
-            const TextStyle(color: VegaTheme.textSecondary, fontSize: 11),
-      ),
-      obscureText: true,
-      onChanged: (_) => _saveSettings(),
-    );
-  }
-
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4.0),
-      child: Text(
-        title.toUpperCase(),
-        style: const TextStyle(
-          color: VegaTheme.accent,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.2,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCard(List<Widget> children) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: VegaTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: VegaTheme.border, width: 0.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: children,
-      ),
-    );
-  }
-
   @override
   void dispose() {
-    _openrouterKeyCtrl.dispose();
-    _geminiKeyCtrl.dispose();
+    _apiKeyCtrl.dispose();
     _baseUrlCtrl.dispose();
     super.dispose();
   }
