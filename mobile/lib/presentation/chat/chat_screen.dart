@@ -20,6 +20,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:speech_to_text/speech_to_text.dart' as speechToText;
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../ide/ide_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -1231,7 +1232,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       final wsUrl = _getWsUrl();
-      final channel = IOWebSocketChannel.connect(Uri.parse(wsUrl));
+      final channel = WebSocketChannel.connect(Uri.parse(wsUrl));
       
       channel.sink.add(command);
       
@@ -1905,6 +1906,16 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const IdeScreen()),
+              );
+            },
+            tooltip: 'Режим IDE',
+            icon: const Icon(Icons.code_rounded, color: VegaTheme.accent, size: 26),
+          ),
           if (_activeProjectId != 'default')
             Padding(
               padding: const EdgeInsets.only(right: 4),
