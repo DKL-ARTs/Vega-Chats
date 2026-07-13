@@ -44,6 +44,43 @@ async def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
         log.error(f"[Search] DuckDuckGo search error: {e}")
         return []
 
+def clean_html(html: str) -> str:
+    """Strips tags, scripts, and styles from HTML string to return readable text"""
+    # Strip script and style tags
+    html = re.sub(r'<(script|style)\b[^>]*>[\s\S]*?</\1>', '', html, flags=re.IGNORECASE)
+    # Strip comments
+    html = re.sub(r'<!--[\s\S]*?-->', '', html)
+    # Preserve block spacing by injecting newlines
+    html = re.sub(r'</?(div|p|h\d|li|tr|section|header|footer|aside)\b[^>]*>', '\n', html, flags=re.IGNORECASE)
+    html = re.sub(r'<br\s*/?>', '\n', html, flags=re.IGNORECASE)
+    # Strip remaining tags
+    text = re.sub(r'<[^>]+>', '', html)
+    # Unescape HTML entities
+    import html as html_parser
+    text = html_parser.unescape(text)
+    # Collapse extra whitespace
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n\s*\n+', '\n\n', text)
+    return text.strip()
+
+async def fetch_url_content(url: str) -> str:
+    """Downloads content from HTTP/HTTPS URL and returns parsed readable text representation"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        async with httpx.AsyncClient(headers=headers, timeout=12.0, follow_redirects=True) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return f"Ошибка при загрузке сайта (HTTP статус {resp.status_code})"
+            
+            cleaned = clean_html(resp.text)
+            if len(cleaned) > 15000:
+                cleaned = cleaned[:15000] + "\n\n...[содержимое веб-страницы обрезано из-за большого объема]..."
+            return cleaned
+    except Exception as e:
+        return f"Не удалось прочитать содержимое сайта: {e}"
+
 async def decide_and_perform_search(
     messages: list[dict], 
     model: str, 
@@ -51,9 +88,8 @@ async def decide_and_perform_search(
     api_key: str
 ) -> tuple[str, str]:
     """
-    Asks the LLM if the user's latest query requires a web search.
-    If yes, performs the search and returns (query, formatted_results).
-    If no, returns (None, None).
+    Checks if a query contains a URL (fetches it directly) or if it requires general DuckDuckGo search.
+    Returns (query/url, formatted_results).
     """
     if not messages:
         return None, None
@@ -63,12 +99,32 @@ async def decide_and_perform_search(
         if msg.get("role") == "user":
             last_user_msg = msg.get("content", "")
             if isinstance(last_user_msg, list):
-                # Handle multimodal format if present
                 last_user_msg = " ".join([item.get("text", "") for item in last_user_msg if item.get("type") == "text"])
             break
 
     if not last_user_msg:
         return None, None
+
+    # Check for direct URL pasting
+    urls = re.findall(r'(https?://[^\s\)\}\]>\'"]+)', last_user_msg)
+    if urls:
+        target_url = urls[0]
+        log.info(f"[Search] Direct URL detected, fetching content of: {target_url}")
+        content = await fetch_url_content(target_url)
+        
+        # If download failed completely, we fallback to DDG search for it.
+        # Otherwise, we return the parsed content of the web page.
+        if "Не удалось прочитать содержимое" in content or "Ошибка при загрузке сайта" in content:
+            log.warning(f"[Search] Direct fetch failed for {target_url}, falling back to DDG search")
+        else:
+            formatted_results = (
+                f"\n\n--- СОДЕРЖИМОЕ ВЕБ-САЙТА {target_url} ---\n"
+                f"{content}\n"
+                f"--- КОНЕЦ СОДЕРЖИМОГО ВЕБ-САЙТА ---\n"
+                f"Внимание: Выше предоставлено реальное содержимое веб-сайта, который запросил пользователь. "
+                f"Используй его для анализа, оценки, поиска ошибок и ответа на запрос пользователя о данном сайте."
+            )
+            return target_url, formatted_results
 
     # LLM Classifier Prompt
     classifier_prompt = (
@@ -82,7 +138,6 @@ async def decide_and_perform_search(
 
     try:
         provider = get_provider(provider_name)
-        # We use a fast, cheap model for classification if possible, or fallback to the requested model
         classifier_model = "gemini-2.5-flash" if provider_name == "gemini" else model
         
         response = await provider.chat(

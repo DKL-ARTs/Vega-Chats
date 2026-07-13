@@ -285,7 +285,10 @@ async def chat_stream(request: Request):
         try:
             # Отправляем индикатор поиска в стрим
             if search_query:
-                search_indicator = f"🔍 *Поиск в сети: \"{search_query}\"...*\n\n"
+                if search_query.startswith("http://") or search_query.startswith("https://"):
+                    search_indicator = f"🔍 *Чтение содержимого сайта: {search_query}...*\n\n"
+                else:
+                    search_indicator = f"🔍 *Поиск в сети: \"{search_query}\"...*\n\n"
                 yield "data: " + json.dumps({"content": search_indicator}, ensure_ascii=False) + "\n\n"
 
             tool_calls_accumulator = {}
@@ -617,9 +620,11 @@ async def chat_websocket(websocket: WebSocket):
         tool_calls_accumulator = {}
         accumulated_text = ""
 
-        # Если поиск выполнялся, отправляем индикатор поиска пользователю через вебсокет
         if search_query:
-            search_indicator = f"🔍 *Поиск в сети: \"{search_query}\"...*\n\n"
+            if search_query.startswith("http://") or search_query.startswith("https://"):
+                search_indicator = f"🔍 *Чтение содержимого сайта: {search_query}...*\n\n"
+            else:
+                search_indicator = f"🔍 *Поиск в сети: \"{search_query}\"...*\n\n"
             await websocket.send_json({"content": search_indicator})
 
         async for raw_chunk in provider.stream(processed_messages, model, api_key=api_key, tools=tools):
