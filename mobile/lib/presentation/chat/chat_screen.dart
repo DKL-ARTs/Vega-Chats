@@ -18,6 +18,8 @@ import 'package:open_file_plus/open_file_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:speech_to_text/speech_to_text.dart' as speechToText;
+import 'package:web_socket_channel/io.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -1194,6 +1196,8 @@ class _ChatScreenState extends State<ChatScreen> {
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\]'), '');
     cleaned = cleaned.replaceAll('[/WRITE_FILE]', '');
     cleaned = cleaned.replaceAll(RegExp(r'WRITE_FILE:.*?\]'), '');
+    // Strip execute command tags
+    cleaned = cleaned.replaceAll(RegExp(r'<execute_command>[\s\S]*?</execute_command>'), '');
     // Strip markdown code blocks
     cleaned = cleaned.replaceAll(RegExp(r'```[\s\S]*?```'), '');
     // Strip download links
@@ -1203,6 +1207,250 @@ class _ChatScreenState extends State<ChatScreen> {
     cleaned = cleaned.replaceAll(RegExp(r'### 💾 Создан файл.*?\n'), '');
     cleaned = cleaned.replaceAll(RegExp(r'### 💾 Создан файл.*?$'), '');
     return cleaned.trim();
+  }
+
+  String? _extractCommand(String content) {
+    final match = RegExp(r'<execute_command>([\s\S]*?)</execute_command>').firstMatch(content);
+    return match?.group(1)?.trim();
+  }
+
+  String _getWsUrl() {
+    final httpUrl = _client.baseUrl;
+    final uri = Uri.parse(httpUrl);
+    final wsScheme = uri.scheme == 'https' ? 'wss' : 'ws';
+    final host = uri.host.isEmpty ? '127.0.0.1' : uri.host;
+    final portPart = uri.hasPort ? ':${uri.port}' : '';
+    return '$wsScheme://$host$portPart/ws/terminal';
+  }
+
+  Future<void> _runTerminalCommand(int msgIndex, String command) async {
+    final msg = _messages[msgIndex];
+    setState(() {
+      msg['terminalStatus'] = 'running';
+      msg['terminalOutput'] = 'Запуск команды...\n';
+    });
+
+    try {
+      final wsUrl = _getWsUrl();
+      final channel = IOWebSocketChannel.connect(Uri.parse(wsUrl));
+      
+      channel.sink.add(command);
+      
+      await for (final data in channel.stream) {
+        if (!mounted) break;
+        setState(() {
+          msg['terminalOutput'] = (msg['terminalOutput'] ?? '') + data.toString();
+        });
+      }
+      
+      if (mounted) {
+        setState(() {
+          msg['terminalStatus'] = 'done';
+        });
+        
+        final finalOutput = msg['terminalOutput'] ?? '';
+        final cleanOutput = finalOutput.replaceAll('Запуск команды...\n', '');
+        await _sendSystemMessage(
+          "Команда `$command` выполнена.\nВывод терминала:\n```\n$cleanOutput\n```"
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          msg['terminalStatus'] = 'error';
+          msg['terminalOutput'] = (msg['terminalOutput'] ?? '') + '\nОшибка: $e\n';
+        });
+      }
+    }
+  }
+
+  Future<void> _sendSystemMessage(String content) async {
+    if (_loading || _currentChatId == null) return;
+    
+    await ChatHistory.addMessage(_currentChatId!, 'user', content);
+    await _loadChats();
+    
+    setState(() {
+      _messages.add({'role': 'user', 'content': content});
+      _loading = true;
+      _cancelStream = false;
+    });
+    
+    _startThinking();
+    try {
+      final messagesForBackend = _messages.map((m) => {
+        'role': m['role'].toString(),
+        'content': m['content'].toString(),
+      }).toList();
+      setState(() { _messages.add({'role': 'assistant', 'content': ''}); });
+      final responseBuffer = StringBuffer();
+      bool firstChunk = true;
+      await _client.streamChat(
+        messages: messagesForBackend,
+        model: _model,
+        provider: _provider,
+        geminiApiKey: _geminiApiKey,
+        systemPrompt: _activeProjectPrompt,
+        onChunk: (chunk) {
+          if (_cancelStream) return;
+          if (firstChunk) { _stopThinking(); firstChunk = false; }
+          responseBuffer.write(chunk);
+          if (mounted) setState(() { _messages.last['content'] = responseBuffer.toString(); });
+        },
+        onError: (error) {
+          _stopThinking();
+          if (mounted) setState(() { _messages.last['content'] = 'Error: $error'; });
+        },
+      );
+      _stopThinking();
+      final finalResponse = responseBuffer.toString();
+      if (finalResponse.isNotEmpty) {
+        await ChatHistory.addMessage(_currentChatId!, 'assistant', finalResponse);
+      }
+    } catch (e) {
+      _stopThinking();
+    } finally {
+      if (mounted) setState(() { _loading = false; _cancelStream = false; });
+    }
+  }
+
+  Widget _buildTerminalCard(int msgIndex, String command) {
+    final msg = _messages[msgIndex];
+    final status = msg['terminalStatus'] ?? 'idle';
+    final output = msg['terminalOutput'] ?? '';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: VegaTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: status == 'running' 
+              ? VegaTheme.accent 
+              : (status == 'done' ? Colors.green.withOpacity(0.5) : VegaTheme.border),
+          width: status == 'idle' ? 0.5 : 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.terminal_rounded, 
+                  color: status == 'running' 
+                      ? VegaTheme.accent 
+                      : (status == 'done' ? Colors.greenAccent : VegaTheme.textSecondary),
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    status == 'running'
+                        ? 'Выполнение команды...'
+                        : (status == 'done' ? 'Команда выполнена успешно' : 'Запрос на выполнение команды'),
+                    style: const TextStyle(
+                      color: VegaTheme.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                if (status == 'running')
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: VegaTheme.accent),
+                  )
+                else if (status == 'done')
+                  const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 16),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: VegaTheme.dark,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              command,
+              style: const TextStyle(
+                color: Colors.white,
+                fontFamily: 'monospace',
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+          if (status != 'idle') ...[
+            const SizedBox(height: 10),
+            Container(
+              height: 150,
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: SingleChildScrollView(
+                reverse: true,
+                child: Text(
+                  output,
+                  style: const TextStyle(
+                    color: Colors.lightGreenAccent,
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (status == 'idle')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        msg['terminalStatus'] = 'declined';
+                      });
+                    },
+                    child: const Text('Отклонить', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => _runTerminalCommand(msgIndex, command),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: VegaTheme.accent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
+                    label: const Text('Запустить', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                ],
+              ),
+            )
+          else if (status == 'declined')
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Text(
+                'Запуск команды отклонен пользователем.',
+                style: TextStyle(color: Colors.redAccent, fontSize: 12, fontStyle: FontStyle.italic),
+              ),
+            )
+          else
+            const SizedBox(height: 4),
+        ],
+      ),
+    );
   }
 
   /// Opens the generated file directly using native Android intent chooser (always fetches fresh content).
@@ -1821,6 +2069,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                                  final filePath = file['path'] ?? '';
                                                  return _buildGeneratedFileCard(fileName, filePath);
                                                }).toList(),
+                                               Builder(builder: (context) {
+                                                 final cmd = _extractCommand(msg['content'] ?? '');
+                                                 if (cmd != null) {
+                                                   return _buildTerminalCard(i, cmd);
+                                                 }
+                                                 return const SizedBox.shrink();
+                                               }),
                                              ],
                                            ),
                                          ),
