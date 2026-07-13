@@ -1192,14 +1192,13 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Cleans the raw file download markdown block from assistant message content.
   String _cleanMessageContent(String content) {
     String cleaned = content;
-    // Strip write file tags
+    // Strip write file tags and their contents completely
+    cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\][\s\S]*?\[/WRITE_FILE\]'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\]'), '');
     cleaned = cleaned.replaceAll('[/WRITE_FILE]', '');
     cleaned = cleaned.replaceAll(RegExp(r'WRITE_FILE:.*?\]'), '');
     // Strip execute command tags
     cleaned = cleaned.replaceAll(RegExp(r'<execute_command>[\s\S]*?</execute_command>'), '');
-    // Strip markdown code blocks
-    cleaned = cleaned.replaceAll(RegExp(r'```[\s\S]*?```'), '');
     // Strip download links
     cleaned = cleaned.replaceAll(RegExp(r'\[[^\]]*?\]\(/api/files/download\?path=[^)]+\)'), '');
     cleaned = cleaned.replaceAll(RegExp(r'Вы можете\s*$'), '');
