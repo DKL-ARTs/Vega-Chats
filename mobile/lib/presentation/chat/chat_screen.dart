@@ -855,166 +855,61 @@ class _ChatScreenState extends State<ChatScreen> {
     return 'Добрый вечер ✨';
   }
 
-  Widget _buildWelcomeScreen() {
-    if (_activeProjectId == 'default') {
-      final suggestions = [
-        {'icon': '💻', 'text': 'Написать код', 'prompt': 'Помоги мне написать код на '},
-        {'icon': '📚', 'text': 'Объяснить тему', 'prompt': 'Объясни мне простыми словами что такое '},
-        {'icon': '✍️', 'text': 'Написать текст', 'prompt': 'Напиши текст на тему '},
-        {'icon': '💡', 'text': 'Придумать идею', 'prompt': 'Придумай интересную идею для '},
-      ];
+  Color _parseHexColor(String hexString) {
+    final buffer = StringBuffer();
+    if (hexString.length == 6 || hexString.length == 7) buffer.write('ff');
+    buffer.write(hexString.replaceFirst('#', ''));
+    return Color(int.parse(buffer.toString(), radix: 16));
+  }
 
-      return Stack(
-        children: [
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.7, -0.4),
-                  radius: 1.2,
-                  colors: [Color(0x147C4DFF), Color(0x00000000)],
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(-0.8, 0.6),
-                  radius: 1.0,
-                  colors: [Color(0x102196F3), Color(0x00000000)],
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, 1.0),
-                  radius: 0.8,
-                  colors: [Color(0x0A00BCD4), Color(0x00000000)],
-                ),
-              ),
-            ),
-          ),
-          Align(
-            alignment: const Alignment(0, -0.15),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.85, end: 1.0),
-                    duration: const Duration(milliseconds: 2000),
-                    curve: Curves.easeInOut,
-                    builder: (context, value, child) {
-                      return Transform.scale(
-                        scale: value,
-                        child: Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: VegaTheme.accent.withOpacity(0.25 * value),
-                                blurRadius: 28 * value,
-                                spreadRadius: 4 * value,
-                              ),
-                            ],
-                          ),
-                          child: ClipOval(
-                            child: Image.asset('assets/logo.png', fit: BoxFit.cover),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  if (!_isTyping) ...[
-                    Text(
-                      _getGreeting(),
-                      style: const TextStyle(
-                        color: VegaTheme.textPrimary,
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Пишу код, ищу ошибки, отвечаю\nна вопросы и генерирую идеи',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: VegaTheme.textSecondary,
-                        fontSize: 14,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      padding: EdgeInsets.zero,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: 2.6,
-                      children: suggestions.map((s) => GestureDetector(
-                        onTap: () {
-                          _controller.text = s['prompt']!;
-                          _controller.selection = TextSelection.fromPosition(
-                            TextPosition(offset: _controller.text.length),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: VegaTheme.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: VegaTheme.border, width: 0.5),
-                          ),
-                          child: Row(
-                            children: [
-                              Text(s['icon']!, style: const TextStyle(fontSize: 18)),
-                              const SizedBox(width: 8),
-                              Flexible(child: Text(s['text']!, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                            ],
-                          ),
-                        ),
-                      )).toList(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
+  List<Map<String, String>> _getSuggestions(Map<String, dynamic> project) {
+    final rawSuggestions = project['suggestions'];
+    List<String> list = [];
+    if (rawSuggestions is List) {
+      list = List<String>.from(rawSuggestions.map((e) => e.toString()));
     }
+    
+    if (list.isEmpty) {
+      list = ['Написать код', 'Объяснить тему', 'Написать текст', 'Придумать идею'];
+    }
+    
+    final emojis = ['💡', '✍️', '❓', '🔍', '🚀', '🛠️', '📚', '💻'];
+    return List.generate(list.length, (idx) {
+      final text = list[idx];
+      return {
+        'icon': emojis[idx % emojis.length],
+        'text': text,
+        'prompt': '$text ',
+      };
+    });
+  }
 
+  Widget _buildWelcomeScreen() {
     final activeProj = _projects.firstWhere(
       (p) => p['id'] == _activeProjectId, 
       orElse: () => {
+        'id': 'default',
         'name': 'Общий помощник',
-        'description': 'Универсальный ИИ-помощник без специфичных системных инструкций.'
+        'description': 'Универсальный ИИ-помощник без специфичных системных инструкций.',
+        'iconColor': '#7C4DFF',
+        'suggestions': ['Написать код', 'Объяснить тему', 'Написать текст', 'Придумать идею']
       }
     );
     final projName = activeProj['name'] ?? 'Общий помощник';
     final projDesc = activeProj['description'] ?? '';
+    final suggestions = _getSuggestions(activeProj);
+    final isDefault = _activeProjectId == 'default';
+    final projColor = _parseHexColor(activeProj['iconColor'] ?? '#7C4DFF');
 
     return Stack(
       children: [
-        // Ambient glow background
         Positioned.fill(
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: RadialGradient(
-                center: Alignment(0.7, -0.4),
+                center: const Alignment(0.7, -0.4),
                 radius: 1.2,
-                colors: [Color(0x147C4DFF), Color(0x00000000)],
+                colors: [projColor.withOpacity(0.08), const Color(0x00000000)],
               ),
             ),
           ),
@@ -1030,11 +925,21 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ),
-        // Content — positioned in center
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(0.0, 1.0),
+                radius: 0.8,
+                colors: [Color(0x0A00BCD4), Color(0x00000000)],
+              ),
+            ),
+          ),
+        ),
         Align(
-          alignment: const Alignment(0, -0.1),
+          alignment: const Alignment(0, -0.15),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1046,15 +951,15 @@ class _ChatScreenState extends State<ChatScreen> {
                     return Transform.scale(
                       scale: value,
                       child: Container(
-                        width: 80,
-                        height: 80,
+                        width: 72,
+                        height: 72,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: VegaTheme.accent.withOpacity(0.2 * value),
-                              blurRadius: 32 * value,
-                              spreadRadius: 6 * value,
+                              color: projColor.withOpacity(0.25 * value),
+                              blurRadius: 28 * value,
+                              spreadRadius: 4 * value,
                             ),
                           ],
                         ),
@@ -1065,10 +970,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     );
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 18),
                 if (!_isTyping) ...[
                   Text(
-                    projName,
+                    isDefault ? _getGreeting() : projName,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: VegaTheme.textPrimary,
@@ -1077,15 +982,54 @@ class _ChatScreenState extends State<ChatScreen> {
                       letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Text(
-                    projDesc.isNotEmpty ? projDesc : 'Без описания',
+                    isDefault ? 'Пишу код, ищу ошибки, отвечаю\nна вопросы и генерирую идеи' : projDesc,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: VegaTheme.textSecondary,
-                      fontSize: 14,
+                      fontSize: 13,
                       height: 1.5,
                     ),
+                  ),
+                  const SizedBox(height: 24),
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 2.6,
+                    children: suggestions.map((s) => GestureDetector(
+                      onTap: () {
+                        _controller.text = s['prompt']!;
+                        _controller.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _controller.text.length),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: VegaTheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: VegaTheme.border, width: 0.5),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(s['icon']!, style: const TextStyle(fontSize: 18)),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                s['text']!, 
+                                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), 
+                                overflow: TextOverflow.ellipsis
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )).toList(),
                   ),
                 ],
               ],
