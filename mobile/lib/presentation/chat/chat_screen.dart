@@ -847,6 +847,37 @@ class _ChatScreenState extends State<ChatScreen> {
     return text.replaceAll(RegExp(r'!\[image\]\([^)]+\)'), '').trim();
   }
 
+  IconData _getIconData(String name) {
+    switch (name) {
+      case 'folder': return Icons.folder_rounded;
+      case 'money': return Icons.monetization_on_rounded;
+      case 'book': return Icons.menu_book_rounded;
+      case 'school': return Icons.school_rounded;
+      case 'edit': return Icons.edit_rounded;
+      case 'code': return Icons.code_rounded;
+      case 'terminal': return Icons.terminal_rounded;
+      case 'music': return Icons.music_note_rounded;
+      case 'cake': return Icons.cake_rounded;
+      case 'palette': return Icons.palette_rounded;
+      case 'spa': return Icons.spa_rounded;
+      case 'work': return Icons.work_rounded;
+      case 'chart': return Icons.bar_chart_rounded;
+      case 'fitness': return Icons.fitness_center_rounded;
+      case 'calendar': return Icons.calendar_today_rounded;
+      case 'balance': return Icons.balance_rounded;
+      case 'flight': return Icons.flight_rounded;
+      case 'language': return Icons.language_rounded;
+      case 'pets': return Icons.pets_rounded;
+      case 'science': return Icons.science_rounded;
+      case 'psychology': return Icons.psychology_rounded;
+      case 'flower': return Icons.local_florist_rounded;
+      case 'wrench': return Icons.build_rounded;
+      case 'heart': return Icons.favorite_rounded;
+      case 'bug': return Icons.bug_report_rounded;
+      default: return Icons.folder_open_rounded;
+    }
+  }
+
   String _getGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 6) return 'Доброй ночи 🌙';
@@ -864,24 +895,48 @@ class _ChatScreenState extends State<ChatScreen> {
 
   List<Map<String, String>> _getSuggestions(Map<String, dynamic> project) {
     final rawSuggestions = project['suggestions'];
-    List<String> list = [];
+    
+    if (rawSuggestions == null || (rawSuggestions is List && rawSuggestions.isEmpty)) {
+      return [
+        {'icon': '💻', 'text': 'Написать код', 'prompt': 'Напиши код для '},
+        {'icon': '📚', 'text': 'Объяснить тему', 'prompt': 'Объясни мне простыми словами что такое '},
+        {'icon': '✍️', 'text': 'Написать текст', 'prompt': 'Напиши текст на тему '},
+        {'icon': '💡', 'text': 'Придумать идею', 'prompt': 'Предложи креативные идеи для '}
+      ];
+    }
+
     if (rawSuggestions is List) {
-      list = List<String>.from(rawSuggestions.map((e) => e.toString()));
+      if (rawSuggestions.isEmpty) return [];
+      final first = rawSuggestions.first;
+      if (first is Map) {
+        return rawSuggestions.map((e) {
+          final m = Map<dynamic, dynamic>.from(e);
+          return {
+            'icon': (m['icon'] ?? '💡').toString(),
+            'text': (m['text'] ?? '').toString(),
+            'prompt': (m['prompt'] ?? '').toString(),
+          };
+        }).toList();
+      } else {
+        final list = List<String>.from(rawSuggestions.map((e) => e.toString()));
+        final emojis = ['💡', '✍️', '❓', '🔍', '🚀', '🛠️', '📚', '💻'];
+        return List.generate(list.length, (idx) {
+          final text = list[idx];
+          String prompt = '$text ';
+          if (text.toLowerCase().contains('код')) prompt = 'Напиши код для ';
+          if (text.toLowerCase().contains('объясн')) prompt = 'Объясни мне простыми словами что такое ';
+          if (text.toLowerCase().contains('текст')) prompt = 'Напиши текст на тему ';
+          if (text.toLowerCase().contains('иде')) prompt = 'Предложи креативные идеи для ';
+          return {
+            'icon': emojis[idx % emojis.length],
+            'text': text,
+            'prompt': prompt,
+          };
+        });
+      }
     }
-    
-    if (list.isEmpty) {
-      list = ['Написать код', 'Объяснить тему', 'Написать текст', 'Придумать идею'];
-    }
-    
-    final emojis = ['💡', '✍️', '❓', '🔍', '🚀', '🛠️', '📚', '💻'];
-    return List.generate(list.length, (idx) {
-      final text = list[idx];
-      return {
-        'icon': emojis[idx % emojis.length],
-        'text': text,
-        'prompt': '$text ',
-      };
-    });
+
+    return [];
   }
 
   Widget _buildWelcomeScreen() {
@@ -963,9 +1018,18 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           ],
                         ),
-                        child: ClipOval(
-                          child: Image.asset('assets/logo.png', fit: BoxFit.cover),
-                        ),
+                        child: isDefault
+                            ? ClipOval(
+                                child: Image.asset('assets/logo.png', fit: BoxFit.cover),
+                              )
+                            : CircleAvatar(
+                                backgroundColor: projColor,
+                                child: Icon(
+                                  _getIconData(activeProj['iconName'] ?? 'folder'),
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                              ),
                       ),
                     );
                   },

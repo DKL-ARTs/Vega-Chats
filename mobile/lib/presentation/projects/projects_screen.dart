@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../data/chat_history.dart';
+import 'project_edit_screen.dart';
 
 extension HexColor on Color {
   static Color fromHex(String hexString) {
@@ -350,291 +351,16 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     _loadProjects();
   }
 
-  Future<Map<String, String>?> _showIconPickerDialog(String initialIcon, String initialColor) async {
-    String selectedIcon = initialIcon;
-    String selectedColor = initialColor;
-
-    final colors = [
-      '#555555',
-      '#FF4D4D',
-      '#FF9F40',
-      '#FFCD56',
-      '#4BC080',
-      '#36A2EB',
-      '#9966FF',
-      '#FF6384',
-    ];
-
-    final icons = [
-      'folder', 'money', 'book', 'school', 'edit', 'code',
-      'terminal', 'music', 'cake', 'palette', 'spa', 'work',
-      'chart', 'fitness', 'calendar', 'balance', 'flight', 'language',
-      'pets', 'science', 'psychology', 'flower', 'wrench', 'heart', 'bug'
-    ];
-
-    return showDialog<Map<String, String>>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, dialogSetState) {
-            return AlertDialog(
-              backgroundColor: VegaTheme.surface,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              contentPadding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-              content: SizedBox(
-                width: 320,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      radius: 36,
-                      backgroundColor: HexColor.fromHex(selectedColor),
-                      child: Icon(_getIconData(selectedIcon), color: Colors.white, size: 36),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      height: 44,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: colors.length,
-                        itemBuilder: (context, idx) {
-                          final colorHex = colors[idx];
-                          final isSelected = colorHex == selectedColor;
-                          return GestureDetector(
-                            onTap: () {
-                              dialogSetState(() => selectedColor = colorHex);
-                            },
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                              decoration: BoxDecoration(
-                                color: HexColor.fromHex(colorHex),
-                                shape: BoxShape.circle,
-                                border: isSelected 
-                                    ? Border.all(color: Colors.white, width: 2) 
-                                    : null,
-                              ),
-                              child: isSelected 
-                                  ? const Icon(Icons.check, color: Colors.white, size: 16) 
-                                  : null,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 200,
-                      child: GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 5,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                        ),
-                        itemCount: icons.length,
-                        itemBuilder: (context, idx) {
-                          final iconName = icons[idx];
-                          final isSelected = iconName == selectedIcon;
-                          return GestureDetector(
-                            onTap: () {
-                              dialogSetState(() => selectedIcon = iconName);
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: isSelected 
-                                    ? HexColor.fromHex(selectedColor).withOpacity(0.2) 
-                                    : VegaTheme.dark.withOpacity(0.3),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: isSelected 
-                                      ? HexColor.fromHex(selectedColor) 
-                                      : VegaTheme.border.withOpacity(0.3),
-                                  width: isSelected ? 1.5 : 0.5,
-                                ),
-                              ),
-                              child: Icon(
-                                _getIconData(iconName),
-                                color: isSelected 
-                                    ? HexColor.fromHex(selectedColor) 
-                                    : VegaTheme.textSecondary,
-                                size: 20,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(ctx, {'icon': selectedIcon, 'color': selectedColor});
-                  },
-                  child: const Text('OK', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showCreateProjectDialog({Map<String, dynamic>? projectToEdit}) {
-    final isEdit = projectToEdit != null;
-    final nameCtrl = TextEditingController(text: isEdit ? projectToEdit['name'] : '');
-    final descCtrl = TextEditingController(text: isEdit ? projectToEdit['description'] : '');
-    final promptCtrl = TextEditingController(text: isEdit ? projectToEdit['prompt'] : '');
-    
-    String selectedIcon = isEdit ? (projectToEdit['iconName'] ?? 'folder') : 'folder';
-    String selectedColor = isEdit ? (projectToEdit['iconColor'] ?? '#555555') : '#555555';
-    
-    final initialSuggestions = isEdit && projectToEdit['suggestions'] != null
-        ? List<String>.from(projectToEdit['suggestions']).join(', ')
-        : '';
-    final suggestionsCtrl = TextEditingController(text: initialSuggestions);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, dialogSetState) {
-          return AlertDialog(
-            backgroundColor: VegaTheme.surface,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text(
-              isEdit ? 'Редактировать проект' : 'Создать проект',
-              style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icon preview & selector button
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      GestureDetector(
-                        onTap: () async {
-                          final result = await _showIconPickerDialog(selectedIcon, selectedColor);
-                          if (result != null) {
-                            dialogSetState(() {
-                              selectedIcon = result['icon']!;
-                              selectedColor = result['color']!;
-                            });
-                          }
-                        },
-                        child: Stack(
-                          alignment: Alignment.bottomRight,
-                          children: [
-                            CircleAvatar(
-                              radius: 36,
-                              backgroundColor: HexColor.fromHex(selectedColor),
-                              child: Icon(_getIconData(selectedIcon), color: Colors.white, size: 36),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: VegaTheme.accent,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.edit_rounded, color: Colors.white, size: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: nameCtrl,
-                    style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-                    decoration: const InputDecoration(
-                      labelText: 'Название проекта',
-                      labelStyle: TextStyle(color: VegaTheme.textSecondary),
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: descCtrl,
-                    maxLines: 2,
-                    style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-                    decoration: const InputDecoration(
-                      labelText: 'Описание для себя',
-                      labelStyle: TextStyle(color: VegaTheme.textSecondary),
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: promptCtrl,
-                    maxLines: 4,
-                    style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-                    decoration: const InputDecoration(
-                      labelText: 'Системный промпт / Инструкции ИИ',
-                      labelStyle: TextStyle(color: VegaTheme.textSecondary),
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: suggestionsCtrl,
-                    style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-                    decoration: const InputDecoration(
-                      labelText: 'Подсказки (через запятую)',
-                      hintText: 'Например: Написать код, Найти ошибку',
-                      hintStyle: TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
-                      labelStyle: TextStyle(color: VegaTheme.textSecondary),
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
-              ),
-              TextButton(
-                onPressed: () {
-                  final name = nameCtrl.text.trim();
-                  final desc = descCtrl.text.trim();
-                  final prompt = promptCtrl.text.trim();
-                  
-                  final suggestionsList = suggestionsCtrl.text
-                      .split(',')
-                      .map((s) => s.trim())
-                      .where((s) => s.isNotEmpty)
-                      .toList();
-
-                  if (name.isNotEmpty) {
-                    if (isEdit) {
-                      _editProject(projectToEdit['id']!, name, desc, prompt, selectedIcon, selectedColor, suggestionsList);
-                    } else {
-                      _createProject(name, desc, prompt, selectedIcon, selectedColor, suggestionsList);
-                    }
-                    Navigator.pop(ctx);
-                  }
-                },
-                child: Text(isEdit ? 'Сохранить' : 'Создать', style: const TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          );
-        },
+  Future<void> _openProjectEditScreen({Map<String, dynamic>? project}) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProjectEditScreen(projectToEdit: project),
       ),
     );
+    if (result == true) {
+      _loadProjects();
+    }
   }
 
   @override
@@ -662,7 +388,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            onPressed: () => _showCreateProjectDialog(),
+            onPressed: () => _openProjectEditScreen(),
             icon: const Icon(Icons.add_rounded, color: VegaTheme.accent, size: 28),
           ),
         ],
@@ -758,7 +484,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                             icon: const Icon(Icons.more_vert, color: VegaTheme.textSecondary),
                             onSelected: (value) {
                               if (value == 'edit') {
-                                _showCreateProjectDialog(projectToEdit: proj);
+                                _openProjectEditScreen(project: proj);
                               } else if (value == 'delete') {
                                 _showDeleteConfirmation(proj['id']!, proj['name'] ?? '');
                               }
