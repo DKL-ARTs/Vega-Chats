@@ -129,6 +129,17 @@ class ChatHistory {
     await saveChats(chats);
   }
 
+  static Future<void> clearChatMessages(int chatId) async {
+    final chats = await getChats();
+    for (int i = 0; i < chats.length; i++) {
+      if (chats[i]['id'] == chatId) {
+        chats[i]['messages'] = <Map<String, dynamic>>[];
+        await saveChats(chats);
+        return;
+      }
+    }
+  }
+
   static Future<void> updateChatTitle(int chatId, String newTitle) async {
     final chats = await getChats();
     for (int i = 0; i < chats.length; i++) {

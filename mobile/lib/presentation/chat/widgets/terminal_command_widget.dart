@@ -187,9 +187,10 @@ class _TerminalCommandWidgetState extends State<TerminalCommandWidget> {
               ),
             ),
 
-            // Command preview/console
             Container(
-              maxHeight: _status == 'idle' ? 80 : 200,
+              constraints: BoxConstraints(
+                maxHeight: _status == 'idle' ? 80 : 200,
+              ),
               color: const Color(0xFF0F172A), // Slate-900 terminal background
               padding: const EdgeInsets.all(12),
               child: _status == 'idle'
