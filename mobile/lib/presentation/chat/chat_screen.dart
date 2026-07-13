@@ -1853,16 +1853,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.folder_outlined, color: VegaTheme.accent),
-                title: const Text('Файлы', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/ide'); },
-              ),
-              ListTile(
-                leading: Icon(Icons.terminal, color: VegaTheme.accent),
-                title: Text('Терминал', style: TextStyle(color: VegaTheme.textPrimary)),
-                onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/terminal'); },
-              ),
-              ListTile(
                 leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
                 title: Text('Настройки', style: TextStyle(color: VegaTheme.textPrimary)),
                 onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/settings'); },

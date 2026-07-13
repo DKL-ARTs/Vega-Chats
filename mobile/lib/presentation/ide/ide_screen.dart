@@ -1,10 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:speech_to_text/speech_to_text.dart' as speechToText;
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
@@ -43,19 +49,132 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
   WebSocketChannel? _termChannel;
   bool _termConnected = false;
 
+  // === SPEECH & ATTACHMENTS STATE ===
+  final speechToText.SpeechToText _speechToText = speechToText.SpeechToText();
+  bool _speechEnabled = false;
+  bool _isListening = false;
+  String _lastWords = '';
+  final List<Map<String, dynamic>> _attachedFiles = [];
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    
-    // Load directories and workspace files
-    _loadFiles();
-    
-    // Load or create IDE chat
-    _initIdeChat();
+    _initSpeech();
+    _initSettingsAndData();
+  }
 
-    // Connect to websocket terminal
-    _connectTerminal();
+  Future<void> _initSettingsAndData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+    final apiKey = prefs.getString('api_key') ?? '';
+    setState(() {
+      _client.baseUrl = baseUrl;
+      _client.apiKey = apiKey;
+    });
+    
+    await _loadFiles();
+    await _initIdeChat();
+    await _connectTerminal();
+  }
+
+  // ==========================================
+  // === SPEECH & ATTACHMENTS LOGIC ===
+  // ==========================================
+  Future<void> _initSpeech() async {
+    try {
+      _speechEnabled = await _speechToText.initialize(
+        onError: (val) => debugPrint('Speech initialization error: $val'),
+        onStatus: (val) {
+          debugPrint('Speech status: $val');
+          if (val == 'done' || val == 'notListening') {
+            if (mounted) setState(() => _isListening = false);
+          }
+        },
+      );
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Speech init exception: $e');
+    }
+  }
+
+  void _startListening() async {
+    if (!_speechEnabled) {
+      await _initSpeech();
+    }
+    if (_speechEnabled) {
+      setState(() => _isListening = true);
+      await _speechToText.listen(
+        onResult: (result) {
+          setState(() {
+            _lastWords = result.recognizedWords;
+            if (_lastWords.isNotEmpty) {
+              _chatInputCtrl.text = _lastWords;
+              _chatInputCtrl.selection = TextSelection.fromPosition(
+                TextPosition(offset: _chatInputCtrl.text.length),
+              );
+            }
+          });
+        },
+        listenMode: speechToText.ListenMode.dictation,
+        pauseFor: const Duration(seconds: 5),
+      );
+    }
+  }
+
+  void _stopListening() async {
+    await _speechToText.stop();
+    setState(() => _isListening = false);
+  }
+
+  Future<String> _copyFileToAppDir(String sourcePath, String fileName) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final filesDir = Directory(p.join(appDir.path, 'attached_files'));
+    if (!await filesDir.exists()) {
+      await filesDir.create(recursive: true);
+    }
+    final ext = p.extension(fileName);
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final newPath = p.join(filesDir.path, '$ts$ext');
+    await File(sourcePath).copy(newPath);
+    return newPath;
+  }
+
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: true);
+    if (result != null) {
+      for (final f in result.files) {
+        if (f.path == null) continue;
+        final savedPath = await _copyFileToAppDir(f.path!, f.name);
+        setState(() => _attachedFiles.add({'path': savedPath, 'name': f.name, 'isImage': false}));
+      }
+    }
+  }
+
+  Future<void> _pickImages() async {
+    final picker = ImagePicker();
+    final images = await picker.pickMultiImage();
+    for (final image in images) {
+      final savedPath = await _copyFileToAppDir(image.path, image.name);
+      setState(() => _attachedFiles.add({'path': savedPath, 'name': image.name, 'isImage': true}));
+    }
+  }
+
+  void _showAttachMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.surface,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: Icon(Icons.photo_library, color: VegaTheme.accent), title: const Text('Фото'), onTap: () { Navigator.pop(ctx); _pickImages(); }),
+          ListTile(leading: Icon(Icons.insert_drive_file, color: VegaTheme.accent), title: const Text('Файл'), onTap: () { Navigator.pop(ctx); _pickFiles(); }),
+        ]),
+      ),
+    );
+  }
+
+  void _removeAttachment(int index) {
+    setState(() => _attachedFiles.removeAt(index));
   }
 
   @override
@@ -292,17 +411,76 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
 
   Future<void> _sendChatMessage() async {
     final text = _chatInputCtrl.text.trim();
-    if (text.isEmpty || _chatLoading || _ideChatId == null) return;
+    if (text.isEmpty && _attachedFiles.isEmpty) return;
+    if (_chatLoading || _ideChatId == null) return;
 
-    _chatInputCtrl.clear();
-    
-    // Save user message to history
-    await ChatHistory.addMessage(_ideChatId!, 'user', text);
-    
+    final attachedSnapshot = List<Map<String, dynamic>>.from(_attachedFiles);
     setState(() {
-      _chatMessages.add({'role': 'user', 'content': text});
+      _attachedFiles.clear();
       _chatLoading = true;
       _cancelStream = false;
+    });
+
+    _chatInputCtrl.clear();
+
+    String msgContent = text;
+    final List<Map<String, String>> files = [];
+
+    String firstFilePath = '';
+    String firstFileName = '';
+    bool firstIsImage = false;
+
+    if (attachedSnapshot.isNotEmpty) {
+      final first = attachedSnapshot.first;
+      firstFilePath = first['path'] ?? '';
+      firstFileName = first['name'] ?? '';
+      firstIsImage = first['isImage'] == true;
+    }
+
+    for (final f in attachedSnapshot) {
+      final path = f['path'] as String;
+      final name = f['name'] as String;
+      final isImg = f['isImage'] == true;
+
+      final bytes = await File(path).readAsBytes();
+      if (isImg) {
+        final ext = name.split('.').last.toLowerCase();
+        final mime = ext == 'png' ? 'image/png' : (ext == 'gif' ? 'image/gif' : 'image/jpeg');
+        final b64 = base64Encode(bytes);
+        msgContent = msgContent.isEmpty
+            ? '![image](data:$mime;base64,$b64)'
+            : '$msgContent\n\n![image](data:$mime;base64,$b64)';
+      } else {
+        files.add({'name': name, 'content': base64Encode(bytes)});
+      }
+    }
+
+    final List<String> allFilePaths = attachedSnapshot
+        .where((f) => f['isImage'] != true)
+        .map((f) => f['path'] as String)
+        .toList();
+    final List<String> allFileNames = attachedSnapshot
+        .where((f) => f['isImage'] != true)
+        .map((f) => f['name'] as String)
+        .toList();
+
+    // Save user message to history
+    await ChatHistory.addMessage(
+      _ideChatId!, 'user', msgContent,
+      filePath: firstFilePath, fileName: firstFileName, isImage: firstIsImage,
+      filePaths: allFilePaths, fileNames: allFileNames,
+    );
+
+    setState(() {
+      _chatMessages.add({
+        'role': 'user',
+        'content': msgContent,
+        'filePath': firstFilePath,
+        'fileName': firstFileName,
+        'isImage': firstIsImage,
+        'filePaths': allFilePaths,
+        'fileNames': allFileNames,
+      });
     });
     _scrollChatToBottom();
 
@@ -342,6 +520,7 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
         provider: provider,
         geminiApiKey: geminiKey,
         systemPrompt: ideSystemPrompt,
+        files: files.isEmpty ? null : files,
         onChunk: (chunk) {
           if (_cancelStream) return;
           if (firstChunk) {
@@ -383,6 +562,109 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
         _scrollChatToBottom();
       }
     }
+  }
+
+  Widget _buildImagesRow(Map<String, dynamic> msg) {
+    final content = (msg['content'] ?? '') as String;
+    final pattern = RegExp(r'!\[image\]\(data:([^;]+);base64,([^)]+)\)');
+    final matches = pattern.allMatches(content).toList();
+
+    if (matches.isNotEmpty) {
+      if (matches.length == 1) {
+        final b64 = matches.first.group(2)!;
+        return RepaintBoundary(
+          key: ValueKey('img_${b64.substring(0, b64.length.clamp(0, 20))}'),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(
+              base64Decode(b64),
+              width: 250, fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+            ),
+          ),
+        );
+      }
+
+      return RepaintBoundary(
+        key: ValueKey('imgs_${matches.length}'),
+        child: SizedBox(
+          height: 180,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            shrinkWrap: true,
+            itemCount: matches.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (ctx, i) {
+              final b64 = matches[i].group(2)!;
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.memory(
+                  base64Decode(b64),
+                  width: 160, height: 180, fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    final filePath = (msg['filePath'] ?? '') as String;
+    if (filePath.isNotEmpty && msg['isImage'] == true) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.file(File(filePath), width: 250, fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildFileChips(Map<String, dynamic> msg) {
+    final fileNames = msg['fileNames'] as List<dynamic>?;
+    final fileNamesLegacy = msg['fileName'] as String?;
+
+    final names = fileNames != null && fileNames.isNotEmpty
+        ? fileNames.cast<String>()
+        : (fileNamesLegacy != null && fileNamesLegacy.isNotEmpty && msg['isImage'] != true
+            ? [fileNamesLegacy]
+            : <String>[]);
+
+    if (names.isEmpty) return const SizedBox.shrink();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: names.map((name) => Container(
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: VegaTheme.card.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 28),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name.length > 20 ? name.substring(0, 20) + '…' : name,
+                  style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+                const Text('File', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11)),
+              ],
+            ),
+          ]),
+        )).toList(),
+      ),
+    );
   }
 
   String _cleanMessageContent(String content) {
@@ -673,6 +955,19 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
                     return Column(
                       crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                       children: [
+                        if (msg['isImage'] == true || (msg['content'] as String? ?? '').contains('base64,'))
+                           Container(
+                             margin: const EdgeInsets.only(bottom: 8),
+                             child: _buildImagesRow(msg),
+                           ),
+                        if (isUser && msg['isImage'] != true && (
+                          (msg['filePaths'] as List<dynamic>?)?.isNotEmpty == true ||
+                          ((msg['filePath'] ?? '') as String).isNotEmpty
+                        ))
+                           Padding(
+                             padding: const EdgeInsets.only(bottom: 8),
+                             child: _buildFileChips(msg),
+                           ),
                         if (cleanContent.isNotEmpty)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -716,12 +1011,75 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
                 ),
         ),
 
+        if (_attachedFiles.isNotEmpty)
+          Container(
+            height: 80,
+            color: VegaTheme.surface,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _attachedFiles.length,
+              itemBuilder: (ctx, i) {
+                final att = _attachedFiles[i];
+                final isImg = att['isImage'] == true;
+                return Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      isImg
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.file(File(att['path'] as String), width: 64, height: 64, fit: BoxFit.cover),
+                          )
+                        : Container(
+                            width: 64, height: 64,
+                            decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24),
+                                const SizedBox(height: 6),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Text(
+                                    att['name'] as String,
+                                    style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 9),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      Positioned(
+                        top: -6, right: -6,
+                        child: GestureDetector(
+                          onTap: () => _removeAttachment(i),
+                          child: Container(
+                            width: 18, height: 18,
+                            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black54),
+                            child: const Icon(Icons.close, size: 12, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+
         // Chat Input box
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           color: VegaTheme.surface,
           child: Row(
             children: [
+              IconButton(
+                icon: const Icon(Icons.add_rounded, color: VegaTheme.textSecondary, size: 26),
+                onPressed: _showAttachMenu,
+              ),
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
@@ -732,11 +1090,26 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
                   child: TextField(
                     controller: _chatInputCtrl,
                     style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-                    decoration: const InputDecoration(
-                      hintText: 'Спроси кодера...',
-                      hintStyle: TextStyle(color: VegaTheme.textSecondary, fontSize: 13),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    maxLines: 4,
+                    minLines: 1,
+                    decoration: InputDecoration(
+                      hintText: _isListening ? 'Слушаю...' : 'Спроси кодера...',
+                      hintStyle: TextStyle(
+                        color: _isListening ? VegaTheme.accent : VegaTheme.textSecondary,
+                        fontSize: 13,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       border: InputBorder.none,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _isListening ? Icons.mic : Icons.mic_none,
+                          color: _isListening ? VegaTheme.accent : VegaTheme.textSecondary,
+                          size: 20,
+                        ),
+                        onPressed: _isListening ? _stopListening : _startListening,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
                     ),
                     onSubmitted: (_) => _sendChatMessage(),
                   ),
