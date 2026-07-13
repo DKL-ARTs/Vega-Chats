@@ -287,8 +287,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   Future<void> _createProject(String name, String description, String prompt, String iconName, String iconColor, List<String> suggestions) async {
     final prefs = await SharedPreferences.getInstance();
+    final newProjId = DateTime.now().millisecondsSinceEpoch.toString();
     final newProj = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'id': newProjId,
       'name': name,
       'description': description,
       'prompt': prompt,
@@ -300,7 +301,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       _projects.add(newProj);
     });
     await prefs.setString('projects_list', jsonEncode(_projects));
-    await _selectProject(newProj['id']!);
+    await _selectProject(newProjId);
   }
 
   Future<void> _deleteProject(String id) async {
