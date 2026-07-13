@@ -166,4 +166,13 @@ class ApiClient {
     final resp = await http.delete(Uri.parse('$baseUrl/api/profile'));
     return jsonDecode(utf8.decode(resp.bodyBytes));
   }
+
+  Future<Map<String, dynamic>> updateProfileManual(String text) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/profile/update_manual'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'text': text}),
+    );
+    return jsonDecode(utf8.decode(resp.bodyBytes));
+  }
 }

@@ -794,3 +794,65 @@ async def clear_profile_endpoint():
             pass
     return DEFAULT_PROFILE
 
+
+@router.post("/profile/update_manual")
+async def update_profile_manual_endpoint(body: dict):
+    from app.streaming.memory import get_user_profile, save_user_profile
+    from app.providers import get_provider
+    import json
+    
+    text = body.get("text", "").strip()
+    if not text:
+        return get_user_profile()
+        
+    current_prof = get_user_profile()
+    current_prof_json = json.dumps(current_prof, ensure_ascii=False)
+    
+    prompt = (
+        "Ты — ИИ-модуль памяти Vega Chat.\n"
+        "Пользователь вручную написал о себе следующую информацию:\n"
+        f"\"{text}\"\n\n"
+        "Тебе нужно обновить текущий профиль пользователя на основе этой информации.\n"
+        f"Текущий профиль пользователя:\n{current_prof_json}\n\n"
+        "Правила:\n"
+        "1. Обнови имя (user_name), общие интересы (about_user) и факты (facts).\n"
+        "2. Удали неактуальные факты, если новые данные им противоречат.\n"
+        "3. Отвечай СТРОГО в формате JSON, соответствующем структуре текущего профиля.\n"
+        "4. Ничего кроме JSON не выводи (не пиши ```json ... ``` и никаких пояснений!)."
+    )
+    
+    from app.config import settings
+    # Try gemini first, then openrouter
+    api_key = settings.gemini_api_key or settings.openrouter_api_key
+    provider_name = "gemini" if settings.gemini_api_key else "openrouter"
+    model = "gemini-2.5-flash" if provider_name == "gemini" else settings.default_model
+    
+    try:
+        provider = get_provider(provider_name)
+        response = await provider.chat(
+            messages=[{"role": "user", "content": prompt}],
+            model=model,
+            api_key=api_key
+        )
+        
+        clean_json = response.strip()
+        if clean_json.startswith("```"):
+            first_newline = clean_json.find("\n")
+            if first_newline != -1:
+                clean_json = clean_json[first_newline+1:]
+            if clean_json.endswith("```"):
+                clean_json = clean_json[:-3]
+            elif clean_json.rstrip().endswith("```"):
+                clean_json = clean_json.rstrip()[:-3]
+        clean_json = clean_json.strip()
+
+        updated_profile = json.loads(clean_json)
+        if isinstance(updated_profile, dict) and "user_name" in updated_profile:
+            save_user_profile(updated_profile)
+            return updated_profile
+    except Exception as e:
+        print(f"[Memory] Manual profile update error: {e}", flush=True)
+        
+    return current_prof
+
+

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
-import '../../core/api_client.dart';
+import 'memory_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -167,170 +167,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _dismissKeyboard() => FocusScope.of(context).unfocus();
 
-  Future<void> _showMemoryDialog() async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: VegaTheme.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.psychology_rounded, color: VegaTheme.accent, size: 24),
-              SizedBox(width: 8),
-              Text('Память ИИ', style: TextStyle(color: VegaTheme.textPrimary, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: FutureBuilder<Map<String, dynamic>>(
-            future: () async {
-              final prefs = await SharedPreferences.getInstance();
-              final baseUrl = prefs.getString('base_url') ?? 'https://vega-chats-production.up.railway.app';
-              final client = ApiClient(baseUrl: baseUrl);
-              return await client.getUserProfile();
-            }(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const SizedBox(
-                  height: 100,
-                  child: Center(child: CircularProgressIndicator(color: VegaTheme.accent)),
-                );
-              }
-              if (snapshot.hasError) {
-                return Text(
-                  'Не удалось загрузить профиль памяти: ${snapshot.error}',
-                  style: const TextStyle(color: Colors.redAccent),
-                );
-              }
-              final data = snapshot.data ?? {};
-              final name = data['user_name'] ?? 'Пользователь';
-              final about = data['about_user'] ?? 'Нет данных';
-              final style = data['coding_style_preferences'] ?? 'По умолчанию';
-              final tech = List<String>.from(data['preferred_technologies'] ?? []);
-              final facts = List<String>.from(data['facts'] ?? []);
 
-              return SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('О пользователе:', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(height: 4),
-                    Text(about, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
-                    const SizedBox(height: 12),
-                    const Text('Имя:', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(height: 4),
-                    Text(name, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
-                    const SizedBox(height: 12),
-                    const Text('Любимые технологии:', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(height: 4),
-                    Text(tech.isEmpty ? 'Не определены' : tech.join(', '), style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
-                    const SizedBox(height: 12),
-                    const Text('Предпочтения кода:', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(height: 4),
-                    Text(style, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
-                    const SizedBox(height: 12),
-                    const Text('Факты из диалогов:', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(height: 4),
-                    if (facts.isEmpty)
-                      const Text('Пока нет накопленных фактов.', style: TextStyle(color: VegaTheme.textSecondary, fontStyle: FontStyle.italic, fontSize: 13))
-                    else
-                      ...facts.map((fact) => Padding(
-                            padding: const EdgeInsets.only(bottom: 6.0),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('• ', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold)),
-                                Expanded(child: Text(fact, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13))),
-                              ],
-                            ),
-                          )),
-                  ],
-                ),
-              );
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Закрыть', style: TextStyle(color: VegaTheme.textSecondary)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showClearMemoryConfirmation() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: VegaTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Сброс памяти ИИ', style: TextStyle(color: VegaTheme.textPrimary, fontWeight: FontWeight.bold)),
-        content: const Text(
-          'Вы действительно хотите очистить всю накопленную память о вас? ИИ забудет ваше имя, используемые библиотеки и предпочтения стиля кода.',
-          style: TextStyle(color: VegaTheme.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Очистить', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-              ),
-              SizedBox(width: 12),
-              Text('Очистка памяти на сервере...'),
-            ],
-          ),
-          backgroundColor: VegaTheme.dark,
-        ),
-      );
-
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final baseUrl = prefs.getString('base_url') ?? 'https://vega-chats-production.up.railway.app';
-        final client = ApiClient(baseUrl: baseUrl);
-        await client.deleteUserProfile();
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Память ИИ успешно сброшена!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка очистки памяти: $e'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
-      }
-    }
-  }
 
   // ─── Logo renderer ────────────────────────────────────────────────────────
 
@@ -568,18 +405,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.psychology_rounded, color: VegaTheme.accent, size: 24),
                 title: const Text('Память ИИ', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14)),
-                subtitle: const Text('Посмотреть, что о вас помнит Vega Chat', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
+                subtitle: const Text('Посмотреть и настроить, что о вас помнит Vega Chat', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
                 trailing: const Icon(Icons.chevron_right_rounded, color: VegaTheme.textSecondary),
-                onTap: _showMemoryDialog,
-              ),
-              const Divider(color: VegaTheme.border, height: 1),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 24),
-                title: const Text('Очистить память ИИ', style: TextStyle(color: Colors.redAccent, fontSize: 14)),
-                subtitle: const Text('Сбросить все накопленные факты профиля', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right_rounded, color: VegaTheme.textSecondary),
-                onTap: _showClearMemoryConfirmation,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const MemoryScreen()),
+                  );
+                },
               ),
             ]),
             const SizedBox(height: 24),
