@@ -24,8 +24,8 @@ class IdeScreen extends StatefulWidget {
   State<IdeScreen> createState() => _IdeScreenState();
 }
 
-class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _IdeScreenState extends State<IdeScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final _client = ApiClient();
 
   // === FILE EXPLORER STATE ===
@@ -40,12 +40,12 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
   final _chatScrollCtrl = ScrollController();
   bool _chatLoading = false;
   bool _cancelStream = false;
-  String _thinkingText = 'Кодер думает...';
+  final String _thinkingText = 'Кодер думает...';
 
   // === TERMINAL STATE ===
   final _termInputCtrl = TextEditingController();
   final _termScrollCtrl = ScrollController();
-  final List<String> _termOutput = [];
+  final ValueNotifier<List<String>> _termOutputNotifier = ValueNotifier<List<String>>([]);
   WebSocketChannel? _termChannel;
   bool _termConnected = false;
 
@@ -59,8 +59,6 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _initSpeech();
     _initSettingsAndData();
   }
 
@@ -72,10 +70,25 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
       _client.baseUrl = baseUrl;
       _client.apiKey = apiKey;
     });
+
+    // Request speech microphone and bluetooth permissions immediately on screen load
+    await _initSpeech();
     
+    // Load directory files and IDE chat context
     await _loadFiles();
     await _initIdeChat();
     await _connectTerminal();
+  }
+
+  @override
+  void dispose() {
+    _chatInputCtrl.dispose();
+    _chatScrollCtrl.dispose();
+    _termInputCtrl.dispose();
+    _termScrollCtrl.dispose();
+    _termOutputNotifier.dispose();
+    _termChannel?.sink.close();
+    super.dispose();
   }
 
   // ==========================================
@@ -166,8 +179,16 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
       backgroundColor: VegaTheme.surface,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(leading: Icon(Icons.photo_library, color: VegaTheme.accent), title: const Text('Фото'), onTap: () { Navigator.pop(ctx); _pickImages(); }),
-          ListTile(leading: Icon(Icons.insert_drive_file, color: VegaTheme.accent), title: const Text('Файл'), onTap: () { Navigator.pop(ctx); _pickFiles(); }),
+          ListTile(
+            leading: const Icon(Icons.photo_library, color: VegaTheme.accent),
+            title: const Text('Фото', style: TextStyle(color: VegaTheme.textPrimary)),
+            onTap: () { Navigator.pop(ctx); _pickImages(); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.insert_drive_file, color: VegaTheme.accent),
+            title: const Text('Файл', style: TextStyle(color: VegaTheme.textPrimary)),
+            onTap: () { Navigator.pop(ctx); _pickFiles(); },
+          ),
         ]),
       ),
     );
@@ -175,17 +196,6 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
 
   void _removeAttachment(int index) {
     setState(() => _attachedFiles.removeAt(index));
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _chatInputCtrl.dispose();
-    _chatScrollCtrl.dispose();
-    _termInputCtrl.dispose();
-    _termScrollCtrl.dispose();
-    _termChannel?.sink.close();
-    super.dispose();
   }
 
   // ==========================================
@@ -213,6 +223,9 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
       });
       await _loadFiles();
     } else {
+      // Close files drawer first
+      Navigator.pop(context);
+      
       // Open editor screen
       final result = await Navigator.push(
         context,
@@ -235,7 +248,10 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: VegaTheme.surface,
-        title: const Text('Новый файл', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Новый файл',
+          style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+        ),
         content: TextField(
           controller: controller,
           style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
@@ -260,8 +276,9 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
                 try {
                   await _client.writeFile(fullPath, '');
                   _loadFiles();
-                  // Open editor directly
+                  // Close explorer drawer and open editor
                   if (mounted) {
+                    Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -291,7 +308,7 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
   Future<void> _connectTerminal() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      String baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8000';
+      String baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
       String wsUrl;
       if (baseUrl.startsWith('https://')) {
         wsUrl = 'wss://' + baseUrl.substring(8);
@@ -306,30 +323,22 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
       _termChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
       _termChannel!.stream.listen(
         (data) {
-          setState(() {
-            _termOutput.add(data.toString());
-            _scrollTerminalToBottom();
-          });
+          _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add(data.toString());
+          _scrollTerminalToBottom();
         },
         onError: (e) {
-          setState(() {
-            _termOutput.add('Ошибка WebSocket: $e');
-            _termConnected = false;
-          });
+          _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('Ошибка WebSocket: $e');
+          setState(() => _termConnected = false);
         },
         onDone: () {
-          setState(() {
-            _termOutput.add('WebSocket соединение закрыто.');
-            _termConnected = false;
-          });
+          _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('WebSocket соединение закрыто.');
+          setState(() => _termConnected = false);
         },
       );
       setState(() => _termConnected = true);
     } catch (e) {
-      setState(() {
-        _termOutput.add('Не удалось подключить терминал: $e');
-        _termConnected = false;
-      });
+      _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('Не удалось подключить терминал: $e');
+      setState(() => _termConnected = false);
     }
   }
 
@@ -349,11 +358,137 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
     final cmd = _termInputCtrl.text.trim();
     if (cmd.isEmpty || _termChannel == null) return;
     _termChannel!.sink.add(cmd);
-    setState(() {
-      _termOutput.add('\$ $cmd');
-      _scrollTerminalToBottom();
-    });
+    _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('\$ $cmd');
     _termInputCtrl.clear();
+    _scrollTerminalToBottom();
+  }
+
+  void _showTerminalBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            height: MediaQuery.of(ctx).size.height * 0.65,
+            decoration: const BoxDecoration(
+              color: Color(0xFF090D16), // Dark terminal background
+              borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                // Bottom sheet drag handle
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 10, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                // Terminal Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.terminal, color: VegaTheme.accent, size: 18),
+                          SizedBox(width: 8),
+                          Text(
+                            'Консоль разработчика',
+                            style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8, height: 8,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _termConnected ? Colors.green : Colors.redAccent,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _termConnected ? 'Подключен' : 'Отключен',
+                            style: TextStyle(
+                              color: _termConnected ? Colors.green : Colors.redAccent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(color: Colors.white10, height: 10),
+                // Terminal logs output
+                Expanded(
+                  child: Container(
+                    color: const Color(0xFF020617), // Deep black console
+                    padding: const EdgeInsets.all(12),
+                    child: ValueListenableBuilder<List<String>>(
+                      valueListenable: _termOutputNotifier,
+                      builder: (ctx, termLines, _) {
+                        return ListView.builder(
+                          controller: _termScrollCtrl,
+                          itemCount: termLines.length,
+                          itemBuilder: (ctx, i) {
+                            final line = termLines[i];
+                            final isCommand = line.startsWith('\$');
+                            return SelectableText(
+                              line,
+                              style: TextStyle(
+                                color: isCommand ? VegaTheme.accent : const Color(0xFFE2E8F0),
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                                height: 1.4,
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                // Terminal Input
+                Container(
+                  color: VegaTheme.surface,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: Row(
+                    children: [
+                      const Text('\$ ', style: TextStyle(color: VegaTheme.accent, fontFamily: 'monospace', fontSize: 15, fontWeight: FontWeight.bold)),
+                      Expanded(
+                        child: TextField(
+                          controller: _termInputCtrl,
+                          style: const TextStyle(color: VegaTheme.textPrimary, fontFamily: 'monospace', fontSize: 13),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'Введите команду shell...',
+                            hintStyle: TextStyle(color: VegaTheme.textSecondary, fontSize: 13),
+                          ),
+                          onSubmitted: (_) => _sendTerminalCommand(),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _sendTerminalCommand,
+                        icon: const Icon(Icons.send_rounded, color: VegaTheme.accent),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // ==========================================
@@ -682,7 +817,6 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
   }
 
   Future<void> _onTerminalWidgetFinished(int msgIdx, String command, String output, bool success) async {
-    // Send terminal execution results back to AI Coder
     if (_ideChatId == null) return;
     
     final resultMsg = "Команда `$command` завершена ${success ? 'успешно' : 'с ошибкой'}.\nВывод терминала:\n```\n$output\n```";
@@ -695,7 +829,6 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
     });
     _scrollChatToBottom();
     
-    // Automatically trigger AI to respond to the terminal logs
     _sendChatMessageSilently();
   }
 
@@ -771,454 +904,495 @@ class _IdeScreenState extends State<IdeScreen> with SingleTickerProviderStateMix
   // ==========================================
   // === UI BUILDERS ===
   // ==========================================
+  Widget _buildWelcomeScreen() {
+    final suggestions = [
+      {'icon': '💻', 'text': 'Создать файл index.html', 'prompt': 'Создай простой файл index.html с базовой разметкой'},
+      {'icon': '🛠️', 'text': 'Установить httpx', 'prompt': 'Установи библиотеку httpx в проект'},
+      {'icon': '🔍', 'text': 'Проверить ошибки', 'prompt': 'Проверь файлы проекта в /root/workspace на ошибки'},
+      {'icon': '🚀', 'text': 'Запустить тесты', 'prompt': 'Запусти сборку проекта или тесты'}
+    ];
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0.7, -0.4),
+                radius: 1.2,
+                colors: [VegaTheme.accent.withOpacity(0.08), const Color(0x00000000)],
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(-0.8, 0.6),
+                radius: 1.0,
+                colors: [Color(0x102196F3), Color(0x00000000)],
+              ),
+            ),
+          ),
+        ),
+        Align(
+          alignment: const Alignment(0, -0.15),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Logo anim scale
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.85, end: 1.0),
+                  duration: const Duration(milliseconds: 1500),
+                  curve: Curves.easeInOut,
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: VegaTheme.accent.withOpacity(0.25 * value),
+                              blurRadius: 28 * value,
+                              spreadRadius: 4 * value,
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: Image.asset('assets/logo.png', fit: BoxFit.cover),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Режим IDE',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: VegaTheme.textPrimary,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Ваша автономная среда разработки и ИИ-ассистент',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: VegaTheme.textSecondary,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Suggestions grid
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 2.6,
+                  children: suggestions.map((s) => GestureDetector(
+                    onTap: () {
+                      _chatInputCtrl.text = s['prompt']!;
+                      _chatInputCtrl.selection = TextSelection.fromPosition(
+                        TextPosition(offset: _chatInputCtrl.text.length),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: VegaTheme.surface,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: VegaTheme.border, width: 0.5),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(s['icon']!, style: const TextStyle(fontSize: 18)),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              s['text']!, 
+                              style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), 
+                              overflow: TextOverflow.ellipsis
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )).toList(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFilesDrawer() {
+    return Drawer(
+      backgroundColor: VegaTheme.dark,
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Проводник файлов',
+                    style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    onPressed: _createNewFile,
+                    icon: const Icon(Icons.add, color: VegaTheme.accent),
+                    tooltip: 'Создать файл',
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white10, height: 1),
+            // Path breadcrumbs
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: VegaTheme.surface,
+              width: double.infinity,
+              child: Row(
+                children: [
+                  const Icon(Icons.folder, size: 14, color: VegaTheme.accent),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _currentPath.length > 25 ? '...' + _currentPath.substring(_currentPath.length - 25) : _currentPath,
+                      style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 11, fontFamily: 'monospace'),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (_currentPath != '/root/workspace')
+                    GestureDetector(
+                      onTap: () {
+                        final parts = _currentPath.split('/');
+                        parts.removeLast();
+                        setState(() => _currentPath = parts.join('/'));
+                        _loadFiles();
+                      },
+                      child: const Text('Назад', style: TextStyle(color: VegaTheme.accent, fontSize: 11, fontWeight: FontWeight.bold)),
+                    )
+                ],
+              ),
+            ),
+            // Files List
+            Expanded(
+              child: _filesLoading
+                  ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
+                  : _files.isEmpty
+                      ? const Center(child: Text('Папка пуста', style: TextStyle(color: VegaTheme.textSecondary)))
+                      : ListView.builder(
+                          itemCount: _files.length,
+                          itemBuilder: (ctx, i) {
+                            final item = _files[i];
+                            final isDir = item['is_dir'] == true;
+                            return ListTile(
+                              leading: Icon(
+                                isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
+                                color: isDir ? VegaTheme.accent : VegaTheme.textSecondary,
+                                size: 20,
+                              ),
+                              title: Text(
+                                item['name'],
+                                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
+                              ),
+                              trailing: isDir
+                                  ? const Icon(Icons.chevron_right_rounded, color: VegaTheme.textSecondary, size: 18)
+                                  : Text(
+                                      '${item['size']} B',
+                                      style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 10),
+                                    ),
+                              onTap: () => _openFileItem(item),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: VegaTheme.dark,
+      drawer: _buildFilesDrawer(),
       appBar: AppBar(
-        backgroundColor: VegaTheme.dark,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: VegaTheme.textPrimary, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Рабочая область IDE',
-          style: TextStyle(
-            color: VegaTheme.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            letterSpacing: -0.5,
-          ),
-        ),
-        centerTitle: true,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: VegaTheme.accent,
-          labelColor: VegaTheme.accent,
-          unselectedLabelColor: VegaTheme.textSecondary,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: const [
-            Tab(text: 'Файлы', icon: Icon(Icons.folder_open_rounded, size: 20)),
-            Tab(text: 'Кодер ИИ', icon: Icon(Icons.bolt_rounded, size: 20)),
-            Tab(text: 'Терминал', icon: Icon(Icons.terminal_rounded, size: 20)),
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            // Files drawer open button
+            IconButton(
+              icon: const Icon(Icons.folder_open_rounded, color: VegaTheme.accent, size: 24),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              tooltip: 'Проводник файлов',
+            ),
+            // Terminal dialog open button
+            IconButton(
+              icon: const Icon(Icons.terminal_rounded, color: VegaTheme.accent, size: 24),
+              onPressed: () => _showTerminalBottomSheet(context),
+              tooltip: 'Консоль',
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Режим IDE',
+              style: TextStyle(
+                color: VegaTheme.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -0.5,
+              ),
+            ),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // ── TAB 1: FILE EXPLORER ─────────────────────────────────────
-          _buildFilesTab(),
-
-          // ── TAB 2: AI CODER CHAT ─────────────────────────────────────
-          _buildChatTab(),
-
-          // ── TAB 3: TERMINAL CONSOLE ──────────────────────────────────
-          _buildTerminalTab(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilesTab() {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _createNewFile,
-        backgroundColor: VegaTheme.accent,
-        mini: true,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
       body: Column(
         children: [
-          // Breadcrumbs
+          // Top Action bar
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             color: VegaTheme.surface,
-            width: double.infinity,
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(Icons.settings_suggest_outlined, size: 14, color: VegaTheme.accent),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    _currentPath,
-                    style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 12, fontFamily: 'monospace'),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                const Text('Изолированный контекст IDE', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11)),
+                TextButton.icon(
+                  onPressed: _clearChat,
+                  icon: const Icon(Icons.delete_sweep_rounded, size: 16, color: Colors.redAccent),
+                  label: const Text('Очистить', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
                 ),
-                if (_currentPath != '/root/workspace')
-                  GestureDetector(
-                    onTap: () {
-                      final parts = _currentPath.split('/');
-                      parts.removeLast();
-                      setState(() => _currentPath = parts.join('/'));
-                      _loadFiles();
-                    },
-                    child: const Text('Назад', style: TextStyle(color: VegaTheme.accent, fontSize: 12, fontWeight: FontWeight.bold)),
-                  )
               ],
             ),
           ),
-          
+
+          // Chat messages list / Welcome screen
           Expanded(
-            child: _filesLoading
-                ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
-                : _files.isEmpty
-                    ? const Center(child: Text('Папка пуста', style: TextStyle(color: VegaTheme.textSecondary)))
-                    : ListView.builder(
-                        itemCount: _files.length,
-                        itemBuilder: (ctx, i) {
-                          final item = _files[i];
-                          final isDir = item['is_dir'] == true;
-                          return ListTile(
-                            leading: Icon(
-                              isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                              color: isDir ? VegaTheme.accent : VegaTheme.textSecondary,
-                              size: 22,
+            child: _chatMessages.isEmpty
+                ? _buildWelcomeScreen()
+                : ListView.builder(
+                    controller: _chatScrollCtrl,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _chatMessages.length + (_chatLoading ? 1 : 0),
+                    itemBuilder: (context, idx) {
+                      if (_chatLoading && idx == _chatMessages.length) {
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Text(
+                              _thinkingText,
+                              style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 13, fontStyle: FontStyle.italic),
                             ),
-                            title: Text(
-                              item['name'],
-                              style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-                            ),
-                            trailing: isDir
-                                ? const Icon(Icons.chevron_right_rounded, color: VegaTheme.textSecondary)
-                                : Text(
-                                    '${item['size']} B',
-                                    style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 11),
-                                  ),
-                            onTap: () => _openFileItem(item),
-                          );
-                        },
-                      ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChatTab() {
-    return Column(
-      children: [
-        // Top Action bar
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          color: VegaTheme.surface,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Изолированный контекст IDE', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11)),
-              TextButton.icon(
-                onPressed: _clearChat,
-                icon: const Icon(Icons.delete_sweep_rounded, size: 16, color: Colors.redAccent),
-                label: const Text('Очистить', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
-              ),
-            ],
-          ),
-        ),
-
-        // Chat messages list
-        Expanded(
-          child: _chatMessages.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Спроси кодера написать код,\nсобрать проект или запустить тесты.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13),
-                  ),
-                )
-              : ListView.builder(
-                  controller: _chatScrollCtrl,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _chatMessages.length + (_chatLoading ? 1 : 0),
-                  itemBuilder: (context, idx) {
-                    if (_chatLoading && idx == _chatMessages.length) {
-                      return Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Text(
-                            _thinkingText,
-                            style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 13, fontStyle: FontStyle.italic),
                           ),
-                        ),
-                      );
-                    }
-                    
-                    final msg = _chatMessages[idx];
-                    final isUser = msg['role'] == 'user';
-                    final content = msg['content'] ?? '';
-                    final cleanContent = _cleanMessageContent(content);
-                    final cmd = _extractCommand(content);
+                        );
+                      }
+                      
+                      final msg = _chatMessages[idx];
+                      final isUser = msg['role'] == 'user';
+                      final content = msg['content'] ?? '';
+                      final cleanContent = _cleanMessageContent(content);
+                      final cmd = _extractCommand(content);
 
-                    return Column(
-                      crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                      children: [
-                        if (msg['isImage'] == true || (msg['content'] as String? ?? '').contains('base64,'))
-                           Container(
-                             margin: const EdgeInsets.only(bottom: 8),
-                             child: _buildImagesRow(msg),
-                           ),
-                        if (isUser && msg['isImage'] != true && (
-                          (msg['filePaths'] as List<dynamic>?)?.isNotEmpty == true ||
-                          ((msg['filePath'] ?? '') as String).isNotEmpty
-                        ))
-                           Padding(
-                             padding: const EdgeInsets.only(bottom: 8),
-                             child: _buildFileChips(msg),
-                           ),
-                        if (cleanContent.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            margin: const EdgeInsets.only(bottom: 8),
-                            decoration: BoxDecoration(
-                              color: isUser ? VegaTheme.userBubble : VegaTheme.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: VegaTheme.border, width: 0.5),
-                            ),
-                            child: MarkdownBody(
-                              data: cleanContent,
-                              selectable: true,
-                              styleSheet: MarkdownStyleSheet(
-                                p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14, height: 1.5),
-                                code: const TextStyle(
-                                  color: VegaTheme.accent,
-                                  backgroundColor: Colors.black26,
-                                  fontFamily: 'monospace',
-                                  fontSize: 12.5,
-                                ),
-                                codeblockDecoration: BoxDecoration(
-                                  color: const Color(0xFF1E293B),
-                                  borderRadius: BorderRadius.circular(8),
+                      return Column(
+                        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          if (msg['isImage'] == true || (msg['content'] as String? ?? '').contains('base64,'))
+                             Container(
+                               margin: const EdgeInsets.only(bottom: 8),
+                               child: _buildImagesRow(msg),
+                             ),
+                          if (isUser && msg['isImage'] != true && (
+                            (msg['filePaths'] as List<dynamic>?)?.isNotEmpty == true ||
+                            ((msg['filePath'] ?? '') as String).isNotEmpty
+                          ))
+                             Padding(
+                               padding: const EdgeInsets.only(bottom: 8),
+                               child: _buildFileChips(msg),
+                             ),
+                          if (cleanContent.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: isUser ? VegaTheme.userBubble : VegaTheme.surface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: VegaTheme.border, width: 0.5),
+                              ),
+                              child: MarkdownBody(
+                                data: cleanContent,
+                                selectable: true,
+                                styleSheet: MarkdownStyleSheet(
+                                  p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14, height: 1.5),
+                                  code: const TextStyle(
+                                    color: VegaTheme.accent,
+                                    backgroundColor: Colors.black26,
+                                    fontFamily: 'monospace',
+                                    fontSize: 12.5,
+                                  ),
+                                  codeblockDecoration: BoxDecoration(
+                                    color: const Color(0xFF1E293B),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        
-                        // Inline terminal run request
-                        if (cmd != null)
-                          TerminalCommandWidget(
-                            command: cmd,
-                            onFinished: (output, success) {
-                              _onTerminalWidgetFinished(idx, cmd, output, success);
-                            },
-                          ),
-                        const SizedBox(height: 8),
-                      ],
-                    );
-                  },
-                ),
-        ),
+                          
+                          // Inline terminal run request
+                          if (cmd != null)
+                            TerminalCommandWidget(
+                              command: cmd,
+                              onFinished: (output, success) {
+                                _onTerminalWidgetFinished(idx, cmd, output, success);
+                              },
+                            ),
+                          const SizedBox(height: 8),
+                        ],
+                      );
+                    },
+                  ),
+          ),
 
-        if (_attachedFiles.isNotEmpty)
-          Container(
-            height: 80,
-            color: VegaTheme.surface,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _attachedFiles.length,
-              itemBuilder: (ctx, i) {
-                final att = _attachedFiles[i];
-                final isImg = att['isImage'] == true;
-                return Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      isImg
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(File(att['path'] as String), width: 64, height: 64, fit: BoxFit.cover),
-                          )
-                        : Container(
-                            width: 64, height: 64,
-                            decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24),
-                                const SizedBox(height: 6),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: Text(
-                                    att['name'] as String,
-                                    style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 9),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
+          if (_attachedFiles.isNotEmpty)
+            Container(
+              height: 80,
+              color: VegaTheme.surface,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _attachedFiles.length,
+                itemBuilder: (ctx, i) {
+                  final att = _attachedFiles[i];
+                  final isImg = att['isImage'] == true;
+                  return Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        isImg
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.file(File(att['path'] as String), width: 64, height: 64, fit: BoxFit.cover),
+                            )
+                          : Container(
+                              width: 64, height: 64,
+                              decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 24),
+                                  const SizedBox(height: 6),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: Text(
+                                      att['name'] as String,
+                                      style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 9),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
+                            ),
+                        Positioned(
+                          top: -6, right: -6,
+                          child: GestureDetector(
+                            onTap: () => _removeAttachment(i),
+                            child: Container(
+                              width: 18, height: 18,
+                              decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black54),
+                              child: const Icon(Icons.close, size: 12, color: Colors.white),
                             ),
                           ),
-                      Positioned(
-                        top: -6, right: -6,
-                        child: GestureDetector(
-                          onTap: () => _removeAttachment(i),
-                          child: Container(
-                            width: 18, height: 18,
-                            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black54),
-                            child: const Icon(Icons.close, size: 12, color: Colors.white),
-                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-
-        // Chat Input box
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          color: VegaTheme.surface,
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.add_rounded, color: VegaTheme.textSecondary, size: 26),
-                onPressed: _showAttachMenu,
-              ),
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: VegaTheme.dark.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: VegaTheme.border, width: 0.5),
-                  ),
-                  child: TextField(
-                    controller: _chatInputCtrl,
-                    style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-                    maxLines: 4,
-                    minLines: 1,
-                    decoration: InputDecoration(
-                      hintText: _isListening ? 'Слушаю...' : 'Спроси кодера...',
-                      hintStyle: TextStyle(
-                        color: _isListening ? VegaTheme.accent : VegaTheme.textSecondary,
-                        fontSize: 13,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      border: InputBorder.none,
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _isListening ? Icons.mic : Icons.mic_none,
-                          color: _isListening ? VegaTheme.accent : VegaTheme.textSecondary,
-                          size: 20,
-                        ),
-                        onPressed: _isListening ? _stopListening : _startListening,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
+                      ],
                     ),
-                    onSubmitted: (_) => _sendChatMessage(),
-                  ),
-                ),
+                  );
+                },
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: _sendChatMessage,
-                icon: const Icon(Icons.send_rounded, color: VegaTheme.accent),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+            ),
 
-  Widget _buildTerminalTab() {
-    return Column(
-      children: [
-        // Status bar
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: VegaTheme.surface,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Подключение к консоли Termux', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11)),
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
+          // Chat Input box
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            color: VegaTheme.surface,
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.add_rounded, color: VegaTheme.textSecondary, size: 26),
+                  onPressed: _showAttachMenu,
+                ),
+                Expanded(
+                  child: Container(
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _termConnected ? Colors.green : Colors.redAccent,
+                      color: VegaTheme.dark.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: VegaTheme.border, width: 0.5),
+                    ),
+                    child: TextField(
+                      controller: _chatInputCtrl,
+                      style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+                      maxLines: 4,
+                      minLines: 1,
+                      decoration: InputDecoration(
+                        hintText: _isListening ? 'Слушаю...' : 'Спроси кодера...',
+                        hintStyle: TextStyle(
+                          color: _isListening ? VegaTheme.accent : VegaTheme.textSecondary,
+                          fontSize: 13,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        border: InputBorder.none,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isListening ? Icons.mic : Icons.mic_none,
+                            color: _isListening ? VegaTheme.accent : VegaTheme.textSecondary,
+                            size: 20,
+                          ),
+                          onPressed: _isListening ? _stopListening : _startListening,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ),
+                      onSubmitted: (_) => _sendChatMessage(),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _termConnected ? 'Подключен' : 'Отключен',
-                    style: TextStyle(color: _termConnected ? Colors.green : Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                  if (!_termConnected) ...[
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: _connectTerminal,
-                      child: const Text('Подключить', style: TextStyle(color: VegaTheme.accent, fontSize: 11, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-
-        // Terminal Console output area
-        Expanded(
-          child: Container(
-            color: const Color(0xFF020617), // Very dark slate terminal background
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            child: ListView.builder(
-              controller: _termScrollCtrl,
-              itemCount: _termOutput.length,
-              itemBuilder: (context, idx) {
-                final line = _termOutput[idx];
-                final isCommand = line.startsWith('\$');
-                return SelectableText(
-                  line,
-                  style: TextStyle(
-                    color: isCommand ? VegaTheme.accent : const Color(0xFFE2E8F0),
-                    fontFamily: 'monospace',
-                    fontSize: 12.5,
-                    height: 1.4,
-                  ),
-                );
-              },
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _sendChatMessage,
+                  icon: const Icon(Icons.send_rounded, color: VegaTheme.accent),
+                ),
+              ],
             ),
           ),
-        ),
-
-        // Terminal input box
-        Container(
-          padding: const EdgeInsets.all(10),
-          color: VegaTheme.surface,
-          child: Row(
-            children: [
-              const Text('\$ ', style: TextStyle(color: VegaTheme.accent, fontFamily: 'monospace', fontSize: 15, fontWeight: FontWeight.bold)),
-              Expanded(
-                child: TextField(
-                  controller: _termInputCtrl,
-                  style: const TextStyle(color: VegaTheme.textPrimary, fontFamily: 'monospace', fontSize: 13),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'Введите команду shell...',
-                    hintStyle: TextStyle(color: VegaTheme.textSecondary, fontSize: 13),
-                  ),
-                  onSubmitted: (_) => _sendTerminalCommand(),
-                ),
-              ),
-              IconButton(
-                onPressed: _sendTerminalCommand,
-                icon: const Icon(Icons.send_rounded, color: VegaTheme.accent),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
