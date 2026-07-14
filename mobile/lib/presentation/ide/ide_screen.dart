@@ -517,15 +517,11 @@ class _IdeScreenState extends State<IdeScreen> {
       final exists = chats.any((c) => c['id'] == chatId);
       if (!exists) {
         chatId = null;
+        await prefs.remove('ide_chat_id');
       }
     }
 
-    if (chatId == null) {
-      // Create new chat specifically for IDE
-      chatId = await ChatHistory.createChat('Кодер ИИ Workspace', projectId: 'ide');
-      await prefs.setInt('ide_chat_id', chatId);
-    }
-
+    // Lazy: do NOT auto-create a chat. It will be created on first message.
     _ideChatId = chatId;
     await _loadChatMessages();
     await _loadIdeChats();
@@ -563,11 +559,15 @@ class _IdeScreenState extends State<IdeScreen> {
   Future<void> _deleteChat(int chatId) async {
     await ChatHistory.deleteChat(chatId);
     if (_ideChatId == chatId) {
-      _ideChatId = null;
-      await _initIdeChat();
-    } else {
-      await _loadIdeChats();
+      // Don't auto-create: just clear the active chat
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('ide_chat_id');
+      setState(() {
+        _ideChatId = null;
+        _chatMessages.clear();
+      });
     }
+    await _loadIdeChats();
   }
 
   void _renameChat(int chatId, String currentTitle) {
@@ -609,20 +609,13 @@ class _IdeScreenState extends State<IdeScreen> {
     );
   }
 
-  Future<void> _createNewIdeChat() async {
-    final title = 'Кодер ИИ ${DateTime.now().hour}:${DateTime.now().minute}';
-    final chatId = await ChatHistory.createChat(title, projectId: 'ide');
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('ide_chat_id', chatId);
-    
+  void _createNewIdeChat() {
+    // Just clear the state — chat will be created in DB on first message send
     setState(() {
-      _ideChatId = chatId;
+      _ideChatId = null;
       _chatMessages.clear();
     });
-    
-    await _loadChatMessages();
-    await _loadIdeChats();
-    if (mounted) Navigator.pop(context); // Close endDrawer
+    if (mounted) Navigator.pop(context); // Close drawer
   }
 
   void _scrollChatToBottom() {
@@ -646,7 +639,7 @@ class _IdeScreenState extends State<IdeScreen> {
   Future<void> _sendChatMessage() async {
     final text = _chatInputCtrl.text.trim();
     if (text.isEmpty && _attachedFiles.isEmpty) return;
-    if (_chatLoading || _ideChatId == null) return;
+    if (_chatLoading) return;
 
     final attachedSnapshot = List<Map<String, dynamic>>.from(_attachedFiles);
     setState(() {
@@ -697,6 +690,17 @@ class _IdeScreenState extends State<IdeScreen> {
         .where((f) => f['isImage'] != true)
         .map((f) => f['name'] as String)
         .toList();
+
+    // Lazy chat creation: create on first message if no chat exists yet
+    if (_ideChatId == null) {
+      final displayText = text.isNotEmpty ? text : msgContent;
+      final title = displayText.length > 30 ? '${displayText.substring(0, 30)}...' : displayText;
+      final chatId = await ChatHistory.createChat(title, projectId: 'ide');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('ide_chat_id', chatId);
+      setState(() => _ideChatId = chatId);
+      await _loadIdeChats();
+    }
 
     // Save user message to history
     await ChatHistory.addMessage(
