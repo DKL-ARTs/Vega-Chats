@@ -16,6 +16,7 @@ import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
 import '../chat/widgets/terminal_command_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'editor_screen.dart';
 
 class IdeScreen extends StatefulWidget {
@@ -908,17 +909,46 @@ class _IdeScreenState extends State<IdeScreen> {
     );
   }
 
-  /// Renders animated file cards for each [WRITE_FILE:path]...[/WRITE_FILE] block
+  List<Map<String, String>> _extractAllGeneratedFiles(String content) {
+    final List<Map<String, String>> list = [];
+    final Set<String> seenPaths = {};
+
+    // Pattern A: [WRITE_FILE:path]
+    final patternA = RegExp(r'\[WRITE_FILE:([^\]]+)\]');
+    for (final match in patternA.allMatches(content)) {
+      final path = match.group(1)?.trim() ?? '';
+      if (path.isNotEmpty && !seenPaths.contains(path)) {
+        seenPaths.add(path);
+        final name = path.split('/').last;
+        list.add({'name': name, 'path': path});
+      }
+    }
+
+    // Pattern B: [Скачать file](downloadLink)
+    final patternB = RegExp(r'\[([^\]]*?)\]\(/api/files/download\?path=([^)]+)\)');
+    for (final match in patternB.allMatches(content)) {
+      final name = match.group(1) ?? 'file';
+      final path = match.group(2) ?? '';
+      if (path.isNotEmpty && !seenPaths.contains(path)) {
+        seenPaths.add(path);
+        String cleanName = name.replaceAll('Скачать ', '').replaceAll('файл ', '').replaceAll('`', '').trim();
+        list.add({'name': cleanName, 'path': path});
+      }
+    }
+
+    return list;
+  }
+
+  /// Renders animated file cards for each generated/downloadable file block
   Widget _buildWrittenFileCards(String content) {
-    final pattern = RegExp(r'\[WRITE_FILE:([^\]]+)\]([\s\S]*?)\[/WRITE_FILE\]');
-    final matches = pattern.allMatches(content).toList();
-    if (matches.isEmpty) return const SizedBox.shrink();
+    final files = _extractAllGeneratedFiles(content);
+    if (files.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: matches.map((match) {
-        final filePath = match.group(1)?.trim() ?? '';
-        final fileName = filePath.split('/').last;
+      children: files.map((file) {
+        final filePath = file['path'] ?? '';
+        final fileName = file['name'] ?? 'file';
         return _FileCard(filePath: filePath, fileName: fileName, client: _client);
       }).toList(),
     );
@@ -952,7 +982,15 @@ class _IdeScreenState extends State<IdeScreen> {
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\][\s\S]*?\[/WRITE_FILE\]'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\]'), '');
     cleaned = cleaned.replaceAll('[/WRITE_FILE]', '');
+    cleaned = cleaned.replaceAll(RegExp(r'WRITE_FILE:.*?\]'), '');
     cleaned = cleaned.replaceAll(RegExp(r'<execute_command>[\s\S]*?</execute_command>'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\[[^\]]*?\]\(/api/files/download\?path=[^)]+\)'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'Вы можете\s*$'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'Вы можете\s*\n'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'### 💾 Создан файл.*?\n'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'### 💾 Создан файл.*?$'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'💾 Создан файл.*?\n'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'💾 Создан файл.*?$'), '');
     return cleaned.trim();
   }
 
@@ -1822,25 +1860,20 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
     setState(() => _downloading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      widget.client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
-      // Read and save to Downloads folder
-      final result = await widget.client.readFile(widget.filePath);
-      final content = result['content'] as String? ?? '';
-      final outFile = File('/storage/emulated/0/Download/${widget.fileName}');
-      await outFile.writeAsString(content);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ Сохранён в Загрузки: ${widget.fileName}'),
-            backgroundColor: Colors.green.shade800,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      final baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+      final encodedPath = Uri.encodeQueryComponent(widget.filePath);
+      final downloadUrl = '$baseUrl/api/files/download?path=$encodedPath';
+      final uri = Uri.parse(downloadUrl);
+      
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        throw 'Не удалось запустить браузер для скачивания';
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Ошибка скачивания: $e'), backgroundColor: Colors.redAccent),
         );
       }
     } finally {
