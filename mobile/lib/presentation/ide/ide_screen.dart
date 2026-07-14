@@ -913,14 +913,15 @@ class _IdeScreenState extends State<IdeScreen> {
     final List<Map<String, String>> list = [];
     final Set<String> seenPaths = {};
 
-    // Pattern A: [WRITE_FILE:path]
-    final patternA = RegExp(r'\[WRITE_FILE:([^\]]+)\]');
+    // Pattern A: [WRITE_FILE:path]content[/WRITE_FILE]
+    final patternA = RegExp(r'\[WRITE_FILE:([^\]]+)\]([\s\S]*?)\[/WRITE_FILE\]');
     for (final match in patternA.allMatches(content)) {
       final path = match.group(1)?.trim() ?? '';
+      final fileContent = match.group(2) ?? '';
       if (path.isNotEmpty && !seenPaths.contains(path)) {
         seenPaths.add(path);
         final name = path.split('/').last;
-        list.add({'name': name, 'path': path});
+        list.add({'name': name, 'path': path, 'content': fileContent});
       }
     }
 
@@ -932,7 +933,7 @@ class _IdeScreenState extends State<IdeScreen> {
       if (path.isNotEmpty && !seenPaths.contains(path)) {
         seenPaths.add(path);
         String cleanName = name.replaceAll('Скачать ', '').replaceAll('файл ', '').replaceAll('`', '').trim();
-        list.add({'name': cleanName, 'path': path});
+        list.add({'name': cleanName, 'path': path, 'content': ''});
       }
     }
 
@@ -949,7 +950,14 @@ class _IdeScreenState extends State<IdeScreen> {
       children: files.map((file) {
         final filePath = file['path'] ?? '';
         final fileName = file['name'] ?? 'file';
-        return _FileCard(filePath: filePath, fileName: fileName, client: _client);
+        final fileContent = file['content'] ?? '';
+        return _FileCard(
+          filePath: filePath,
+          fileName: fileName,
+          fileContent: fileContent,
+          client: _client,
+          onSaved: _loadFiles,
+        );
       }).toList(),
     );
   }
@@ -1796,12 +1804,16 @@ class _IdeScreenState extends State<IdeScreen> {
 class _FileCard extends StatefulWidget {
   final String filePath;
   final String fileName;
+  final String fileContent;
   final ApiClient client;
+  final VoidCallback? onSaved;
 
   const _FileCard({
     required this.filePath,
     required this.fileName,
+    required this.fileContent,
     required this.client,
+    this.onSaved,
   });
 
   @override
@@ -1827,21 +1839,6 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
     super.dispose();
   }
 
-  String _getFileIcon(String name) {
-    final ext = name.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'html': return '🌐';
-      case 'css': return '🎨';
-      case 'js': case 'ts': return '⚡';
-      case 'py': return '🐍';
-      case 'dart': return '🎯';
-      case 'json': return '📋';
-      case 'md': return '📝';
-      case 'sh': return '⚙️';
-      default: return '📄';
-    }
-  }
-
   void _openFile(BuildContext context) {
     setState(() => _opened = true);
     _checkCtrl.forward();
@@ -1860,20 +1857,47 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
     setState(() => _downloading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      final baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
-      final encodedPath = Uri.encodeQueryComponent(widget.filePath);
-      final downloadUrl = '$baseUrl/api/files/download?path=$encodedPath';
-      final uri = Uri.parse(downloadUrl);
+      widget.client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
       
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        throw 'Не удалось запустить браузер для скачивания';
+      String content = widget.fileContent;
+      // If content is empty (e.g. from a download link pattern), fetch it from workspace first
+      if (content.isEmpty) {
+        final result = await widget.client.readFile(widget.filePath);
+        content = result['content'] as String? ?? '';
+      }
+      
+      // Save/write the file content into the workspace (application file list)
+      await widget.client.writeFile(widget.filePath, content);
+      
+      // Call parent reload callback to refresh workspace file explorer drawer
+      if (widget.onSaved != null) {
+        widget.onSaved!();
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Файл сохранен в Проводник файлов: ${widget.fileName}',
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF1E293B),
+            duration: const Duration(seconds: 3),
+          ),
+        );
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка скачивания: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Ошибка сохранения: $e'), backgroundColor: Colors.redAccent),
         );
       }
     } finally {
@@ -1905,10 +1929,11 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
                     color: VegaTheme.accent.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Center(
-                    child: Text(
-                      _getFileIcon(widget.fileName),
-                      style: const TextStyle(fontSize: 20),
+                  child: const Center(
+                    child: Icon(
+                      Icons.insert_drive_file_rounded,
+                      color: VegaTheme.accent, // VegaTheme.accent is purple
+                      size: 24,
                     ),
                   ),
                 ),
