@@ -38,6 +38,9 @@ class _IdeScreenState extends State<IdeScreen> {
   int? _ideChatId;
   List<Map<String, dynamic>> _chatMessages = [];
   List<Map<String, dynamic>> _ideChats = [];
+  bool _isSearching = false;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
   final _chatInputCtrl = TextEditingController();
   final _chatScrollCtrl = ScrollController();
   bool _chatLoading = false;
@@ -96,6 +99,7 @@ class _IdeScreenState extends State<IdeScreen> {
     _termInputCtrl.dispose();
     _termScrollCtrl.dispose();
     _termOutputNotifier.dispose();
+    _searchController.dispose();
     _termChannel?.sink.close();
     super.dispose();
   }
@@ -538,9 +542,71 @@ class _IdeScreenState extends State<IdeScreen> {
 
   Future<void> _loadIdeChats() async {
     final allChats = await ChatHistory.getChats();
+    allChats.sort((a, b) {
+      final aPinned = a['pinned'] == true;
+      final bPinned = b['pinned'] == true;
+      if (aPinned != bPinned) {
+        return aPinned ? -1 : 1;
+      }
+      return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
+    });
     setState(() {
       _ideChats = allChats.where((c) => c['projectId'] == 'ide').toList();
     });
+  }
+
+  Future<void> _togglePinChat(int chatId) async {
+    await ChatHistory.togglePinChat(chatId);
+    await _loadIdeChats();
+  }
+
+  Future<void> _deleteChat(int chatId) async {
+    await ChatHistory.deleteChat(chatId);
+    if (_ideChatId == chatId) {
+      _ideChatId = null;
+      await _initIdeChat();
+    } else {
+      await _loadIdeChats();
+    }
+  }
+
+  void _renameChat(int chatId, String currentTitle) {
+    final controller = TextEditingController(text: currentTitle);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Text(
+          'Переименовать чат',
+          style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+          decoration: const InputDecoration(
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final newTitle = controller.text.trim();
+              if (newTitle.isNotEmpty) {
+                Navigator.pop(ctx);
+                await ChatHistory.updateChatTitle(chatId, newTitle);
+                await _loadIdeChats();
+              }
+            },
+            child: const Text('Сохранить', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _createNewIdeChat() async {
@@ -1169,87 +1235,177 @@ class _IdeScreenState extends State<IdeScreen> {
 
   Widget _buildChatsDrawer() {
     return Drawer(
-      backgroundColor: VegaTheme.dark,
+      width: MediaQuery.of(context).size.width * 0.65,
+      backgroundColor: VegaTheme.surface,
       child: SafeArea(
         child: Column(
           children: [
-            // Header
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.all(16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Сессии Кодера IDE',
-                    style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                    'Чаты IDE',
+                    style: TextStyle(color: VegaTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  IconButton(
-                    onPressed: _createNewIdeChat,
-                    icon: const Icon(Icons.add_comment_rounded, color: VegaTheme.accent),
-                    tooltip: 'Новый чат',
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(_isSearching ? Icons.close : Icons.search, color: VegaTheme.textSecondary, size: 22),
+                        onPressed: () {
+                          setState(() {
+                            _isSearching = !_isSearching;
+                            if (!_isSearching) {
+                              _searchController.clear();
+                              _searchQuery = '';
+                            }
+                          });
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add, color: VegaTheme.accent),
+                        onPressed: _createNewIdeChat,
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
+            if (_isSearching)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Поиск чатов...',
+                    hintStyle: const TextStyle(color: VegaTheme.textSecondary),
+                    filled: true,
+                    fillColor: VegaTheme.card,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    prefixIcon: const Icon(Icons.search, color: VegaTheme.textSecondary, size: 20),
+                  ),
+                  onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()),
+                ),
+              ),
+            Expanded(
+              child: Builder(builder: (ctx) {
+                if (_ideChats.isEmpty) {
+                  return const Center(child: Text('Нет активных сессий', style: TextStyle(color: VegaTheme.textSecondary)));
+                }
+
+                final filtered = _searchQuery.isEmpty
+                    ? _ideChats
+                    : _ideChats.where((c) => (c['title'] ?? '').toString().toLowerCase().contains(_searchQuery)).toList();
+
+                if (filtered.isEmpty) {
+                  return const Center(child: Text('Ничего не найдено', style: TextStyle(color: VegaTheme.textSecondary)));
+                }
+
+                return ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (ctx, i) {
+                    final chat = filtered[i];
+                    final isActive = chat['id'] == _ideChatId;
+                    return ListTile(
+                      selected: isActive,
+                      selectedTileColor: VegaTheme.card,
+                      dense: true,
+                      visualDensity: const VisualDensity(vertical: -2),
+                      contentPadding: const EdgeInsets.only(left: 16, right: 4),
+                      title: Row(
+                        children: [
+                          if (chat['pinned'] == true) ...[
+                            const Icon(Icons.push_pin, color: VegaTheme.accent, size: 12),
+                            const SizedBox(width: 4),
+                          ],
+                          Expanded(
+                            child: Text(
+                              chat['title'] ?? 'Без названия',
+                              style: TextStyle(
+                                color: isActive ? VegaTheme.accent : VegaTheme.textPrimary,
+                                fontSize: 14,
+                                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      trailing: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, color: VegaTheme.textSecondary, size: 18),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onSelected: (value) {
+                          if (value == 'delete') {
+                            _deleteChat(chat['id']);
+                          } else if (value == 'pin') {
+                            _togglePinChat(chat['id']);
+                          } else if (value == 'rename') {
+                            _renameChat(chat['id'], chat['title'] ?? 'Без названия');
+                          }
+                        },
+                        itemBuilder: (BuildContext context) {
+                          final isPinned = chat['pinned'] == true;
+                          return [
+                            PopupMenuItem<String>(
+                              value: 'pin',
+                              child: Row(
+                                children: [
+                                  Icon(isPinned ? Icons.push_pin_outlined : Icons.push_pin, color: VegaTheme.accent, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text(isPinned ? 'Открепить' : 'Закрепить', style: const TextStyle(color: VegaTheme.textPrimary)),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'rename',
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.edit_outlined, color: VegaTheme.textSecondary, size: 18),
+                                  const SizedBox(width: 8),
+                                  const Text('Переименовать', style: TextStyle(color: VegaTheme.textPrimary)),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                  const SizedBox(width: 8),
+                                  const Text('Удалить', style: TextStyle(color: VegaTheme.textPrimary)),
+                                ],
+                              ),
+                            ),
+                          ];
+                        },
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _ideChatId = chat['id'];
+                          _loadChatMessages();
+                        });
+                        Navigator.pop(context);
+                      },
+                    );
+                  },
+                );
+              }),
+            ),
+            // Actions panel: Clear history
             const Divider(color: Colors.white10, height: 1),
-            // Actions panel: Clear current chat
             ListTile(
               leading: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent),
-              title: const Text('Очистить историю текущего чата', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+              title: const Text('Очистить текущий чат', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
               onTap: () async {
                 await _clearChat();
                 if (mounted) Navigator.pop(context);
               },
-            ),
-            const Divider(color: Colors.white10, height: 1),
-            // List of chats
-            Expanded(
-              child: _ideChats.isEmpty
-                  ? const Center(child: Text('Нет активных сессий', style: TextStyle(color: VegaTheme.textSecondary)))
-                  : ListView.builder(
-                      itemCount: _ideChats.length,
-                      itemBuilder: (ctx, i) {
-                        final chat = _ideChats[i];
-                        final isSelected = chat['id'] == _ideChatId;
-                        return ListTile(
-                          selected: isSelected,
-                          selectedTileColor: VegaTheme.surface,
-                          leading: Icon(
-                            Icons.chat_bubble_outline_rounded,
-                            color: isSelected ? VegaTheme.accent : VegaTheme.textSecondary,
-                            size: 20,
-                          ),
-                          title: Text(
-                            chat['title'] ?? 'Без названия',
-                            style: TextStyle(
-                              color: isSelected ? VegaTheme.accent : VegaTheme.textPrimary,
-                              fontSize: 13,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            ),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
-                            onPressed: () async {
-                              final chatId = chat['id'] as int;
-                              await ChatHistory.deleteChat(chatId);
-                              if (_ideChatId == chatId) {
-                                _ideChatId = null;
-                                await _initIdeChat();
-                              } else {
-                                await _loadIdeChats();
-                              }
-                            },
-                          ),
-                          onTap: () {
-                            setState(() {
-                              _ideChatId = chat['id'];
-                              _loadChatMessages();
-                            });
-                            Navigator.pop(context);
-                          },
-                        );
-                      },
-                    ),
             ),
           ],
         ),
@@ -1262,22 +1418,23 @@ class _IdeScreenState extends State<IdeScreen> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: VegaTheme.dark,
-      drawer: _buildFilesDrawer(),
-      endDrawer: _buildChatsDrawer(),
+      drawer: _buildChatsDrawer(),
+      endDrawer: _buildFilesDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: VegaTheme.textPrimary, size: 20),
-          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.forum_outlined, color: VegaTheme.accent, size: 24),
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          tooltip: 'Чаты IDE',
         ),
         titleSpacing: 0,
         title: Row(
           children: [
-            // Files drawer open button
+            // Files drawer open button (opens right endDrawer)
             IconButton(
               icon: const Icon(Icons.folder_open_rounded, color: VegaTheme.accent, size: 24),
-              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
               tooltip: 'Проводник файлов',
             ),
             // Terminal dialog open button
@@ -1300,9 +1457,9 @@ class _IdeScreenState extends State<IdeScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.forum_outlined, color: VegaTheme.accent, size: 24),
-            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-            tooltip: 'Чаты IDE',
+            icon: const Icon(Icons.arrow_forward_ios_rounded, color: VegaTheme.textPrimary, size: 20),
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'Выйти из IDE',
           ),
           const SizedBox(width: 8),
         ],
