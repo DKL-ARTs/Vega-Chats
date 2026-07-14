@@ -57,10 +57,20 @@ class _IdeScreenState extends State<IdeScreen> {
   bool _isListening = false;
   String _lastWords = '';
   final List<Map<String, dynamic>> _attachedFiles = [];
+  bool _chatHasText = false;
 
   @override
   void initState() {
     super.initState();
+    _chatInputCtrl.addListener(() {
+      final text = _chatInputCtrl.text.trim();
+      final hasText = text.isNotEmpty;
+      if (hasText != _chatHasText) {
+        setState(() {
+          _chatHasText = hasText;
+        });
+      }
+    });
     _initSettingsAndData();
   }
 
@@ -72,9 +82,6 @@ class _IdeScreenState extends State<IdeScreen> {
       _client.baseUrl = baseUrl;
       _client.apiKey = apiKey;
     });
-
-    // Request speech microphone and bluetooth permissions immediately on screen load
-    await _initSpeech();
     
     // Load directory files and IDE chat context
     await _loadFiles();
@@ -656,8 +663,9 @@ class _IdeScreenState extends State<IdeScreen> {
         "Никогда не урезай код. Пиши его полностью.";
 
     final prefs = await SharedPreferences.getInstance();
-    final model = prefs.getString('active_model') ?? 'google/gemini-2.5-flash';
-    final provider = prefs.getString('active_provider') ?? 'openrouter';
+    final provider = prefs.getString('provider') ?? 'openrouter';
+    final savedModel = prefs.getString('model') ?? 'openrouter/auto';
+    final model = prefs.getString('model_for_backend') ?? savedModel;
     final geminiKey = prefs.getString('gemini_api_key') ?? '';
 
     // Convert messages for API call
@@ -866,8 +874,9 @@ class _IdeScreenState extends State<IdeScreen> {
         "Проанализируй вывод терминала, исправь ошибки, если они есть, и предложи следующий шаг.";
 
     final prefs = await SharedPreferences.getInstance();
-    final model = prefs.getString('active_model') ?? 'google/gemini-2.5-flash';
-    final provider = prefs.getString('active_provider') ?? 'openrouter';
+    final provider = prefs.getString('provider') ?? 'openrouter';
+    final savedModel = prefs.getString('model') ?? 'openrouter/auto';
+    final model = prefs.getString('model_for_backend') ?? savedModel;
     final geminiKey = prefs.getString('gemini_api_key') ?? '';
 
     final messagesForApi = _chatMessages.map((m) => {
@@ -1305,7 +1314,7 @@ class _IdeScreenState extends State<IdeScreen> {
             child: Padding(
               // Safe area padding for the glassmorphic transparent bottom bar
               padding: const EdgeInsets.only(bottom: 85),
-              child: _chatMessages.isEmpty
+              child: (_chatMessages.isEmpty && !_chatHasText)
                   ? _buildWelcomeScreen()
                   : ListView.builder(
                       controller: _chatScrollCtrl,
@@ -1510,22 +1519,27 @@ class _IdeScreenState extends State<IdeScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            // Circular Send Button with rightward arrow
-                            GestureDetector(
-                              onTap: _sendChatMessage,
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: VegaTheme.accent,
-                                ),
-                                child: const Icon(
-                                  Icons.arrow_forward_rounded, // Right arrow "->"
-                                  color: Colors.white,
-                                  size: 22,
-                                ),
-                              ),
+                            // Circular Send Button with upward arrow, dynamically disabled/greyed out
+                            Builder(
+                              builder: (context) {
+                                final hasContent = _chatHasText || _attachedFiles.isNotEmpty;
+                                return GestureDetector(
+                                  onTap: hasContent ? _sendChatMessage : null,
+                                  child: Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: hasContent ? VegaTheme.accent : VegaTheme.surface,
+                                    ),
+                                    child: Icon(
+                                      Icons.arrow_upward_rounded, // Upward arrow
+                                      color: hasContent ? Colors.white : VegaTheme.textSecondary,
+                                      size: 22,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
