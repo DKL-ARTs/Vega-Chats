@@ -1397,16 +1397,7 @@ class _IdeScreenState extends State<IdeScreen> {
                 );
               }),
             ),
-            // Actions panel: Clear history
-            const Divider(color: Colors.white10, height: 1),
-            ListTile(
-              leading: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent),
-              title: const Text('Очистить текущий чат', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
-              onTap: () async {
-                await _clearChat();
-                if (mounted) Navigator.pop(context);
-              },
-            ),
+
           ],
         ),
       ),
