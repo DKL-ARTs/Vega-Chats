@@ -908,6 +908,22 @@ class _IdeScreenState extends State<IdeScreen> {
     );
   }
 
+  /// Renders animated file cards for each [WRITE_FILE:path]...[/WRITE_FILE] block
+  Widget _buildWrittenFileCards(String content) {
+    final pattern = RegExp(r'\[WRITE_FILE:([^\]]+)\]([\s\S]*?)\[/WRITE_FILE\]');
+    final matches = pattern.allMatches(content).toList();
+    if (matches.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: matches.map((match) {
+        final filePath = match.group(1)?.trim() ?? '';
+        final fileName = filePath.split('/').last;
+        return _FileCard(filePath: filePath, fileName: fileName, client: _client);
+      }).toList(),
+    );
+  }
+
   /// Parses [WRITE_FILE:path]content[/WRITE_FILE] blocks from AI response
   /// and saves each file to the workspace via the backend Files API.
   Future<void> _processWriteFiles(String response) async {
@@ -923,21 +939,6 @@ class _IdeScreenState extends State<IdeScreen> {
       try {
         await _client.writeFile(filePath, fileContent);
         anyWritten = true;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text('Сохранён: $filePath', style: const TextStyle(fontSize: 13))),
-                ],
-              ),
-              backgroundColor: VegaTheme.surface,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
       } catch (e) {
         debugPrint('WRITE_FILE error: $e');
       }
@@ -1577,6 +1578,10 @@ class _IdeScreenState extends State<IdeScreen> {
                                 ),
                               ),
                             
+                            // File cards for WRITE_FILE blocks
+                            if (!isUser)
+                              _buildWrittenFileCards(content),
+                            
                             // Inline terminal run request
                             if (cmd != null)
                               TerminalCommandWidget(
@@ -1736,6 +1741,260 @@ class _IdeScreenState extends State<IdeScreen> {
                             ),
                           ],
                         ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Animated file card shown in IDE chat for each WRITE_FILE block ───────────
+class _FileCard extends StatefulWidget {
+  final String filePath;
+  final String fileName;
+  final ApiClient client;
+
+  const _FileCard({
+    required this.filePath,
+    required this.fileName,
+    required this.client,
+  });
+
+  @override
+  State<_FileCard> createState() => _FileCardState();
+}
+
+class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixin {
+  bool _opened = false;
+  bool _downloading = false;
+  late AnimationController _checkCtrl;
+  late Animation<double> _checkAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _checkAnim = CurvedAnimation(parent: _checkCtrl, curve: Curves.easeOut);
+  }
+
+  @override
+  void dispose() {
+    _checkCtrl.dispose();
+    super.dispose();
+  }
+
+  String _getFileIcon(String name) {
+    final ext = name.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'html': return '🌐';
+      case 'css': return '🎨';
+      case 'js': case 'ts': return '⚡';
+      case 'py': return '🐍';
+      case 'dart': return '🎯';
+      case 'json': return '📋';
+      case 'md': return '📝';
+      case 'sh': return '⚙️';
+      default: return '📄';
+    }
+  }
+
+  void _openFile(BuildContext context) {
+    setState(() => _opened = true);
+    _checkCtrl.forward();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditorScreen(
+          filePath: widget.filePath,
+          fileName: widget.fileName,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _downloadFile(BuildContext context) async {
+    setState(() => _downloading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      widget.client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+      // Read and save to Downloads folder
+      final result = await widget.client.readFile(widget.filePath);
+      final content = result['content'] as String? ?? '';
+      final outFile = File('/storage/emulated/0/Download/${widget.fileName}');
+      await outFile.writeAsString(content);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Сохранён в Загрузки: ${widget.fileName}'),
+            backgroundColor: Colors.green.shade800,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1F2E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: VegaTheme.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // File info row
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: VegaTheme.accent.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _getFileIcon(widget.fileName),
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.fileName,
+                        style: const TextStyle(
+                          color: VegaTheme.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Generated File',
+                        style: TextStyle(
+                          color: VegaTheme.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Divider
+          Divider(height: 1, color: VegaTheme.border.withOpacity(0.5)),
+          // Action buttons row
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                // Open button
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => _openFile(context),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      decoration: BoxDecoration(
+                        color: _opened
+                            ? Colors.green.withOpacity(0.08)
+                            : Colors.transparent,
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(16),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ScaleTransition(
+                            scale: Tween<double>(begin: 1.0, end: 1.0).animate(_checkAnim),
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              child: _opened
+                                  ? const Icon(Icons.check_circle_rounded,
+                                      color: Colors.greenAccent, size: 18, key: ValueKey('check'))
+                                  : const Icon(Icons.edit_rounded,
+                                      color: VegaTheme.accent, size: 18, key: ValueKey('edit')),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 300),
+                            style: TextStyle(
+                              color: _opened ? Colors.greenAccent : VegaTheme.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            child: Text(_opened ? 'Открыт' : 'Открыть'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Vertical divider
+                VerticalDivider(
+                  width: 1,
+                  color: VegaTheme.border.withOpacity(0.5),
+                ),
+                // Download button
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _downloading ? null : () => _downloadFile(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      decoration: const BoxDecoration(
+                        borderRadius: BorderRadius.only(
+                          bottomRight: Radius.circular(16),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _downloading
+                              ? const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: VegaTheme.accent,
+                                  ),
+                                )
+                              : const Icon(Icons.download_rounded,
+                                  color: VegaTheme.accent, size: 18),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Скачать',
+                            style: TextStyle(
+                              color: VegaTheme.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

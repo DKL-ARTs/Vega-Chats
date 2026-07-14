@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 
@@ -24,7 +25,7 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void initState() {
     super.initState();
-    _loadFileContent();
+    _initAndLoad();
   }
 
   @override
@@ -33,17 +34,25 @@ class _EditorScreenState extends State<EditorScreen> {
     super.dispose();
   }
 
+  Future<void> _initAndLoad() async {
+    final prefs = await SharedPreferences.getInstance();
+    _client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+    await _loadFileContent();
+  }
+
   Future<void> _loadFileContent() async {
     setState(() => _loading = true);
     try {
       final result = await _client.readFile(widget.filePath);
       _codeCtrl.text = result['content'] ?? '';
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки файла: $e'), backgroundColor: Colors.redAccent),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка загрузки файла: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
