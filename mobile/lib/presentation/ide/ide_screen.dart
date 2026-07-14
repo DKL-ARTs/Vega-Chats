@@ -786,6 +786,8 @@ class _IdeScreenState extends State<IdeScreen> {
       final finalResponse = responseBuffer.toString();
       if (finalResponse.isNotEmpty) {
         await ChatHistory.addMessage(_ideChatId!, 'assistant', finalResponse);
+        // Auto-save any [WRITE_FILE:...] blocks to workspace
+        await _processWriteFiles(finalResponse);
       }
     } catch (e) {
       if (mounted) {
@@ -906,6 +908,44 @@ class _IdeScreenState extends State<IdeScreen> {
     );
   }
 
+  /// Parses [WRITE_FILE:path]content[/WRITE_FILE] blocks from AI response
+  /// and saves each file to the workspace via the backend Files API.
+  Future<void> _processWriteFiles(String response) async {
+    final pattern = RegExp(r'\[WRITE_FILE:([^\]]+)\]([\s\S]*?)\[/WRITE_FILE\]');
+    final matches = pattern.allMatches(response);
+    if (matches.isEmpty) return;
+
+    bool anyWritten = false;
+    for (final match in matches) {
+      final filePath = match.group(1)?.trim() ?? '';
+      final fileContent = match.group(2) ?? '';
+      if (filePath.isEmpty) continue;
+      try {
+        await _client.writeFile(filePath, fileContent);
+        anyWritten = true;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Сохранён: $filePath', style: const TextStyle(fontSize: 13))),
+                ],
+              ),
+              backgroundColor: VegaTheme.surface,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('WRITE_FILE error: $e');
+      }
+    }
+    // Refresh the file explorer after writing
+    if (anyWritten) await _loadFiles();
+  }
+
   String _cleanMessageContent(String content) {
     String cleaned = content;
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\][\s\S]*?\[/WRITE_FILE\]'), '');
@@ -989,6 +1029,7 @@ class _IdeScreenState extends State<IdeScreen> {
       final finalResponse = responseBuffer.toString();
       if (finalResponse.isNotEmpty) {
         await ChatHistory.addMessage(_ideChatId!, 'assistant', finalResponse);
+        await _processWriteFiles(finalResponse);
       }
     } catch (e) {
       if (mounted) {
