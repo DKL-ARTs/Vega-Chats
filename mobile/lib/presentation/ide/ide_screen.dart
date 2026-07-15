@@ -29,6 +29,7 @@ class IdeScreen extends StatefulWidget {
 class _IdeScreenState extends State<IdeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final _client = ApiClient();
+  bool _isInitializing = true;
 
   // === FILE EXPLORER STATE ===
   String _currentPath = '/root/workspace';
@@ -91,6 +92,12 @@ class _IdeScreenState extends State<IdeScreen> {
     await _loadFiles();
     await _initIdeChat();
     await _connectTerminal();
+
+    if (mounted) {
+      setState(() {
+        _isInitializing = false;
+      });
+    }
   }
 
   @override
@@ -1164,67 +1171,69 @@ class _IdeScreenState extends State<IdeScreen> {
                     );
                   },
                 ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Режим IDE',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: VegaTheme.textPrimary,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Ваша автономная среда разработки и ИИ-ассистент',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: VegaTheme.textSecondary,
-                    fontSize: 13,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // Suggestions grid
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 2.6,
-                  children: suggestions.map((s) => GestureDetector(
-                    onTap: () {
-                      _chatInputCtrl.text = s['prompt']!;
-                      _chatInputCtrl.selection = TextSelection.fromPosition(
-                        TextPosition(offset: _chatInputCtrl.text.length),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: VegaTheme.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: VegaTheme.border, width: 0.5),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(s['icon']!, style: const TextStyle(fontSize: 18)),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              s['text']!, 
-                              style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), 
-                              overflow: TextOverflow.ellipsis
-                            ),
-                          ),
-                        ],
-                      ),
+                if (!_chatHasText) ...[
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Режим IDE',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: VegaTheme.textPrimary,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
                     ),
-                  )).toList(),
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Ваша автономная среда разработки и ИИ-ассистент',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: VegaTheme.textSecondary,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  // Suggestions grid
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 2.6,
+                    children: suggestions.map((s) => GestureDetector(
+                      onTap: () {
+                        _chatInputCtrl.text = s['prompt']!;
+                        _chatInputCtrl.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _chatInputCtrl.text.length),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: VegaTheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: VegaTheme.border, width: 0.5),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(s['icon']!, style: const TextStyle(fontSize: 18)),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                s['text']!, 
+                                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13), 
+                                overflow: TextOverflow.ellipsis
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1547,16 +1556,18 @@ class _IdeScreenState extends State<IdeScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Stack(
-        children: [
-          // Chat messages list / Welcome screen
-          Positioned.fill(
-            child: Padding(
-              // Safe area padding for the glassmorphic transparent bottom bar
-              padding: const EdgeInsets.only(bottom: 85),
-              child: (_chatMessages.isEmpty && !_chatHasText)
-                  ? _buildWelcomeScreen()
-                  : ListView.builder(
+      body: _isInitializing
+          ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
+          : Stack(
+              children: [
+                // Chat messages list / Welcome screen
+                Positioned.fill(
+                  child: Padding(
+                    // Safe area padding for the glassmorphic transparent bottom bar
+                    padding: const EdgeInsets.only(bottom: 85),
+                    child: _chatMessages.isEmpty
+                        ? _buildWelcomeScreen()
+                        : ListView.builder(
                       controller: _chatScrollCtrl,
                       padding: const EdgeInsets.all(16),
                       itemCount: _chatMessages.length + (_chatLoading ? 1 : 0),
@@ -2007,7 +2018,7 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                             ),
-                            child: Text(_opened ? 'Открыт' : 'Открыть'),
+                            child: Text(_opened ? 'Редактируется' : 'Редактировать'),
                           ),
                         ],
                       ),
