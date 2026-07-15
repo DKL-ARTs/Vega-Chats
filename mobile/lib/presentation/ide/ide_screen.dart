@@ -29,7 +29,6 @@ class IdeScreen extends StatefulWidget {
 class _IdeScreenState extends State<IdeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final _client = ApiClient();
-  bool _isInitializing = true;
 
   // === FILE EXPLORER STATE ===
   String _currentPath = '/root/workspace';
@@ -92,12 +91,6 @@ class _IdeScreenState extends State<IdeScreen> {
     await _loadFiles();
     await _initIdeChat();
     await _connectTerminal();
-
-    if (mounted) {
-      setState(() {
-        _isInitializing = false;
-      });
-    }
   }
 
   @override
@@ -517,22 +510,12 @@ class _IdeScreenState extends State<IdeScreen> {
   // ==========================================
   Future<void> _initIdeChat() async {
     final prefs = await SharedPreferences.getInstance();
-    int? chatId = prefs.getInt('ide_chat_id');
-    
-    // Check if this chat actually exists in DB
-    if (chatId != null) {
-      final chats = await ChatHistory.getChats();
-      final exists = chats.any((c) => c['id'] == chatId);
-      if (!exists) {
-        chatId = null;
-        await prefs.remove('ide_chat_id');
-      }
-    }
+    await prefs.remove('ide_chat_id'); // Ensure it is cleared
 
-    // Lazy: do NOT auto-create a chat. It will be created on first message.
-    _ideChatId = chatId;
-    await _loadChatMessages();
-    await _loadIdeChats();
+    // Every time we enter the IDE, start in a completely new, empty chat session
+    _ideChatId = null;
+    _chatMessages = [];
+    await _loadIdeChats(); // Load existing chats for the drawer list
   }
 
   Future<void> _loadChatMessages() async {
@@ -1556,18 +1539,16 @@ class _IdeScreenState extends State<IdeScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: _isInitializing
-          ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
-          : Stack(
-              children: [
-                // Chat messages list / Welcome screen
-                Positioned.fill(
-                  child: Padding(
-                    // Safe area padding for the glassmorphic transparent bottom bar
-                    padding: const EdgeInsets.only(bottom: 85),
-                    child: _chatMessages.isEmpty
-                        ? _buildWelcomeScreen()
-                        : ListView.builder(
+      body: Stack(
+        children: [
+          // Chat messages list / Welcome screen
+          Positioned.fill(
+            child: Padding(
+              // Safe area padding for the glassmorphic transparent bottom bar
+              padding: const EdgeInsets.only(bottom: 85),
+              child: _chatMessages.isEmpty
+                  ? _buildWelcomeScreen()
+                  : ListView.builder(
                       controller: _chatScrollCtrl,
                       padding: const EdgeInsets.all(16),
                       itemCount: _chatMessages.length + (_chatLoading ? 1 : 0),
