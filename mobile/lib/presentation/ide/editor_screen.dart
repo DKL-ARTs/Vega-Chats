@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
@@ -177,6 +178,9 @@ class _EditorScreenState extends State<EditorScreen> {
                               controller: _codeCtrl,
                               maxLines: null,
                               expands: true,
+                              inputFormatters: [
+                                AutoCloseBracketsFormatter(),
+                              ],
                               style: const TextStyle(
                                 color: Color(0xFFF1F5F9), // Slate-100 code color
                                 fontFamily: 'monospace',
@@ -233,5 +237,60 @@ class _EditorScreenState extends State<EditorScreen> {
               ],
             ),
     );
+  }
+}
+
+class AutoCloseBracketsFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final oldText = oldValue.text;
+    final newText = newValue.text;
+
+    // 1. Step-over feature: user typed a closing char that already exists right after the cursor
+    if (newText.length == oldText.length + 1) {
+      final oldEnd = oldValue.selection.end;
+      if (oldEnd >= 0 && oldEnd < oldText.length) {
+        final insertedChar = newText[oldEnd];
+        final nextChar = oldText[oldEnd];
+        if ((insertedChar == '}' && nextChar == '}') ||
+            (insertedChar == ']' && nextChar == ']') ||
+            (insertedChar == ')' && nextChar == ')') ||
+            (insertedChar == '"' && nextChar == '"') ||
+            (insertedChar == "'" && nextChar == "'")) {
+          // Revert the insertion and just advance cursor by 1
+          return oldValue.copyWith(
+            selection: TextSelection.collapsed(offset: oldEnd + 1),
+          );
+        }
+      }
+    }
+
+    // 2. Auto-close feature: user typed an opening bracket/quote
+    if (newText.length == oldText.length + 1) {
+      final oldEnd = oldValue.selection.end;
+      if (oldEnd >= 0 && oldEnd < newText.length) {
+        final insertedChar = newText[oldEnd];
+        String? closingChar;
+        if (insertedChar == '{') closingChar = '}';
+        else if (insertedChar == '[') closingChar = ']';
+        else if (insertedChar == '(') closingChar = ')';
+        else if (insertedChar == '"') closingChar = '"';
+        else if (insertedChar == "'") closingChar = "'";
+
+        if (closingChar != null) {
+          final prefix = newText.substring(0, oldEnd + 1);
+          final suffix = newText.substring(oldEnd + 1);
+          return TextEditingValue(
+            text: '$prefix$closingChar$suffix',
+            selection: TextSelection.collapsed(offset: oldEnd + 1),
+          );
+        }
+      }
+    }
+
+    return newValue;
   }
 }
