@@ -1403,7 +1403,7 @@ class _IdeScreenState extends State<IdeScreen> {
                                     ),
                                   PopupMenuButton<String>(
                                     icon: const Icon(Icons.more_vert_rounded, color: VegaTheme.textSecondary, size: 18),
-                                    backgroundColor: VegaTheme.surface,
+                                    color: VegaTheme.surface,
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
                                     onSelected: (value) {
