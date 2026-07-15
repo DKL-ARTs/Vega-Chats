@@ -34,6 +34,7 @@ class _IdeScreenState extends State<IdeScreen> {
   String _currentPath = '/root/workspace';
   List<Map<String, dynamic>> _files = [];
   bool _filesLoading = true;
+  final Map<String, String> _originalFileContents = {};
 
   // === AI DEV CHAT STATE ===
   int? _ideChatId;
@@ -1035,10 +1036,12 @@ class _IdeScreenState extends State<IdeScreen> {
         final filePath = file['path'] ?? '';
         final fileName = file['name'] ?? 'file';
         final fileContent = file['content'] ?? '';
+        final originalContent = _originalFileContents[filePath];
         return _FileCard(
           filePath: filePath,
           fileName: fileName,
           fileContent: fileContent,
+          originalContent: originalContent,
           client: _client,
           onSaved: _loadFiles,
         );
@@ -1059,6 +1062,16 @@ class _IdeScreenState extends State<IdeScreen> {
       final fileContent = match.group(2) ?? '';
       if (filePath.isEmpty) continue;
       try {
+        // Read original file content first (if it exists)
+        try {
+          final res = await _client.readFile(filePath);
+          if (res.containsKey('content') && res['content'] != null) {
+            _originalFileContents[filePath] = res['content'] as String;
+          }
+        } catch (_) {
+          // File does not exist yet (new file)
+        }
+
         await _client.writeFile(filePath, fileContent);
         anyWritten = true;
       } catch (e) {
@@ -2010,6 +2023,7 @@ class _FileCard extends StatefulWidget {
   final String filePath;
   final String fileName;
   final String fileContent;
+  final String? originalContent;
   final ApiClient client;
   final VoidCallback? onSaved;
 
@@ -2017,6 +2031,7 @@ class _FileCard extends StatefulWidget {
     required this.filePath,
     required this.fileName,
     required this.fileContent,
+    this.originalContent,
     required this.client,
     this.onSaved,
   });
@@ -2028,6 +2043,7 @@ class _FileCard extends StatefulWidget {
 class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixin {
   bool _opened = false;
   bool _downloading = false;
+  bool _showDiff = false;
   late AnimationController _checkCtrl;
   late Animation<double> _checkAnim;
 
@@ -2169,6 +2185,56 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
               ],
             ),
           ),
+          // Diff View Toggle & Container
+          if (widget.originalContent != null && widget.originalContent != widget.fileContent) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              child: InkWell(
+                onTap: () => setState(() => _showDiff = !_showDiff),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _showDiff ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                        color: VegaTheme.accent,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _showDiff ? 'Скрыть изменения' : 'Показать изменения',
+                        style: const TextStyle(color: VegaTheme.accent, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (_showDiff)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                maxHeight: 180,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: VegaTheme.border, width: 0.5),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: _buildDiffLines(),
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 6),
+          ],
           // Divider
           Divider(height: 1, color: VegaTheme.border.withOpacity(0.5)),
           // Action buttons row
@@ -2268,5 +2334,80 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
         ],
       ),
     );
+  }
+
+  List<Map<String, dynamic>> _computeLineDiff(String original, String modified) {
+    final linesA = original.split('\n');
+    final linesB = modified.split('\n');
+
+    final m = linesA.length;
+    final n = linesB.length;
+
+    final dp = List.generate(m + 1, (_) => List.filled(n + 1, 0));
+
+    for (int i = 1; i <= m; i++) {
+      for (int j = 1; j <= n; j++) {
+        if (linesA[i - 1] == linesB[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1] + 1;
+        } else {
+          dp[i][j] = dp[i - 1][j] > dp[i][j - 1] ? dp[i - 1][j] : dp[i][j - 1];
+        }
+      }
+    }
+
+    final List<Map<String, dynamic>> diff = [];
+    int i = m;
+    int j = n;
+
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && linesA[i - 1] == linesB[j - 1]) {
+        diff.insert(0, {'type': 'same', 'text': linesA[i - 1]});
+        i--;
+        j--;
+      } else if (j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        diff.insert(0, {'type': 'add', 'text': linesB[j - 1]});
+        j--;
+      } else {
+        diff.insert(0, {'type': 'delete', 'text': linesA[i - 1]});
+        i--;
+      }
+    }
+
+    return diff;
+  }
+
+  List<Widget> _buildDiffLines() {
+    final diff = _computeLineDiff(widget.originalContent ?? '', widget.fileContent);
+    return diff.map((line) {
+      Color bg;
+      Color textCol;
+      String prefix;
+      if (line['type'] == 'add') {
+        bg = Colors.green.withOpacity(0.15);
+        textCol = Colors.greenAccent;
+        prefix = '+ ';
+      } else if (line['type'] == 'delete') {
+        bg = Colors.red.withOpacity(0.15);
+        textCol = Colors.redAccent;
+        prefix = '- ';
+      } else {
+        bg = Colors.transparent;
+        textCol = const Color(0xFFE2E8F0);
+        prefix = '  ';
+      }
+
+      return Container(
+        color: bg,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Text(
+          '$prefix${line['text']}',
+          style: const TextStyle(
+            color: textCol,
+            fontFamily: 'monospace',
+            fontSize: 11,
+          ),
+        ),
+      );
+    }).toList();
   }
 }
