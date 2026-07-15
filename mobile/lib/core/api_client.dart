@@ -98,6 +98,24 @@ class ApiClient {
     return jsonDecode(resp.body);
   }
 
+  Future<Map<String, dynamic>> deleteFile(String path) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/files/delete'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'path': path}),
+    );
+    return jsonDecode(resp.body);
+  }
+
+  Future<Map<String, dynamic>> renameFile(String oldPath, String newPath) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/files/rename'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'old_path': oldPath, 'new_path': newPath}),
+    );
+    return jsonDecode(resp.body);
+  }
+
   Future<String> chat({
     required List<Map<String, dynamic>> messages,
     String model = 'openrouter/auto',

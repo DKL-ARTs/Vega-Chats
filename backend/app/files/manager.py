@@ -12,6 +12,13 @@ class FileWrite(BaseModel):
     path: str
     content: str
 
+class FileDelete(BaseModel):
+    path: str
+
+class FileRename(BaseModel):
+    old_path: str
+    new_path: str
+
 from app.config import settings
 
 def safe_path(path: str, root: str = None) -> Path:
@@ -67,4 +74,31 @@ async def download_file(path: str):
         filename=p.name,
         media_type="application/octet-stream"
     )
+
+@router.post("/files/delete")
+async def delete_file(req: FileDelete):
+    import shutil
+    p = safe_path(req.path)
+    if not p.exists():
+        raise HTTPException(404, "File/directory not found")
+    try:
+        if p.is_dir():
+            shutil.rmtree(p)
+        else:
+            p.unlink()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(500, f"Error deleting file/directory: {str(e)}")
+
+@router.post("/files/rename")
+async def rename_file(req: FileRename):
+    old_p = safe_path(req.old_path)
+    new_p = safe_path(req.new_path)
+    if not old_p.exists():
+        raise HTTPException(404, "Source path not found")
+    try:
+        old_p.rename(new_p)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(500, f"Error renaming file/directory: {str(e)}")
 

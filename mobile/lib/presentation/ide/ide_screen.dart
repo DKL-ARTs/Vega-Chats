@@ -316,6 +316,99 @@ class _IdeScreenState extends State<IdeScreen> {
     );
   }
 
+  Future<void> _deleteFileOrDir(Map<String, dynamic> item) async {
+    final fullPath = '$_currentPath/${item['name']}';
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Text('Удаление', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Text(
+          'Вы уверены, что хотите удалить ${item['is_dir'] == true ? 'папку' : 'файл'} "${item['name']}"?',
+          style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _client.deleteFile(fullPath);
+        _loadFiles();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Успешно удалено'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка удаления: $e'), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _renameFileOrDir(Map<String, dynamic> item) async {
+    final oldPath = '$_currentPath/${item['name']}';
+    final controller = TextEditingController(text: item['name']);
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Text('Переименование', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+          decoration: const InputDecoration(
+            hintText: 'Новое имя',
+            hintStyle: TextStyle(color: VegaTheme.textSecondary),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty && newName != item['name']) {
+                Navigator.pop(ctx);
+                final newPath = '$_currentPath/$newName';
+                try {
+                  await _client.renameFile(oldPath, newPath);
+                  _loadFiles();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Ошибка переименования: $e'), backgroundColor: Colors.redAccent),
+                    );
+                  }
+                }
+              }
+            },
+            child: const Text('Сохранить', style: TextStyle(color: VegaTheme.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ==========================================
   // === TERMINAL LOGIC ===
   // ==========================================
@@ -1300,12 +1393,51 @@ class _IdeScreenState extends State<IdeScreen> {
                                 item['name'],
                                 style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
                               ),
-                              trailing: isDir
-                                  ? const Icon(Icons.chevron_right_rounded, color: VegaTheme.textSecondary, size: 18)
-                                  : Text(
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (!isDir)
+                                    Text(
                                       '${item['size']} B',
                                       style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 10),
                                     ),
+                                  PopupMenuButton<String>(
+                                    icon: const Icon(Icons.more_vert_rounded, color: VegaTheme.textSecondary, size: 18),
+                                    backgroundColor: VegaTheme.surface,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onSelected: (value) {
+                                      if (value == 'rename') {
+                                        _renameFileOrDir(item);
+                                      } else if (value == 'delete') {
+                                        _deleteFileOrDir(item);
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'rename',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit_rounded, color: VegaTheme.textPrimary, size: 16),
+                                            SizedBox(width: 8),
+                                            Text('Переименовать', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete_rounded, color: Colors.redAccent, size: 16),
+                                            SizedBox(width: 8),
+                                            Text('Удалить', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                               onTap: () => _openFileItem(item),
                             );
                           },
