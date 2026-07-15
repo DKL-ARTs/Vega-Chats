@@ -2211,6 +2211,7 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
                   ),
                 ),
               ),
+            ),
             if (_showDiff)
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
