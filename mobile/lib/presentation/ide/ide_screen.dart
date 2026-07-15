@@ -2211,11 +2211,10 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
                   ),
                 ),
               ),
-            ),
             if (_showDiff)
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                maxHeight: 180,
+                constraints: const BoxConstraints(maxHeight: 180),
                 width: double.infinity,
                 decoration: BoxDecoration(
                   color: const Color(0xFF0F172A),
@@ -2401,7 +2400,7 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Text(
           '$prefix${line['text']}',
-          style: const TextStyle(
+          style: TextStyle(
             color: textCol,
             fontFamily: 'monospace',
             fontSize: 11,
