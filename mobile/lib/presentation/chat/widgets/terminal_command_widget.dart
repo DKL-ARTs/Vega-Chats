@@ -208,13 +208,15 @@ class _TerminalCommandWidgetState extends State<TerminalCommandWidget> {
                       controller: _scrollController,
                       itemCount: _outputLines.length,
                       itemBuilder: (context, idx) {
-                        return Text(
-                          _outputLines[idx],
-                          style: const TextStyle(
-                            color: Color(0xFFF1F5F9), // Slate-100 terminal text
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                          ),
+                        final line = _outputLines[idx];
+                        final baseStyle = const TextStyle(
+                          color: Color(0xFFF1F5F9), // Slate-100 terminal text
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                          height: 1.4,
+                        );
+                        return SelectableText.rich(
+                          _parseAnsiText(line, baseStyle),
                         );
                       },
                     ),
@@ -255,5 +257,85 @@ class _TerminalCommandWidgetState extends State<TerminalCommandWidget> {
         ),
       ),
     );
+  }
+
+  TextSpan _parseAnsiText(String line, TextStyle baseStyle) {
+    if (!line.contains('\u001b') && !line.contains('\x1B')) {
+      Color textColor = baseStyle.color ?? const Color(0xFFE2E8F0);
+      FontWeight fontWeight = baseStyle.fontWeight ?? FontWeight.normal;
+      
+      final lower = line.toLowerCase();
+      if (lower.contains('error') || lower.contains('failed') || lower.contains('exception') || lower.contains('ошибка')) {
+        textColor = Colors.redAccent;
+      } else if (lower.contains('warning') || lower.contains('предупреждение')) {
+        textColor = Colors.amber;
+      } else if (lower.contains('success') || lower.contains('успешно') || lower.contains('successfully')) {
+        textColor = Colors.greenAccent;
+      }
+
+      return TextSpan(text: line, style: baseStyle.copyWith(color: textColor, fontWeight: fontWeight));
+    }
+
+    final children = <TextSpan>[];
+    final pattern = RegExp(r'(?:\x1B|\\u001b)\[([0-9;]*)m');
+    final matches = pattern.allMatches(line).toList();
+    if (matches.isEmpty) {
+      return TextSpan(text: line, style: baseStyle);
+    }
+
+    int lastIndex = 0;
+    TextStyle currentStyle = baseStyle;
+
+    for (final match in matches) {
+      if (match.start > lastIndex) {
+        children.add(TextSpan(
+          text: line.substring(lastIndex, match.start),
+          style: currentStyle,
+        ));
+      }
+
+      final codeString = match.group(1) ?? '';
+      final codes = codeString.split(';');
+
+      Color? foreColor = currentStyle.color;
+      FontWeight? fontWeight = currentStyle.fontWeight;
+
+      for (final code in codes) {
+        if (code == '0' || code.isEmpty) {
+          foreColor = baseStyle.color;
+          fontWeight = baseStyle.fontWeight;
+        } else if (code == '1') {
+          fontWeight = FontWeight.bold;
+        } else if (code == '30') {
+          foreColor = Colors.black;
+        } else if (code == '31') {
+          foreColor = Colors.redAccent;
+        } else if (code == '32') {
+          foreColor = Colors.greenAccent;
+        } else if (code == '33') {
+          foreColor = Colors.amber;
+        } else if (code == '34') {
+          foreColor = const Color(0xFF7AA2F7);
+        } else if (code == '35') {
+          foreColor = Colors.purpleAccent;
+        } else if (code == '36') {
+          foreColor = Colors.cyanAccent;
+        } else if (code == '37') {
+          foreColor = Colors.white;
+        }
+      }
+
+      currentStyle = currentStyle.copyWith(color: foreColor, fontWeight: fontWeight);
+      lastIndex = match.end;
+    }
+
+    if (lastIndex < line.length) {
+      children.add(TextSpan(
+        text: line.substring(lastIndex),
+        style: currentStyle,
+      ));
+    }
+
+    return TextSpan(children: children);
   }
 }
