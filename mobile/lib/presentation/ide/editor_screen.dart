@@ -20,12 +20,13 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   final _client = ApiClient();
-  final _codeCtrl = TextEditingController();
+  late final SyntaxHighlightingController _codeCtrl;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    _codeCtrl = SyntaxHighlightingController(fileName: widget.fileName);
     _initAndLoad();
   }
 
@@ -292,5 +293,134 @@ class AutoCloseBracketsFormatter extends TextInputFormatter {
     }
 
     return newValue;
+  }
+}
+
+class SyntaxHighlightingController extends TextEditingController {
+  final String fileName;
+
+  SyntaxHighlightingController({required this.fileName, String? text}) : super(text: text);
+
+  static final RegExp _jsDartPattern = RegExp(
+    r'(//[^\n]*)|' // 1: Comments
+    r'("(?:[^"\\]|\\.)*"|' // 2: Double-quoted strings
+    r"'(?:[^'\\]|\\.)*')|" // 3: Single-quoted strings
+    r'\b(const|let|var|function|class|return|if|else|for|while|import|export|from|new|this|await|async|void|null|true|false|final|extends|with|implements|factory|constructor|super|in|break|continue|switch|case|default|try|catch|finally|throw|rethrow|yield)\b|' // 4: Keywords
+    r'\b(int|double|num|bool|String|List|Map|Set|DateTime|Future|Stream|dynamic)\b|' // 5: Types
+    r'\b(\d+)\b', // 6: Numbers
+  );
+
+  static final RegExp _pyPattern = RegExp(
+    r'(#[^\n]*)|' // 1: Comments
+    r'("(?:[^"\\]|\\.)*"|' // 2: Double-quoted strings
+    r"'(?:[^'\\]|\\.)*')|" // 3: Single-quoted strings
+    r'\b(def|class|return|if|elif|else|for|while|import|from|as|in|is|and|or|not|try|except|finally|raise|print|len|range|str|int|float|list|dict|set|tuple|self|None|True|False)\b|' // 4: Keywords
+    r'\b(\d+)\b', // 5: Numbers
+  );
+
+  static final RegExp _htmlPattern = RegExp(
+    r'(<!--[\s\S]*?-->)|' // 1: HTML comments
+    r'(<\/?[a-zA-Z0-9\-]+)|' // 2: Tag open/close name
+    r'(\s[a-zA-Z0-9\-]+=)|' // 3: Attribute names
+    r'("[^"]*"|' // 4: Double-quoted values
+    r"'[^']*')|" // 5: Single-quoted values
+    r'(>)', // 6: Tag closing bracket
+  );
+
+  static final RegExp _cssPattern = RegExp(
+    r'(/\*[\s\S]*?\*/)|' // 1: Comments
+    r'(\.[a-zA-Z\-0-9_]+|#[a-zA-Z\-0-9_]+|[a-zA-Z\-0-9_]+(?=\s*\{))|' // 2: Selector class, id or tag
+    r'([a-zA-Z\-0-9_]+(?=\s*:))|' // 3: Property name
+    r'("[^"]*"|' // 4: Strings
+    r"'(?:[^'\\]|\\.)*')", // 5: Strings
+  );
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final ext = fileName.split('.').last.toLowerCase();
+    RegExp pattern;
+    if (ext == 'html' || ext == 'xml') {
+      pattern = _htmlPattern;
+    } else if (ext == 'css') {
+      pattern = _cssPattern;
+    } else if (ext == 'py') {
+      pattern = _pyPattern;
+    } else {
+      pattern = _jsDartPattern;
+    }
+
+    final text = this.text;
+    final matches = pattern.allMatches(text);
+    if (matches.isEmpty) {
+      return TextSpan(text: text, style: style);
+    }
+
+    final children = <TextSpan>[];
+    int lastIndex = 0;
+
+    for (final match in matches) {
+      if (match.start > lastIndex) {
+        children.add(TextSpan(text: text.substring(lastIndex, match.start)));
+      }
+
+      TextStyle? matchStyle;
+      if (ext == 'html' || ext == 'xml') {
+        if (match.group(1) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF6A737D), fontStyle: FontStyle.italic); // Comment
+        } else if (match.group(2) != null || match.group(6) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF7AA2F7)); // Blue tag name & brackets
+        } else if (match.group(3) != null) {
+          matchStyle = const TextStyle(color: Color(0xFFBB9AF3)); // Violet attribute name
+        } else if (match.group(4) != null || match.group(5) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF9ECE6A)); // Green string value
+        }
+      } else if (ext == 'css') {
+        if (match.group(1) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF6A737D), fontStyle: FontStyle.italic); // Comment
+        } else if (match.group(2) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF9ECE6A), fontWeight: FontWeight.bold); // Green selector
+        } else if (match.group(3) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF7AA2F7)); // Blue property name
+        } else if (match.group(4) != null || match.group(5) != null) {
+          matchStyle = const TextStyle(color: Color(0xFFFF9E64)); // Orange value string
+        }
+      } else if (ext == 'py') {
+        if (match.group(1) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF6A737D), fontStyle: FontStyle.italic); // Comment
+        } else if (match.group(2) != null || match.group(3) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF9ECE6A)); // Green string
+        } else if (match.group(4) != null) {
+          matchStyle = const TextStyle(color: Color(0xFFF7768E), fontWeight: FontWeight.bold); // Pink keyword
+        } else if (match.group(5) != null) {
+          matchStyle = const TextStyle(color: Color(0xFFFF9E64)); // Orange number
+        }
+      } else {
+        // Default (JS/Dart/TS)
+        if (match.group(1) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF6A737D), fontStyle: FontStyle.italic); // Comment
+        } else if (match.group(2) != null || match.group(3) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF9ECE6A)); // Green string
+        } else if (match.group(4) != null) {
+          matchStyle = const TextStyle(color: Color(0xFFF7768E), fontWeight: FontWeight.bold); // Pink keyword
+        } else if (match.group(5) != null) {
+          matchStyle = const TextStyle(color: Color(0xFF7AA2F7)); // Blue type
+        } else if (match.group(6) != null) {
+          matchStyle = const TextStyle(color: Color(0xFFFF9E64)); // Orange number
+        }
+      }
+
+      children.add(TextSpan(text: match.group(0), style: matchStyle));
+      lastIndex = match.end;
+    }
+
+    if (lastIndex < text.length) {
+      children.add(TextSpan(text: text.substring(lastIndex)));
+    }
+
+    return TextSpan(style: style, children: children);
   }
 }
