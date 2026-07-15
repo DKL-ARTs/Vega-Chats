@@ -22,6 +22,7 @@ class _EditorScreenState extends State<EditorScreen> {
   final _client = ApiClient();
   late final SyntaxHighlightingController _codeCtrl;
   bool _loading = true;
+  bool _isFullscreen = false;
 
   @override
   void initState() {
@@ -106,40 +107,92 @@ class _EditorScreenState extends State<EditorScreen> {
 
     return Scaffold(
       backgroundColor: VegaTheme.dark,
-      appBar: AppBar(
-        backgroundColor: VegaTheme.dark,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: VegaTheme.textPrimary, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.fileName,
-              style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+      appBar: _isFullscreen
+          ? null
+          : AppBar(
+              backgroundColor: VegaTheme.dark,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: VegaTheme.textPrimary, size: 20),
+                onPressed: () => Navigator.pop(context),
+              ),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.fileName,
+                    style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    widget.filePath.length > 35 ? '...' + widget.filePath.substring(widget.filePath.length - 35) : widget.filePath,
+                    style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 11),
+                  ),
+                ],
+              ),
+              actions: [
+                IconButton(
+                  onPressed: () => setState(() => _isFullscreen = true),
+                  icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 24),
+                  tooltip: 'Полноэкранный режим',
+                ),
+                IconButton(
+                  onPressed: _saveFile,
+                  icon: const Icon(Icons.save_rounded, color: VegaTheme.accent, size: 24),
+                  tooltip: 'Сохранить',
+                ),
+              ],
             ),
-            Text(
-              widget.filePath.length > 35 ? '...' + widget.filePath.substring(widget.filePath.length - 35) : widget.filePath,
-              style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 11),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            onPressed: _saveFile,
-            icon: const Icon(Icons.save_rounded, color: VegaTheme.accent, size: 24),
-          ),
-        ],
-      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
-          : Column(
-              children: [
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.all(12),
+          : SafeArea(
+              child: Column(
+                children: [
+                  if (_isFullscreen)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      color: const Color(0xFF0F172A),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.fileName,
+                                  style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  widget.filePath.length > 30 ? '...' + widget.filePath.substring(widget.filePath.length - 30) : widget.filePath,
+                                  style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 10),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
+                                icon: const Icon(Icons.save_rounded, color: VegaTheme.accent, size: 20),
+                                onPressed: _saveFile,
+                                tooltip: 'Сохранить',
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
+                                icon: const Icon(Icons.fullscreen_exit_rounded, color: Colors.white, size: 20),
+                                onPressed: () => setState(() => _isFullscreen = false),
+                                tooltip: 'Выйти из полноэкранного режима',
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  Expanded(
+                    child: Container(
+                      margin: _isFullscreen ? const EdgeInsets.all(2) : const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: const Color(0xFF0F172A), // Slate-900 editor background
                       borderRadius: BorderRadius.circular(12),
