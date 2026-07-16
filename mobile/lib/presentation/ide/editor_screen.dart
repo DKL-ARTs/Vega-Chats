@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 
@@ -33,6 +34,14 @@ class _EditorScreenState extends State<EditorScreen> {
   String _currentPath = '/root/workspace';
   List<Map<String, dynamic>> _files = [];
   bool _filesLoading = false;
+
+  // === TERMINAL STATE ===
+  bool _showTerminal = false;
+  final _termInputCtrl = TextEditingController();
+  final _termScrollCtrl = ScrollController();
+  final ValueNotifier<List<String>> _termOutputNotifier = ValueNotifier<List<String>>([]);
+  WebSocketChannel? _termChannel;
+  bool _termConnected = false;
   
   // === SEARCH & REPLACE STATE ===
   bool _showSearchBar = false;
@@ -65,6 +74,11 @@ class _EditorScreenState extends State<EditorScreen> {
     _codeCtrl.dispose();
     _searchQueryCtrl.dispose();
     _replaceQueryCtrl.dispose();
+    
+    _termChannel?.sink.close();
+    _termInputCtrl.dispose();
+    _termScrollCtrl.dispose();
+    _termOutputNotifier.dispose();
     super.dispose();
   }
 
@@ -137,6 +151,189 @@ class _EditorScreenState extends State<EditorScreen> {
       }
       await _loadTabFileContent(fullPath);
     }
+  }
+
+  Future<void> _connectTerminal() async {
+    if (_termConnected) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+      String wsUrl;
+      if (baseUrl.startsWith('https://')) {
+        wsUrl = 'wss://' + baseUrl.substring(8);
+      } else if (baseUrl.startsWith('http://')) {
+        wsUrl = 'ws://' + baseUrl.substring(7);
+      } else {
+        wsUrl = 'wss://' + baseUrl;
+      }
+      if (wsUrl.endsWith('/')) wsUrl = wsUrl.substring(0, wsUrl.length - 1);
+      wsUrl += '/ws/terminal';
+
+      _termChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      _termChannel!.stream.listen(
+        (data) {
+          _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add(data.toString());
+          _scrollTerminalToBottom();
+        },
+        onError: (e) {
+          _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('Ошибка WebSocket: $e');
+          setState(() => _termConnected = false);
+        },
+        onDone: () {
+          _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('WebSocket соединение закрыто.');
+          setState(() => _termConnected = false);
+        },
+      );
+      setState(() => _termConnected = true);
+    } catch (e) {
+      _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('Не удалось подключить терминал: $e');
+      setState(() => _termConnected = false);
+    }
+  }
+
+  void _scrollTerminalToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_termScrollCtrl.hasClients) {
+        _termScrollCtrl.animateTo(
+          _termScrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _sendTerminalCommand() {
+    final cmd = _termInputCtrl.text.trim();
+    if (cmd.isEmpty || _termChannel == null) return;
+    _termChannel!.sink.add(cmd);
+    _termInputCtrl.clear();
+  }
+
+  Widget _buildTerminalContent() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          color: const Color(0xFF1E293B),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.terminal_rounded, color: VegaTheme.accent, size: 14),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Терминал',
+                    style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _termConnected ? Colors.greenAccent : Colors.redAccent,
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      _termOutputNotifier.value = [];
+                    },
+                    icon: const Icon(Icons.delete_sweep_rounded, color: Colors.white60, size: 16),
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Очистить вывод',
+                  ),
+                  const SizedBox(width: 10),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _showTerminal = false;
+                      });
+                    },
+                    icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 16),
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Закрыть терминал',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Container(
+            color: const Color(0xFF0F172A),
+            padding: const EdgeInsets.all(8),
+            width: double.infinity,
+            child: ValueListenableBuilder<List<String>>(
+              valueListenable: _termOutputNotifier,
+              builder: (context, lines, child) {
+                return ListView.builder(
+                  controller: _termScrollCtrl,
+                  itemCount: lines.length,
+                  itemBuilder: (ctx, i) {
+                    final line = lines[i];
+                    Color textCol = const Color(0xFFE2E8F0);
+                    if (line.toLowerCase().contains('error') || line.toLowerCase().contains('failed')) {
+                      textCol = Colors.redAccent;
+                    } else if (line.toLowerCase().contains('warning')) {
+                      textCol = Colors.amberAccent;
+                    } else if (line.startsWith('\$ ') || line.startsWith('> ')) {
+                      textCol = VegaTheme.accent;
+                    }
+                    
+                    return Text(
+                      line,
+                      style: TextStyle(
+                        color: textCol,
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        height: 1.4,
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+        Container(
+          color: const Color(0xFF1E293B),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            children: [
+              const Text('\$ ', style: TextStyle(color: VegaTheme.accent, fontSize: 13, fontFamily: 'monospace')),
+              Expanded(
+                child: TextField(
+                  controller: _termInputCtrl,
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
+                  decoration: const InputDecoration(
+                    hintText: 'Введите команду...',
+                    hintStyle: TextStyle(color: Colors.white30, fontSize: 12),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 6),
+                  ),
+                  onSubmitted: (_) => _sendTerminalCommand(),
+                ),
+              ),
+              IconButton(
+                onPressed: _sendTerminalCommand,
+                icon: const Icon(Icons.send_rounded, color: VegaTheme.accent, size: 16),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   void _onCodeChanged() {
@@ -349,6 +546,16 @@ class _EditorScreenState extends State<EditorScreen> {
                   tooltip: 'Поиск и замена',
                 ),
                 IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _showTerminal = !_showTerminal;
+                    });
+                    if (_showTerminal) _connectTerminal();
+                  },
+                  icon: Icon(Icons.terminal_rounded, color: _showTerminal ? VegaTheme.accent : Colors.white, size: 24),
+                  tooltip: 'Терминал',
+                ),
+                IconButton(
                   onPressed: () => setState(() => _isFullscreen = true),
                   icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 24),
                   tooltip: 'Полноэкранный режим',
@@ -409,6 +616,18 @@ class _EditorScreenState extends State<EditorScreen> {
                                 icon: Icon(Icons.search_rounded, color: _showSearchBar ? VegaTheme.accent : Colors.white, size: 20),
                                 onPressed: () => setState(() => _showSearchBar = !_showSearchBar),
                                 tooltip: 'Поиск и замена',
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
+                                icon: Icon(Icons.terminal_rounded, color: _showTerminal ? VegaTheme.accent : Colors.white, size: 20),
+                                onPressed: () {
+                                  setState(() {
+                                    _showTerminal = !_showTerminal;
+                                  });
+                                  if (_showTerminal) _connectTerminal();
+                                },
+                                tooltip: 'Терминал',
                               ),
                               IconButton(
                                 constraints: const BoxConstraints(),
@@ -496,6 +715,17 @@ class _EditorScreenState extends State<EditorScreen> {
                     ),
                   ),
                 ),
+                if (_showTerminal)
+                  Container(
+                    height: 180,
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: VegaTheme.border, width: 0.5),
+                    ),
+                    child: _buildTerminalContent(),
+                  ),
                 
                 // Quick coding symbols accessory bar above phone keyboard
                 Container(
