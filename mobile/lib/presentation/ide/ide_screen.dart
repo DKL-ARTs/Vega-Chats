@@ -347,9 +347,56 @@ class _IdeScreenState extends State<IdeScreen> {
           ),
         ),
       );
-      if (result == true) {
-        _loadFiles();
+      _handleEditorResult(result);
+    }
+  }
+
+  Future<void> _triggerAiAction(String actionType, String filePath, String fileName) async {
+    setState(() {
+      _chatLoading = true;
+    });
+    try {
+      final res = await _client.readFile(filePath);
+      final content = res['content'] ?? '';
+      
+      String prompt = '';
+      if (actionType == 'explain') {
+        prompt = 'Объясни, как работает этот код в файле $fileName:\n\n```\n$content\n```';
+      } else if (actionType == 'tests') {
+        prompt = 'Напиши модульные тесты для кода в файле $fileName:\n\n```\n$content\n```';
+      } else if (actionType == 'refactor') {
+        prompt = 'Сделай рефакторинг и оптимизацию кода в файле $fileName для улучшения читаемости и производительности:\n\n```\n$content\n```';
+      } else if (actionType == 'bugs') {
+        prompt = 'Проведи статический анализ и найди потенциальные баги или уязвимости в коде файла $fileName:\n\n```\n$content\n```';
       }
+
+      if (prompt.isNotEmpty) {
+        _chatInputCtrl.text = prompt;
+        await _sendChatMessage();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка при выполнении действия: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _chatLoading = false;
+        });
+      }
+    }
+  }
+
+  void _handleEditorResult(dynamic result) {
+    if (result is Map<String, dynamic> && result.containsKey('action')) {
+      final action = result['action'];
+      final path = result['path'];
+      final name = result['name'];
+      _triggerAiAction(action, path, name);
+    } else if (result == true) {
+      _loadFiles();
     }
   }
 
@@ -390,12 +437,13 @@ class _IdeScreenState extends State<IdeScreen> {
                   // Close explorer drawer and open editor
                   if (mounted) {
                     Navigator.pop(context);
-                    Navigator.push(
+                    final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => EditorScreen(filePath: fullPath, fileName: name),
                       ),
                     );
+                    _handleEditorResult(result);
                   }
                 } catch (e) {
                   if (mounted) {
@@ -1597,6 +1645,11 @@ class _IdeScreenState extends State<IdeScreen> {
                                                     _renameFileOrDir(item);
                                                   } else if (value == 'delete') {
                                                     _deleteFileOrDir(item);
+                                                  } else if (value.startsWith('ai_')) {
+                                                    final actionType = value.substring(3);
+                                                    final fullPath = '$_currentPath/${item['name']}';
+                                                    Navigator.pop(context); // Close endDrawer explorer
+                                                    _triggerAiAction(actionType, fullPath, item['name']);
                                                   }
                                                 },
                                                 itemBuilder: (context) => [
@@ -1620,6 +1673,49 @@ class _IdeScreenState extends State<IdeScreen> {
                                                       ],
                                                     ),
                                                   ),
+                                                  if (!isDir) ...[
+                                                    const PopupMenuDivider(),
+                                                    const PopupMenuItem(
+                                                      value: 'ai_explain',
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 16),
+                                                          SizedBox(width: 8),
+                                                          Text('Объяснить код', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    const PopupMenuItem(
+                                                      value: 'ai_tests',
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(Icons.science_rounded, color: Colors.amberAccent, size: 16),
+                                                          SizedBox(width: 8),
+                                                          Text('Написать тесты', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    const PopupMenuItem(
+                                                      value: 'ai_refactor',
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(Icons.build_circle_rounded, color: Colors.amberAccent, size: 16),
+                                                          SizedBox(width: 8),
+                                                          Text('Рефакторинг', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    const PopupMenuItem(
+                                                      value: 'ai_bugs',
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(Icons.bug_report_rounded, color: Colors.amberAccent, size: 16),
+                                                          SizedBox(width: 8),
+                                                          Text('Найти баги', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ],
                                               ),
                                             ],

@@ -664,6 +664,61 @@ class _EditorScreenState extends State<EditorScreen> {
                   icon: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 24),
                   tooltip: 'Открыть файл',
                 ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.auto_awesome_rounded, color: Colors.amberAccent, size: 24),
+                  color: VegaTheme.surface,
+                  tooltip: 'ИИ Помощник',
+                  onSelected: (action) {
+                    final activeTabName = _tabs.firstWhere((t) => t['path'] == _activePath, orElse: () => {'name': widget.fileName})['name'] ?? '';
+                    Navigator.pop(context, {
+                      'action': action,
+                      'path': _activePath,
+                      'name': activeTabName,
+                    });
+                  },
+                  itemBuilder: (ctx) => [
+                    const PopupMenuItem(
+                      value: 'explain',
+                      child: Row(
+                        children: [
+                          Icon(Icons.psychology_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 8),
+                          Text('Объяснить код', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'tests',
+                      child: Row(
+                        children: [
+                          Icon(Icons.science_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 8),
+                          Text('Написать тесты', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'refactor',
+                      child: Row(
+                        children: [
+                          Icon(Icons.build_circle_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 8),
+                          Text('Рефакторинг', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'bugs',
+                      child: Row(
+                        children: [
+                          Icon(Icons.bug_report_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 8),
+                          Text('Найти баги', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
                 IconButton(
                   onPressed: () => setState(() => _showSearchBar = !_showSearchBar),
                   icon: Icon(Icons.search_rounded, color: _showSearchBar ? VegaTheme.accent : Colors.white, size: 24),
@@ -733,6 +788,63 @@ class _EditorScreenState extends State<EditorScreen> {
                                 icon: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 20),
                                 onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
                                 tooltip: 'Открыть файл',
+                              ),
+                              PopupMenuButton<String>(
+                                icon: const Icon(Icons.auto_awesome_rounded, color: Colors.amberAccent, size: 20),
+                                color: VegaTheme.surface,
+                                tooltip: 'ИИ Помощник',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onSelected: (action) {
+                                  final activeTabName = _tabs.firstWhere((t) => t['path'] == _activePath, orElse: () => {'name': widget.fileName})['name'] ?? '';
+                                  Navigator.pop(context, {
+                                    'action': action,
+                                    'path': _activePath,
+                                    'name': activeTabName,
+                                  });
+                                },
+                                itemBuilder: (ctx) => [
+                                  const PopupMenuItem(
+                                    value: 'explain',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.psychology_rounded, color: Colors.white, size: 16),
+                                        SizedBox(width: 8),
+                                        Text('Объяснить код', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'tests',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.science_rounded, color: Colors.white, size: 16),
+                                        SizedBox(width: 8),
+                                        Text('Написать тесты', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'refactor',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.build_circle_rounded, color: Colors.white, size: 16),
+                                        SizedBox(width: 8),
+                                        Text('Рефакторинг', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'bugs',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.bug_report_rounded, color: Colors.white, size: 16),
+                                        SizedBox(width: 8),
+                                        Text('Найти баги', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                               IconButton(
                                 constraints: const BoxConstraints(),
