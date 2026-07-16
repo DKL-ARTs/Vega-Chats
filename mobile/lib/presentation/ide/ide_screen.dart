@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui'; // Required for ImageFilter
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -2253,6 +2255,9 @@ class _IdeScreenState extends State<IdeScreen> {
                                 child: MarkdownBody(
                                   data: cleanContent,
                                   selectable: true,
+                                  builders: {
+                                    'pre': CodeBlockBuilder(),
+                                  },
                                   styleSheet: MarkdownStyleSheet(
                                     p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14, height: 1.5),
                                     code: const TextStyle(
@@ -2916,5 +2921,263 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
         ),
       );
     }).toList();
+  }
+}
+
+class CodeBlockBuilder extends MarkdownElementBuilder {
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    final textContent = element.textContent;
+    String language = 'code';
+    if (element.children != null && element.children!.isNotEmpty) {
+      final child = element.children!.first;
+      if (child is md.Element && child.attributes.containsKey('class')) {
+        final className = child.attributes['class'] ?? '';
+        if (className.startsWith('language-')) {
+          language = className.substring(9).toLowerCase();
+        }
+      }
+    }
+
+    return CodeBlockWidget(code: textContent, language: language);
+  }
+}
+
+class CodeBlockWidget extends StatefulWidget {
+  final String code;
+  final String language;
+
+  const CodeBlockWidget({super.key, required this.code, required this.language});
+
+  @override
+  State<CodeBlockWidget> createState() => _CodeBlockWidgetState();
+}
+
+class _CodeBlockWidgetState extends State<CodeBlockWidget> {
+  bool _running = false;
+  String _status = 'idle'; // 'idle' | 'running' | 'success' | 'error'
+  final List<String> _output = [];
+  WebSocketChannel? _channel;
+
+  @override
+  void dispose() {
+    _channel?.sink.close();
+    super.dispose();
+  }
+
+  Future<void> _runCode() async {
+    setState(() {
+      _running = true;
+      _status = 'running';
+      _output.clear();
+      _output.add('Запуск кода (${widget.language})...\n');
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+      String wsUrl;
+      if (baseUrl.startsWith('https://')) {
+        wsUrl = 'wss://' + baseUrl.substring(8);
+      } else if (baseUrl.startsWith('http://')) {
+        wsUrl = 'ws://' + baseUrl.substring(7);
+      } else {
+        wsUrl = 'wss://' + baseUrl;
+      }
+      if (wsUrl.endsWith('/')) wsUrl = wsUrl.substring(0, wsUrl.length - 1);
+      wsUrl += '/ws/terminal';
+
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      
+      _channel!.stream.listen(
+        (data) {
+          setState(() {
+            _output.add(data.toString());
+          });
+        },
+        onError: (e) {
+          setState(() {
+            _status = 'error';
+            _output.add('\nОшибка WebSocket: $e');
+          });
+        },
+        onDone: () {
+          final fullOutput = _output.join('');
+          final isError = fullOutput.toLowerCase().contains('failed') || 
+                          fullOutput.toLowerCase().contains('error') ||
+                          fullOutput.toLowerCase().contains('exception');
+          setState(() {
+            _status = isError ? 'error' : 'success';
+          });
+        },
+      );
+
+      String command = '';
+      if (widget.language == 'python' || widget.language == 'py') {
+        command = "cat << 'EOF' > /tmp/run.py\n${widget.code}\nEOF\npython3 /tmp/run.py";
+      } else if (widget.language == 'javascript' || widget.language == 'js') {
+        command = "cat << 'EOF' > /tmp/run.js\n${widget.code}\nEOF\nnode /tmp/run.js";
+      } else if (widget.language == 'bash' || widget.language == 'sh' || widget.language == 'shell') {
+        command = "cat << 'EOF' > /tmp/run.sh\n${widget.code}\nEOF\nbash /tmp/run.sh";
+      } else {
+        command = widget.code;
+      }
+
+      _channel!.sink.add(command);
+    } catch (e) {
+      setState(() {
+        _status = 'error';
+        _output.add('\nОшибка подключения: $e');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final runnable = ['python', 'py', 'javascript', 'js', 'bash', 'sh', 'shell'].contains(widget.language);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: VegaTheme.border, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E293B),
+              borderRadius: BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  widget.language.toUpperCase(),
+                  style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+                Row(
+                  children: [
+                    if (runnable) ...[
+                      IconButton(
+                        onPressed: _status == 'running' ? null : _runCode,
+                        icon: Icon(
+                          _status == 'running' ? Icons.hourglass_top_rounded : Icons.play_arrow_rounded,
+                          color: _status == 'running' ? Colors.amberAccent : Colors.greenAccent,
+                          size: 18,
+                        ),
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        tooltip: 'Запустить код',
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    IconButton(
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: widget.code));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Код скопирован в буфер обмена'), duration: Duration(seconds: 1)),
+                        );
+                      },
+                      icon: const Icon(Icons.copy_rounded, color: Colors.white70, size: 16),
+                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.zero,
+                      tooltip: 'Копировать',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(
+                widget.code.trimRight(),
+                style: const TextStyle(
+                  color: Color(0xFFF1F5F9),
+                  fontFamily: 'monospace',
+                  fontSize: 12.5,
+                ),
+              ),
+            ),
+          ),
+          if (_running) ...[
+            Container(
+              decoration: const BoxDecoration(
+                color: Colors.black38,
+                border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+              ),
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.terminal_rounded, color: VegaTheme.accent, size: 13),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Вывод выполнения',
+                            style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 8),
+                          if (_status == 'running')
+                            const SizedBox(
+                              width: 10,
+                              height: 10,
+                              child: CircularProgressIndicator(strokeWidth: 1.5, color: VegaTheme.accent),
+                            ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _running = false;
+                            _status = 'idle';
+                            _channel?.sink.close();
+                          });
+                        },
+                        icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 14),
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                        tooltip: 'Закрыть вывод',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    maxHeight: 120,
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        _output.join(''),
+                        style: const TextStyle(
+                          color: Color(0xFFE2E8F0),
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
