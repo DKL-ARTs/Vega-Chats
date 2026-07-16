@@ -116,6 +116,31 @@ class ApiClient {
     return jsonDecode(resp.body);
   }
 
+  Future<Map<String, dynamic>> gitStatus() async {
+    final resp = await http.get(
+      Uri.parse('$baseUrl/api/git/status'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    return jsonDecode(resp.body);
+  }
+
+  Future<Map<String, dynamic>> gitInit() async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/git/init'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    return jsonDecode(resp.body);
+  }
+
+  Future<Map<String, dynamic>> gitCommitPush(String message) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/git/commit-push'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'message': message}),
+    );
+    return jsonDecode(resp.body);
+  }
+
   Future<String> chat({
     required List<Map<String, dynamic>> messages,
     String model = 'openrouter/auto',

@@ -36,6 +36,14 @@ class _IdeScreenState extends State<IdeScreen> {
   bool _filesLoading = true;
   final Map<String, String> _originalFileContents = {};
 
+  // === GIT STATE ===
+  String _activeDrawerTab = 'files'; // 'files' | 'git'
+  List<Map<String, dynamic>> _gitFiles = [];
+  bool _gitLoading = false;
+  bool _gitIsRepo = true;
+  final _gitMsgCtrl = TextEditingController();
+  bool _gitPushing = false;
+
   // === AI DEV CHAT STATE ===
   int? _ideChatId;
   List<Map<String, dynamic>> _chatMessages = [];
@@ -227,6 +235,94 @@ class _IdeScreenState extends State<IdeScreen> {
       setState(() => _files = []);
     } finally {
       setState(() => _filesLoading = false);
+    }
+  }
+
+  Future<void> _loadGitStatus() async {
+    setState(() {
+      _gitLoading = true;
+    });
+    try {
+      final res = await _client.gitStatus();
+      if (res['ok'] == true) {
+        setState(() {
+          _gitFiles = List<Map<String, dynamic>>.from(res['files'] ?? []);
+          _gitIsRepo = true;
+        });
+      } else {
+        setState(() {
+          _gitIsRepo = false;
+          _gitFiles = [];
+        });
+      }
+    } catch (_) {
+      setState(() {
+        _gitIsRepo = false;
+        _gitFiles = [];
+      });
+    } finally {
+      setState(() {
+        _gitLoading = false;
+      });
+    }
+  }
+
+  Future<void> _initializeGitRepo() async {
+    setState(() => _gitLoading = true);
+    try {
+      final res = await _client.gitInit();
+      if (res['ok'] == true) {
+        _loadGitStatus();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка Git Init: ${res['error']}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка Git Init: $e')),
+      );
+    } finally {
+      setState(() => _gitLoading = false);
+    }
+  }
+
+  Future<void> _commitAndPushGit() async {
+    final msg = _gitMsgCtrl.text.trim();
+    if (msg.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите сообщение коммита'), backgroundColor: Colors.orangeAccent),
+      );
+      return;
+    }
+    setState(() => _gitPushing = true);
+    try {
+      final res = await _client.gitCommitPush(msg);
+      if (res['ok'] == true) {
+        _gitMsgCtrl.clear();
+        _loadGitStatus();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Успешно отправлено на GitHub!'), backgroundColor: Colors.green),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка отправки: ${res['error']}'), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _gitPushing = false);
+      }
     }
   }
 
@@ -1338,128 +1434,385 @@ class _IdeScreenState extends State<IdeScreen> {
       child: SafeArea(
         child: Column(
           children: [
-            // Header
+            // Tab Selector
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Проводник файлов',
-                    style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    onPressed: _createNewFile,
-                    icon: const Icon(Icons.add, color: VegaTheme.accent),
-                    tooltip: 'Создать файл',
-                  ),
-                ],
-              ),
-            ),
-            const Divider(color: Colors.white10, height: 1),
-            // Path breadcrumbs
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: VegaTheme.surface,
-              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: Row(
                 children: [
-                  const Icon(Icons.folder, size: 14, color: VegaTheme.accent),
-                  const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
-                      _currentPath.length > 25 ? '...' + _currentPath.substring(_currentPath.length - 25) : _currentPath,
-                      style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 11, fontFamily: 'monospace'),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (_currentPath != '/root/workspace')
-                    GestureDetector(
+                    child: GestureDetector(
                       onTap: () {
-                        final parts = _currentPath.split('/');
-                        parts.removeLast();
-                        setState(() => _currentPath = parts.join('/'));
+                        setState(() {
+                          _activeDrawerTab = 'files';
+                        });
                         _loadFiles();
                       },
-                      child: const Text('Назад', style: TextStyle(color: VegaTheme.accent, fontSize: 11, fontWeight: FontWeight.bold)),
-                    )
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _activeDrawerTab == 'files' ? VegaTheme.accent : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _activeDrawerTab == 'files' ? VegaTheme.accent : Colors.white10,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Проводник',
+                          style: TextStyle(
+                            color: _activeDrawerTab == 'files' ? Colors.white : VegaTheme.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _activeDrawerTab = 'git';
+                        });
+                        _loadGitStatus();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _activeDrawerTab == 'git' ? VegaTheme.accent : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _activeDrawerTab == 'git' ? VegaTheme.accent : Colors.white10,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Git',
+                          style: TextStyle(
+                            color: _activeDrawerTab == 'git' ? Colors.white : VegaTheme.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-            // Files List
+            const Divider(color: Colors.white10, height: 12),
+            
+            // Conditional tab content
             Expanded(
-              child: _filesLoading
-                  ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
-                  : _files.isEmpty
-                      ? const Center(child: Text('Папка пуста', style: TextStyle(color: VegaTheme.textSecondary)))
-                      : ListView.builder(
-                          itemCount: _files.length,
-                          itemBuilder: (ctx, i) {
-                            final item = _files[i];
-                            final isDir = item['is_dir'] == true;
-                            return ListTile(
-                              leading: Icon(
-                                isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                                color: isDir ? VegaTheme.accent : VegaTheme.textSecondary,
-                                size: 20,
+              child: _activeDrawerTab == 'files'
+                  ? Column(
+                      children: [
+                        // Header
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Проводник файлов',
+                                style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
                               ),
-                              title: Text(
-                                item['name'],
-                                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
+                              IconButton(
+                                onPressed: _createNewFile,
+                                icon: const Icon(Icons.add, color: VegaTheme.accent, size: 20),
+                                tooltip: 'Создать файл',
+                                constraints: const BoxConstraints(),
+                                padding: EdgeInsets.zero,
                               ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (!isDir)
-                                    Text(
-                                      '${item['size']} B',
-                                      style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 10),
-                                    ),
-                                  PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert_rounded, color: VegaTheme.textSecondary, size: 18),
-                                    color: VegaTheme.surface,
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                    onSelected: (value) {
-                                      if (value == 'rename') {
-                                        _renameFileOrDir(item);
-                                      } else if (value == 'delete') {
-                                        _deleteFileOrDir(item);
-                                      }
-                                    },
-                                    itemBuilder: (context) => [
-                                      const PopupMenuItem(
-                                        value: 'rename',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.edit_rounded, color: VegaTheme.textPrimary, size: 16),
-                                            SizedBox(width: 8),
-                                            Text('Переименовать', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'delete',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.delete_rounded, color: Colors.redAccent, size: 16),
-                                            SizedBox(width: 8),
-                                            Text('Удалить', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              onTap: () => _openFileItem(item),
-                            );
-                          },
+                            ],
+                          ),
                         ),
+                        const Divider(color: Colors.white10, height: 1),
+                        // Path breadcrumbs
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          color: VegaTheme.surface,
+                          width: double.infinity,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.folder, size: 14, color: VegaTheme.accent),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _currentPath.length > 25 ? '...' + _currentPath.substring(_currentPath.length - 25) : _currentPath,
+                                  style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 11, fontFamily: 'monospace'),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (_currentPath != '/root/workspace')
+                                GestureDetector(
+                                  onTap: () {
+                                    final parts = _currentPath.split('/');
+                                    parts.removeLast();
+                                    setState(() => _currentPath = parts.join('/'));
+                                    _loadFiles();
+                                  },
+                                  child: const Text('Назад', style: TextStyle(color: VegaTheme.accent, fontSize: 11, fontWeight: FontWeight.bold)),
+                                )
+                            ],
+                          ),
+                        ),
+                        // Files List
+                        Expanded(
+                          child: _filesLoading
+                              ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
+                              : _files.isEmpty
+                                  ? const Center(child: Text('Папка пуста', style: TextStyle(color: VegaTheme.textSecondary)))
+                                  : ListView.builder(
+                                      itemCount: _files.length,
+                                      itemBuilder: (ctx, i) {
+                                        final item = _files[i];
+                                        final isDir = item['is_dir'] == true;
+                                        return ListTile(
+                                          leading: Icon(
+                                            isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
+                                            color: isDir ? VegaTheme.accent : VegaTheme.textSecondary,
+                                            size: 20,
+                                          ),
+                                          title: Text(
+                                            item['name'],
+                                            style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
+                                          ),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (!isDir)
+                                                Text(
+                                                  '${item['size']} B',
+                                                  style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 10),
+                                                ),
+                                              PopupMenuButton<String>(
+                                                icon: const Icon(Icons.more_vert_rounded, color: VegaTheme.textSecondary, size: 18),
+                                                color: VegaTheme.surface,
+                                                padding: EdgeInsets.zero,
+                                                constraints: const BoxConstraints(),
+                                                onSelected: (value) {
+                                                  if (value == 'rename') {
+                                                    _renameFileOrDir(item);
+                                                  } else if (value == 'delete') {
+                                                    _deleteFileOrDir(item);
+                                                  }
+                                                },
+                                                itemBuilder: (context) => [
+                                                  const PopupMenuItem(
+                                                    value: 'rename',
+                                                    child: Row(
+                                                      children: [
+                                                        Icon(Icons.edit_rounded, color: VegaTheme.textPrimary, size: 16),
+                                                        SizedBox(width: 8),
+                                                        Text('Переименовать', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const PopupMenuItem(
+                                                    value: 'delete',
+                                                    child: Row(
+                                                      children: [
+                                                        Icon(Icons.delete_rounded, color: Colors.redAccent, size: 16),
+                                                        SizedBox(width: 8),
+                                                        Text('Удалить', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                          onTap: () => _openFileItem(item),
+                                        );
+                                      },
+                                    ),
+                        ),
+                      ],
+                    )
+                  : _buildGitTab(),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildGitTab() {
+    if (_gitLoading) {
+      return const Center(child: CircularProgressIndicator(color: VegaTheme.accent));
+    }
+
+    if (!_gitIsRepo) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 48),
+            const SizedBox(height: 12),
+            const Text(
+              'Не является Git репозиторием',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Инициализируйте репозиторий, чтобы управлять изменениями.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton.icon(
+              onPressed: _initializeGitRepo,
+              icon: const Icon(Icons.git_branch, size: 16, color: Colors.white),
+              label: const Text('Инициализировать Git', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: VegaTheme.accent,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        // Changed files list header
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Изменения (${_gitFiles.length})',
+                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                onPressed: _loadGitStatus,
+                icon: const Icon(Icons.refresh_rounded, color: VegaTheme.textSecondary, size: 18),
+                tooltip: 'Обновить статус',
+                constraints: const BoxConstraints(),
+                padding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+        ),
+        const Divider(color: Colors.white10, height: 1),
+        // Changed files list
+        Expanded(
+          child: _gitFiles.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline_rounded, color: Colors.greenAccent, size: 36),
+                      SizedBox(height: 8),
+                      Text('Нет изменений для фиксации', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: _gitFiles.length,
+                  itemBuilder: (ctx, i) {
+                    final file = _gitFiles[i];
+                    final status = file['status'] ?? '';
+                    final path = file['path'] ?? '';
+                    
+                    Color statusColor;
+                    String statusLetter;
+                    if (status.contains('M') || status.contains('AM')) {
+                      statusColor = Colors.amberAccent;
+                      statusLetter = 'M';
+                    } else if (status.contains('A') || status.contains('?')) {
+                      statusColor = Colors.greenAccent;
+                      statusLetter = status.contains('?') ? 'U' : 'A';
+                    } else if (status.contains('D')) {
+                      statusColor = Colors.redAccent;
+                      statusLetter = 'D';
+                    } else {
+                      statusColor = VegaTheme.textSecondary;
+                      statusLetter = status;
+                    }
+
+                    return ListTile(
+                      leading: Icon(Icons.insert_drive_file_rounded, color: statusColor, size: 18),
+                      title: Text(
+                        path,
+                        style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 12, fontFamily: 'monospace'),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: statusColor.withOpacity(0.3), width: 0.5),
+                        ),
+                        child: Text(
+                          statusLetter,
+                          style: TextStyle(color: statusColor, fontSize: 9, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        // Commit & Push input area
+        if (_gitFiles.isNotEmpty)
+          Container(
+            color: VegaTheme.surface,
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _gitMsgCtrl,
+                  style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 12.5),
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    hintText: 'Сообщение коммита...',
+                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12.5),
+                    fillColor: VegaTheme.dark,
+                    filled: true,
+                    contentPadding: const EdgeInsets.all(10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: VegaTheme.border, width: 0.5),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: VegaTheme.accent, width: 0.5),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  onPressed: _gitPushing ? null : _commitAndPushGit,
+                  icon: _gitPushing
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.cloud_upload_rounded, size: 16, color: Colors.white),
+                  label: Text(
+                    _gitPushing ? 'Отправка...' : 'Зафиксировать и Пуш',
+                    style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: VegaTheme.accent,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 

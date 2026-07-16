@@ -19,6 +19,9 @@ class FileRename(BaseModel):
     old_path: str
     new_path: str
 
+class GitCommitReq(BaseModel):
+    message: str
+
 from app.config import settings
 
 def safe_path(path: str, root: str = None) -> Path:
@@ -101,4 +104,69 @@ async def rename_file(req: FileRename):
         return {"ok": True}
     except Exception as e:
         raise HTTPException(500, f"Error renaming file/directory: {str(e)}")
+
+@router.get("/git/status")
+async def git_status():
+    import subprocess
+    # Check if git repo exists
+    if not (Path(settings.workspace_root) / ".git").exists():
+        return {"ok": False, "error": "Not a git repository"}
+    try:
+        res = subprocess.run(
+            ["git", "status", "-s"],
+            cwd=settings.workspace_root,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        lines = res.stdout.strip().split("\n")
+        files = []
+        for line in lines:
+            if not line.strip():
+                continue
+            parts = line.split(maxsplit=1)
+            if len(parts) == 2:
+                status, path = parts
+                files.append({"status": status.strip(), "path": path.strip()})
+        return {"ok": True, "files": files}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@router.post("/git/init")
+async def git_init():
+    import subprocess
+    try:
+        subprocess.run(["git", "init"], cwd=settings.workspace_root, check=True)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@router.post("/git/commit-push")
+async def git_commit_push(req: GitCommitReq):
+    import subprocess
+    # Check if git repo exists
+    if not (Path(settings.workspace_root) / ".git").exists():
+        return {"ok": False, "error": "Not a git repository"}
+    try:
+        # 1. git add .
+        subprocess.run(["git", "add", "."], cwd=settings.workspace_root, check=True)
+        # 2. git commit -m message
+        subprocess.run(["git", "commit", "-m", req.message], cwd=settings.workspace_root, check=True)
+        # 3. Get current branch
+        branch_res = subprocess.run(["git", "branch", "--show-current"], cwd=settings.workspace_root, capture_output=True, text=True, check=True)
+        branch = branch_res.stdout.strip() or "main"
+        
+        # 4. Try pushing to "new", then "origin", then default
+        push_res = subprocess.run(["git", "push", "new", branch], cwd=settings.workspace_root, capture_output=True, text=True)
+        if push_res.returncode != 0:
+            push_res = subprocess.run(["git", "push", "origin", branch], cwd=settings.workspace_root, capture_output=True, text=True)
+            if push_res.returncode != 0:
+                push_res = subprocess.run(["git", "push"], cwd=settings.workspace_root, capture_output=True, text=True)
+        
+        if push_res.returncode != 0:
+            return {"ok": False, "error": f"Push failed: {push_res.stderr.strip() or push_res.stdout.strip()}"}
+            
+        return {"ok": True, "stdout": push_res.stdout.strip(), "stderr": push_res.stderr.strip()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
