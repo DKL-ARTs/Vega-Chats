@@ -21,9 +21,18 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   final _client = ApiClient();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late final SyntaxHighlightingController _codeCtrl;
   bool _loading = true;
   bool _isFullscreen = false;
+  // === TABS STATE ===
+  final List<Map<String, String>> _tabs = [];
+  String _activePath = '';
+
+  // === FILE EXPLORER STATE IN EDITOR ===
+  String _currentPath = '/root/workspace';
+  List<Map<String, dynamic>> _files = [];
+  bool _filesLoading = false;
   
   // === SEARCH & REPLACE STATE ===
   bool _showSearchBar = false;
@@ -39,6 +48,9 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void initState() {
     super.initState();
+    _tabs.add({'path': widget.filePath, 'name': widget.fileName});
+    _activePath = widget.filePath;
+    
     _codeCtrl = SyntaxHighlightingController(fileName: widget.fileName);
     _codeCtrl.addListener(_onCodeChanged);
     _searchQueryCtrl.addListener(_performSearch);
@@ -59,16 +71,29 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _initAndLoad() async {
     final prefs = await SharedPreferences.getInstance();
     _client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
-    await _loadFileContent();
+    await _loadTabFileContent(_activePath);
+    await _loadExplorerFiles();
   }
 
-  Future<void> _loadFileContent() async {
+  Future<void> _loadTabFileContent(String path) async {
     setState(() => _loading = true);
     try {
-      final result = await _client.readFile(widget.filePath);
+      final result = await _client.readFile(path);
       final content = result['content'] as String? ?? '';
+      
+      // Update syntax controller for the language extension
+      final tabIndex = _tabs.indexWhere((t) => t['path'] == path);
+      if (tabIndex != -1) {
+        _codeCtrl.updateFileName(_tabs[tabIndex]['name'] ?? '');
+      }
+      
       _codeCtrl.text = content;
       _lastSavedContent = content;
+      _activePath = path;
+      
+      if (_showSearchBar) {
+        _performSearch();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -77,6 +102,40 @@ class _EditorScreenState extends State<EditorScreen> {
       }
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadExplorerFiles() async {
+    setState(() => _filesLoading = true);
+    try {
+      final result = await _client.listFiles(_currentPath);
+      setState(() {
+        _files = List<Map<String, dynamic>>.from(result['items'] ?? []);
+      });
+    } catch (_) {
+      setState(() => _files = []);
+    } finally {
+      setState(() => _filesLoading = false);
+    }
+  }
+
+  Future<void> _openFileFromExplorer(Map<String, dynamic> item) async {
+    final fullPath = '$_currentPath/${item['name']}';
+    if (item['is_dir'] == true) {
+      setState(() {
+        _currentPath = fullPath;
+      });
+      await _loadExplorerFiles();
+    } else {
+      Navigator.pop(context); // Close endDrawer
+      
+      final existingTab = _tabs.indexWhere((t) => t['path'] == fullPath);
+      if (existingTab == -1) {
+        setState(() {
+          _tabs.add({'path': fullPath, 'name': item['name']});
+        });
+      }
+      await _loadTabFileContent(fullPath);
     }
   }
 
@@ -96,7 +155,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _autoSaveFile() async {
     final currentText = _codeCtrl.text;
     try {
-      await _client.writeFile(widget.filePath, currentText);
+      await _client.writeFile(_activePath, currentText);
       _lastSavedContent = currentText;
       if (mounted) {
         setState(() {
@@ -115,7 +174,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _saveFile() async {
     try {
       final text = _codeCtrl.text;
-      await _client.writeFile(widget.filePath, text);
+      await _client.writeFile(_activePath, text);
       _lastSavedContent = text;
       setState(() {
         _saveStatus = 'saved';
@@ -246,7 +305,9 @@ class _EditorScreenState extends State<EditorScreen> {
     final quickSymbols = ['{', '}', '[', ']', '(', ')', ';', '=', '<', '>', '/', '_', ':', '"', '\''];
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: VegaTheme.dark,
+      endDrawer: _buildExplorerDrawer(),
       appBar: _isFullscreen
           ? null
           : AppBar(
@@ -263,7 +324,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        widget.fileName,
+                        _tabs.firstWhere((t) => t['path'] == _activePath, orElse: () => {'name': widget.fileName})['name'] ?? '',
                         style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(width: 8),
@@ -271,12 +332,17 @@ class _EditorScreenState extends State<EditorScreen> {
                     ],
                   ),
                   Text(
-                    widget.filePath.length > 35 ? '...' + widget.filePath.substring(widget.filePath.length - 35) : widget.filePath,
+                    _activePath.length > 35 ? '...' + _activePath.substring(_activePath.length - 35) : _activePath,
                     style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 11),
                   ),
                 ],
               ),
               actions: [
+                IconButton(
+                  onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+                  icon: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 24),
+                  tooltip: 'Открыть файл',
+                ),
                 IconButton(
                   onPressed: () => setState(() => _showSearchBar = !_showSearchBar),
                   icon: Icon(Icons.search_rounded, color: _showSearchBar ? VegaTheme.accent : Colors.white, size: 24),
@@ -314,7 +380,7 @@ class _EditorScreenState extends State<EditorScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      widget.fileName,
+                                      _tabs.firstWhere((t) => t['path'] == _activePath, orElse: () => {'name': widget.fileName})['name'] ?? '',
                                       style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
                                     ),
                                     const SizedBox(width: 8),
@@ -322,7 +388,7 @@ class _EditorScreenState extends State<EditorScreen> {
                                   ],
                                 ),
                                 Text(
-                                  widget.filePath.length > 30 ? '...' + widget.filePath.substring(widget.filePath.length - 30) : widget.filePath,
+                                  _activePath.length > 30 ? '...' + _activePath.substring(_activePath.length - 30) : _activePath,
                                   style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 10),
                                 ),
                               ],
@@ -330,6 +396,13 @@ class _EditorScreenState extends State<EditorScreen> {
                           ),
                           Row(
                             children: [
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
+                                icon: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 20),
+                                onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+                                tooltip: 'Открыть файл',
+                              ),
                               IconButton(
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(8),
@@ -358,6 +431,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     ),
                   if (_showSearchBar)
                     _buildSearchBar(),
+                  _buildTabBar(),
                   Expanded(
                     child: Container(
                       margin: _isFullscreen ? const EdgeInsets.all(2) : const EdgeInsets.all(12),
@@ -622,6 +696,179 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
     );
   }
+
+  Widget _buildTabBar() {
+    return Container(
+      height: 38,
+      color: const Color(0xFF0F172A),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: _tabs.length,
+        itemBuilder: (ctx, index) {
+          final tab = _tabs[index];
+          final path = tab['path'] ?? '';
+          final name = tab['name'] ?? '';
+          final isActive = path == _activePath;
+
+          return GestureDetector(
+            onTap: () {
+              if (!isActive) {
+                _loadTabFileContent(path);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: isActive ? const Color(0xFF1E293B) : Colors.transparent,
+                border: Border(
+                  right: BorderSide(color: Colors.white.withOpacity(0.06), width: 1),
+                  bottom: BorderSide(
+                    color: isActive ? VegaTheme.accent : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.insert_drive_file_rounded,
+                    size: 14,
+                    color: isActive ? VegaTheme.accent : VegaTheme.textSecondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    name,
+                    style: TextStyle(
+                      color: isActive ? Colors.white : VegaTheme.textSecondary,
+                      fontSize: 12,
+                      fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {
+                      _closeTab(index);
+                    },
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 13,
+                      color: isActive ? Colors.white60 : Colors.white24,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _closeTab(int index) {
+    if (_tabs.length <= 1) {
+      Navigator.pop(context, true);
+      return;
+    }
+    
+    final closedTab = _tabs[index];
+    final closedPath = closedTab['path'] ?? '';
+    
+    setState(() {
+      _tabs.removeAt(index);
+    });
+    
+    if (closedPath == _activePath) {
+      final newIndex = index == 0 ? 0 : index - 1;
+      final newActivePath = _tabs[newIndex]['path'] ?? '';
+      _loadTabFileContent(newActivePath);
+    }
+  }
+
+  Widget _buildExplorerDrawer() {
+    return Drawer(
+      backgroundColor: VegaTheme.dark,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Проводник файлов',
+                    style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded, color: VegaTheme.textSecondary, size: 20),
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white10, height: 1),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: VegaTheme.surface,
+              width: double.infinity,
+              child: Row(
+                children: [
+                  const Icon(Icons.folder, size: 14, color: VegaTheme.accent),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _currentPath.length > 25 ? '...' + _currentPath.substring(_currentPath.length - 25) : _currentPath,
+                      style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 11, fontFamily: 'monospace'),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (_currentPath != '/root/workspace')
+                    GestureDetector(
+                      onTap: () {
+                        final parts = _currentPath.split('/');
+                        parts.removeLast();
+                        setState(() => _currentPath = parts.join('/'));
+                        _loadExplorerFiles();
+                      },
+                      child: const Text('Назад', style: TextStyle(color: VegaTheme.accent, fontSize: 11, fontWeight: FontWeight.bold)),
+                    )
+                ],
+              ),
+            ),
+            Expanded(
+              child: _filesLoading
+                  ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
+                  : _files.isEmpty
+                      ? const Center(child: Text('Папка пуста', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13)))
+                      : ListView.builder(
+                          itemCount: _files.length,
+                          itemBuilder: (ctx, i) {
+                            final item = _files[i];
+                            final isDir = item['is_dir'] == true;
+                            return ListTile(
+                              dense: true,
+                              leading: Icon(
+                                isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
+                                color: isDir ? VegaTheme.accent : VegaTheme.textSecondary,
+                                size: 18,
+                              ),
+                              title: Text(
+                                item['name'],
+                                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 12.5),
+                              ),
+                              onTap: () => _openFileFromExplorer(item),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class AutoCloseBracketsFormatter extends TextInputFormatter {
@@ -680,9 +927,13 @@ class AutoCloseBracketsFormatter extends TextInputFormatter {
 }
 
 class SyntaxHighlightingController extends TextEditingController {
-  final String fileName;
+  String fileName;
 
   SyntaxHighlightingController({required this.fileName, String? text}) : super(text: text);
+
+  void updateFileName(String name) {
+    fileName = name;
+  }
 
   static final RegExp _jsDartPattern = RegExp(
     r'(//[^\n]*)|' // 1: Comments
