@@ -3153,7 +3153,7 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
                   ),
                   const SizedBox(height: 6),
                   Container(
-                    maxHeight: 120,
+                    constraints: const BoxConstraints(maxHeight: 120),
                     width: double.infinity,
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(

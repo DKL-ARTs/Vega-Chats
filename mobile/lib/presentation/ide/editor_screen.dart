@@ -1442,6 +1442,9 @@ class _EditorScreenState extends State<EditorScreen> {
           ],
         ),
       ),
+    );
+  }
+
   Color _getEditorBgColor() {
     switch (_editorTheme) {
       case 'oled':
