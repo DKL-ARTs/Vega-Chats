@@ -36,6 +36,13 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _filesLoading = false;
   String _fileSearchQuery = '';
 
+  // === EDITOR SETTINGS STATE ===
+  double _editorFontSize = 13.0;
+  String _editorTheme = 'slate';
+  bool _editorWordWrap = true;
+  bool _editorShowLineNumbers = true;
+  bool _editorAutoCloseBrackets = true;
+
   // === TERMINAL STATE ===
   bool _showTerminal = false;
   final List<Map<String, dynamic>> _terminals = [];
@@ -87,6 +94,15 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _initAndLoad() async {
     final prefs = await SharedPreferences.getInstance();
     _client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+    
+    setState(() {
+      _editorFontSize = prefs.getDouble('editor_font_size') ?? 13.0;
+      _editorTheme = prefs.getString('editor_theme') ?? 'slate';
+      _editorWordWrap = prefs.getBool('editor_word_wrap') ?? true;
+      _editorShowLineNumbers = prefs.getBool('editor_show_line_numbers') ?? true;
+      _editorAutoCloseBrackets = prefs.getBool('editor_auto_close_brackets') ?? true;
+    });
+
     await _loadTabFileContent(_activePath);
     await _loadExplorerFiles();
   }
@@ -736,6 +752,11 @@ class _EditorScreenState extends State<EditorScreen> {
                   tooltip: 'Терминал',
                 ),
                 IconButton(
+                  onPressed: _showSettingsBottomSheet,
+                  icon: const Icon(Icons.settings_rounded, color: Colors.white, size: 24),
+                  tooltip: 'Настройки редактора',
+                ),
+                IconButton(
                   onPressed: () => setState(() => _isFullscreen = true),
                   icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 24),
                   tooltip: 'Полноэкранный режим',
@@ -869,6 +890,13 @@ class _EditorScreenState extends State<EditorScreen> {
                               IconButton(
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(8),
+                                icon: const Icon(Icons.settings_rounded, color: Colors.white, size: 20),
+                                onPressed: _showSettingsBottomSheet,
+                                tooltip: 'Настройки редактора',
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
                                 icon: const Icon(Icons.save_rounded, color: VegaTheme.accent, size: 20),
                                 onPressed: _saveFile,
                                 tooltip: 'Сохранить',
@@ -892,7 +920,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     child: Container(
                       margin: _isFullscreen ? const EdgeInsets.all(2) : const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A), // Slate-900 editor background
+                      color: _getEditorBgColor(),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: VegaTheme.border, width: 0.5),
                     ),
@@ -902,50 +930,74 @@ class _EditorScreenState extends State<EditorScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           // Left side line numbers panel (simple text builder based on lines count)
-                          ValueListenableBuilder<TextEditingValue>(
-                            valueListenable: _codeCtrl,
-                            builder: (context, value, child) {
-                              final lineCount = '\n'.allMatches(value.text).length + 1;
-                              final numberString = List.generate(lineCount, (i) => '${i + 1}').join('\n');
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                                color: const Color(0xFF1E293B), // Slate-800 line numbers BG
-                                child: Text(
-                                  numberString,
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                    color: VegaTheme.textSecondary.withOpacity(0.5),
-                                    fontFamily: 'monospace',
-                                    fontSize: 12,
-                                    height: 1.5,
+                          if (_editorShowLineNumbers)
+                            ValueListenableBuilder<TextEditingValue>(
+                              valueListenable: _codeCtrl,
+                              builder: (context, value, child) {
+                                final lineCount = '\n'.allMatches(value.text).length + 1;
+                                final numberString = List.generate(lineCount, (i) => '${i + 1}').join('\n');
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                                  color: _getLineNumbersBgColor(),
+                                  child: Text(
+                                    numberString,
+                                    textAlign: TextAlign.right,
+                                    style: TextStyle(
+                                      color: VegaTheme.textSecondary.withOpacity(0.5),
+                                      fontFamily: 'monospace',
+                                      fontSize: _editorFontSize - 1.0,
+                                      height: 1.5,
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
-                          ),
+                                );
+                              },
+                            ),
                           
                           // Code text area
                           Expanded(
-                            child: TextField(
-                              controller: _codeCtrl,
-                              maxLines: null,
-                              expands: true,
-                              inputFormatters: [
-                                AutoCloseBracketsFormatter(),
-                              ],
-                              style: const TextStyle(
-                                color: Color(0xFFF1F5F9), // Slate-100 code color
-                                fontFamily: 'monospace',
-                                fontSize: 13,
-                                height: 1.5,
-                              ),
-                              decoration: const InputDecoration(
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.all(12),
-                                hintText: '// Пишите код здесь...',
-                                hintStyle: TextStyle(color: Colors.white24, fontSize: 13),
-                              ),
-                            ),
+                            child: _editorWordWrap
+                                ? TextField(
+                                    controller: _codeCtrl,
+                                    maxLines: null,
+                                    expands: true,
+                                    inputFormatters: _editorAutoCloseBrackets ? [AutoCloseBracketsFormatter()] : [],
+                                    style: TextStyle(
+                                      color: _getCodeTextColor(),
+                                      fontFamily: 'monospace',
+                                      fontSize: _editorFontSize,
+                                      height: 1.5,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      border: InputBorder.none,
+                                      contentPadding: EdgeInsets.all(12),
+                                      hintText: '// Пишите код здесь...',
+                                      hintStyle: TextStyle(color: Colors.white24, fontSize: 13),
+                                    ),
+                                  )
+                                : SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: SizedBox(
+                                      width: 3000,
+                                      child: TextField(
+                                        controller: _codeCtrl,
+                                        maxLines: null,
+                                        expands: true,
+                                        inputFormatters: _editorAutoCloseBrackets ? [AutoCloseBracketsFormatter()] : [],
+                                        style: TextStyle(
+                                          color: _getCodeTextColor(),
+                                          fontFamily: 'monospace',
+                                          fontSize: _editorFontSize,
+                                          height: 1.5,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.all(12),
+                                          hintText: '// Пишите код здесь...',
+                                          hintStyle: TextStyle(color: Colors.white24, fontSize: 13),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                           ),
                         ],
                       ),
@@ -1390,7 +1442,216 @@ class _EditorScreenState extends State<EditorScreen> {
           ],
         ),
       ),
+  Color _getEditorBgColor() {
+    switch (_editorTheme) {
+      case 'oled':
+        return const Color(0xFF000000);
+      case 'solarized':
+        return const Color(0xFF002B36);
+      case 'monokai':
+        return const Color(0xFF272822);
+      case 'slate':
+      default:
+        return const Color(0xFF0F172A);
+    }
+  }
+
+  Color _getLineNumbersBgColor() {
+    switch (_editorTheme) {
+      case 'oled':
+        return const Color(0xFF0C0C0C);
+      case 'solarized':
+        return const Color(0xFF073642);
+      case 'monokai':
+        return const Color(0xFF1E1F1C);
+      case 'slate':
+      default:
+        return const Color(0xFF1E293B);
+    }
+  }
+
+  Color _getCodeTextColor() {
+    switch (_editorTheme) {
+      case 'oled':
+        return const Color(0xFFFFFFFF);
+      case 'solarized':
+        return const Color(0xFF839496);
+      case 'monokai':
+        return const Color(0xFFF8F8F2);
+      case 'slate':
+      default:
+        return const Color(0xFFF1F5F9);
+    }
+  }
+
+  void _showSettingsBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.dark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Настройки редактора',
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: const Icon(Icons.close_rounded, color: Colors.white60, size: 20),
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Colors.white10, height: 20),
+                    const Text('Тема оформления', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildThemeButton(setModalState, 'slate', 'Slate Dark', const Color(0xFF0F172A)),
+                        _buildThemeButton(setModalState, 'oled', 'OLED Black', const Color(0xFF000000)),
+                        _buildThemeButton(setModalState, 'solarized', 'Solarized', const Color(0xFF002B36)),
+                        _buildThemeButton(setModalState, 'monokai', 'Monokai', const Color(0xFF272822)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Размер шрифта', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text('${_editorFontSize.toInt()} px', style: const TextStyle(color: VegaTheme.accent, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    Slider(
+                      value: _editorFontSize,
+                      min: 10,
+                      max: 22,
+                      divisions: 12,
+                      activeColor: VegaTheme.accent,
+                      inactiveColor: Colors.white10,
+                      onChanged: (val) {
+                        setModalState(() {
+                          _editorFontSize = val;
+                        });
+                        setState(() {
+                          _editorFontSize = val;
+                        });
+                        _saveSetting('editor_font_size', val);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      title: const Text('Перенос строк (Word Wrap)', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      value: _editorWordWrap,
+                      activeColor: VegaTheme.accent,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (val) {
+                        setModalState(() {
+                          _editorWordWrap = val;
+                        });
+                        setState(() {
+                          _editorWordWrap = val;
+                        });
+                        _saveSetting('editor_word_wrap', val);
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Показывать номера строк', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      value: _editorShowLineNumbers,
+                      activeColor: VegaTheme.accent,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (val) {
+                        setModalState(() {
+                          _editorShowLineNumbers = val;
+                        });
+                        setState(() {
+                          _editorShowLineNumbers = val;
+                        });
+                        _saveSetting('editor_show_line_numbers', val);
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Автозакрытие скобок и кавычек', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      value: _editorAutoCloseBrackets,
+                      activeColor: VegaTheme.accent,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (val) {
+                        setModalState(() {
+                          _editorAutoCloseBrackets = val;
+                        });
+                        setState(() {
+                          _editorAutoCloseBrackets = val;
+                        });
+                        _saveSetting('editor_auto_close_brackets', val);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
+  }
+
+  Widget _buildThemeButton(StateSetter setModalState, String themeKey, String label, Color bg) {
+    final isSelected = _editorTheme == themeKey;
+    return GestureDetector(
+      onTap: () {
+        setModalState(() {
+          _editorTheme = themeKey;
+        });
+        setState(() {
+          _editorTheme = themeKey;
+        });
+        _saveSetting('editor_theme', themeKey);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isSelected ? VegaTheme.accent : Colors.white24,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.white60,
+            fontSize: 10.5,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveSetting(String key, dynamic value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value is double) {
+      await prefs.setDouble(key, value);
+    } else if (value is String) {
+      await prefs.setString(key, value);
+    } else if (value is bool) {
+      await prefs.setBool(key, value);
+    }
   }
 }
 
