@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,16 +24,23 @@ class _EditorScreenState extends State<EditorScreen> {
   late final SyntaxHighlightingController _codeCtrl;
   bool _loading = true;
   bool _isFullscreen = false;
+  
+  Timer? _debounceTimer;
+  String _saveStatus = 'saved'; // 'saved' | 'saving' | 'error'
+  String _lastSavedContent = '';
 
   @override
   void initState() {
     super.initState();
     _codeCtrl = SyntaxHighlightingController(fileName: widget.fileName);
+    _codeCtrl.addListener(_onCodeChanged);
     _initAndLoad();
   }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
+    _codeCtrl.removeListener(_onCodeChanged);
     _codeCtrl.dispose();
     super.dispose();
   }
@@ -47,7 +55,9 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() => _loading = true);
     try {
       final result = await _client.readFile(widget.filePath);
-      _codeCtrl.text = result['content'] ?? '';
+      final content = result['content'] as String? ?? '';
+      _codeCtrl.text = content;
+      _lastSavedContent = content;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -59,9 +69,46 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  void _onCodeChanged() {
+    if (_codeCtrl.text == _lastSavedContent) {
+      return;
+    }
+    setState(() {
+      _saveStatus = 'saving';
+    });
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(seconds: 1), () {
+      _autoSaveFile();
+    });
+  }
+
+  Future<void> _autoSaveFile() async {
+    final currentText = _codeCtrl.text;
+    try {
+      await _client.writeFile(widget.filePath, currentText);
+      _lastSavedContent = currentText;
+      if (mounted) {
+        setState(() {
+          _saveStatus = 'saved';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saveStatus = 'error';
+        });
+      }
+    }
+  }
+
   Future<void> _saveFile() async {
     try {
-      await _client.writeFile(widget.filePath, _codeCtrl.text);
+      final text = _codeCtrl.text;
+      await _client.writeFile(widget.filePath, text);
+      _lastSavedContent = text;
+      setState(() {
+        _saveStatus = 'saved';
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -72,6 +119,9 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
     } catch (e) {
+      setState(() {
+        _saveStatus = 'error';
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Ошибка сохранения: $e'), backgroundColor: Colors.redAccent),
@@ -119,9 +169,16 @@ class _EditorScreenState extends State<EditorScreen> {
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.fileName,
-                    style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.fileName,
+                        style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildSaveStatusIndicator(),
+                    ],
                   ),
                   Text(
                     widget.filePath.length > 35 ? '...' + widget.filePath.substring(widget.filePath.length - 35) : widget.filePath,
@@ -158,9 +215,16 @@ class _EditorScreenState extends State<EditorScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  widget.fileName,
-                                  style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      widget.fileName,
+                                      style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _buildSaveStatusIndicator(),
+                                  ],
                                 ),
                                 Text(
                                   widget.filePath.length > 30 ? '...' + widget.filePath.substring(widget.filePath.length - 30) : widget.filePath,
@@ -291,6 +355,37 @@ class _EditorScreenState extends State<EditorScreen> {
               ],
             ),
           ),
+    );
+  }
+
+  Widget _buildSaveStatusIndicator() {
+    Color dotColor;
+    String text;
+    if (_saveStatus == 'saving') {
+      dotColor = Colors.orangeAccent;
+      text = 'Сохранение...';
+    } else if (_saveStatus == 'error') {
+      dotColor = Colors.redAccent;
+      text = 'Ошибка';
+    } else {
+      dotColor = Colors.greenAccent;
+      text = 'Сохранено';
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          text,
+          style: TextStyle(color: VegaTheme.textSecondary.withOpacity(0.8), fontSize: 10),
+        ),
+      ],
     );
   }
 }
