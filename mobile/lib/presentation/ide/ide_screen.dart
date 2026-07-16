@@ -20,6 +20,7 @@ import '../../data/chat_history.dart';
 import '../chat/widgets/terminal_command_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'editor_screen.dart';
+import 'phone_file_browser.dart';
 
 class IdeScreen extends StatefulWidget {
   const IdeScreen({super.key});
@@ -40,7 +41,7 @@ class _IdeScreenState extends State<IdeScreen> {
   final Map<String, String> _originalFileContents = {};
 
   // === GIT STATE ===
-  String _activeDrawerTab = 'files'; // 'files' | 'git'
+  String _activeDrawerTab = 'files'; // 'files' | 'phone' | 'git'
   List<Map<String, dynamic>> _gitFiles = [];
   bool _gitLoading = false;
   bool _gitIsRepo = true;
@@ -1519,7 +1520,40 @@ class _IdeScreenState extends State<IdeScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _activeDrawerTab = 'phone'),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _activeDrawerTab == 'phone' ? const Color(0xFF22C55E) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _activeDrawerTab == 'phone' ? const Color(0xFF22C55E) : Colors.white10,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.phone_android_rounded, size: 12,
+                              color: _activeDrawerTab == 'phone' ? Colors.white : VegaTheme.textSecondary),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Телефон',
+                              style: TextStyle(
+                                color: _activeDrawerTab == 'phone' ? Colors.white : VegaTheme.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
@@ -1787,7 +1821,46 @@ class _IdeScreenState extends State<IdeScreen> {
                         ),
                       ],
                     )
-                  : _buildGitTab(),
+                  : _activeDrawerTab == 'phone'
+                      ? PhoneFileBrowser(
+                          client: _client,
+                          onOpenInEditor: (filePath, fileName, content) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EditorScreen(
+                                  fileName: fileName,
+                                  initialContent: content,
+                                  filePath: filePath,
+                                  isPhoneFile: true,
+                                ),
+                              ),
+                            );
+                          },
+                          onAiAction: (actionType, filePath, fileName) async {
+                            try {
+                              final content = await File(filePath).readAsString();
+                              final prompts = {
+                                'explain': 'Объясни этот код из файла $fileName:\n\n```\n$content\n```',
+                                'tests': 'Напиши юнит-тесты для кода из файла $fileName:\n\n```\n$content\n```',
+                                'refactor': 'Отрефактори этот код из файла $fileName и объясни изменения:\n\n```\n$content\n```',
+                                'bugs': 'Найди баги и проблемы в коде из файла $fileName:\n\n```\n$content\n```',
+                              };
+                              final prompt = prompts[actionType] ?? 'Проанализируй файл $fileName';
+                              setState(() {
+                                _inputController.text = prompt;
+                              });
+                              Navigator.pop(context); // Close drawer
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.redAccent),
+                                );
+                              }
+                            }
+                          },
+                        )
+                      : _buildGitTab(),
             ),
           ],
         ),

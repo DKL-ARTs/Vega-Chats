@@ -19,7 +19,7 @@ android {
 
     defaultConfig {
         applicationId = "com.vega.vega_chat"
-        minSdk = flutter.minSdkVersion
+        minSdk = 21
         targetSdk = 34
         versionCode = 2
         versionName = "0.2.0"

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,11 +10,17 @@ import '../../core/api_client.dart';
 class EditorScreen extends StatefulWidget {
   final String filePath;
   final String fileName;
+  final String? initialContent; // If set, skip server loading
+  final bool isPhoneFile;       // If true, save to local FS instead of server
+  final dynamic client;         // Optional ApiClient from parent
 
   const EditorScreen({
     super.key,
     required this.filePath,
     required this.fileName,
+    this.initialContent,
+    this.isPhoneFile = false,
+    this.client,
   });
 
   @override
@@ -108,6 +115,14 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _loadTabFileContent(String path) async {
+    // If initialContent is provided (e.g. phone file already read), use it directly
+    if (widget.initialContent != null && path == widget.filePath) {
+      _codeCtrl.text = widget.initialContent!;
+      _lastSavedContent = widget.initialContent!;
+      _activePath = path;
+      setState(() => _loading = false);
+      return;
+    }
     setState(() => _loading = true);
     try {
       final result = await _client.readFile(path);
@@ -512,17 +527,30 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _saveFile() async {
     try {
       final text = _codeCtrl.text;
-      await _client.writeFile(_activePath, text);
+      
+      if (widget.isPhoneFile) {
+        // Save directly to phone filesystem
+        await File(_activePath).writeAsString(text);
+      } else {
+        await _client.writeFile(_activePath, text);
+      }
+      
       _lastSavedContent = text;
       setState(() {
         _saveStatus = 'saved';
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Файл успешно сохранен'),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Text(widget.isPhoneFile ? '✅ Сохранено на телефон' : 'Файл успешно сохранен'),
+              ],
+            ),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 1),
+            duration: const Duration(seconds: 1),
           ),
         );
       }
