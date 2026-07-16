@@ -25,6 +25,13 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _loading = true;
   bool _isFullscreen = false;
   
+  // === SEARCH & REPLACE STATE ===
+  bool _showSearchBar = false;
+  final _searchQueryCtrl = TextEditingController();
+  final _replaceQueryCtrl = TextEditingController();
+  List<int> _searchMatchOffsets = [];
+  int _currentMatchIndex = -1;
+  
   Timer? _debounceTimer;
   String _saveStatus = 'saved'; // 'saved' | 'saving' | 'error'
   String _lastSavedContent = '';
@@ -34,6 +41,7 @@ class _EditorScreenState extends State<EditorScreen> {
     super.initState();
     _codeCtrl = SyntaxHighlightingController(fileName: widget.fileName);
     _codeCtrl.addListener(_onCodeChanged);
+    _searchQueryCtrl.addListener(_performSearch);
     _initAndLoad();
   }
 
@@ -41,7 +49,10 @@ class _EditorScreenState extends State<EditorScreen> {
   void dispose() {
     _debounceTimer?.cancel();
     _codeCtrl.removeListener(_onCodeChanged);
+    _searchQueryCtrl.removeListener(_performSearch);
     _codeCtrl.dispose();
+    _searchQueryCtrl.dispose();
+    _replaceQueryCtrl.dispose();
     super.dispose();
   }
 
@@ -151,6 +162,85 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  void _performSearch() {
+    final query = _searchQueryCtrl.text;
+    if (query.isEmpty) {
+      setState(() {
+        _searchMatchOffsets = [];
+        _currentMatchIndex = -1;
+      });
+      return;
+    }
+    
+    final text = _codeCtrl.text;
+    final List<int> matches = [];
+    int index = text.indexOf(query);
+    while (index != -1) {
+      matches.add(index);
+      index = text.indexOf(query, index + query.length);
+    }
+    
+    setState(() {
+      _searchMatchOffsets = matches;
+      if (matches.isNotEmpty) {
+        // If current selection is not a match, default to first match
+        if (_currentMatchIndex < 0 || _currentMatchIndex >= matches.length) {
+          _currentMatchIndex = 0;
+        }
+        _selectMatch(_currentMatchIndex);
+      } else {
+        _currentMatchIndex = -1;
+      }
+    });
+  }
+
+  void _selectMatch(int matchIdx) {
+    if (matchIdx < 0 || matchIdx >= _searchMatchOffsets.length) return;
+    final start = _searchMatchOffsets[matchIdx];
+    final end = start + _searchQueryCtrl.text.length;
+    _codeCtrl.selection = TextSelection(baseOffset: start, extentOffset: end);
+  }
+
+  void _nextMatch() {
+    if (_searchMatchOffsets.isEmpty) return;
+    setState(() {
+      _currentMatchIndex = (_currentMatchIndex + 1) % _searchMatchOffsets.length;
+      _selectMatch(_currentMatchIndex);
+    });
+  }
+
+  void _prevMatch() {
+    if (_searchMatchOffsets.isEmpty) return;
+    setState(() {
+      _currentMatchIndex = (_currentMatchIndex - 1 + _searchMatchOffsets.length) % _searchMatchOffsets.length;
+      _selectMatch(_currentMatchIndex);
+    });
+  }
+
+  void _replaceCurrent() {
+    if (_currentMatchIndex < 0 || _currentMatchIndex >= _searchMatchOffsets.length) return;
+    final query = _searchQueryCtrl.text;
+    final replacement = _replaceQueryCtrl.text;
+    final start = _searchMatchOffsets[_currentMatchIndex];
+    final end = start + query.length;
+    
+    final text = _codeCtrl.text;
+    final newText = text.replaceRange(start, end, replacement);
+    _codeCtrl.text = newText;
+    
+    _performSearch();
+  }
+
+  void _replaceAll() {
+    final query = _searchQueryCtrl.text;
+    if (query.isEmpty) return;
+    final replacement = _replaceQueryCtrl.text;
+    final text = _codeCtrl.text;
+    final newText = text.replaceAll(query, replacement);
+    _codeCtrl.text = newText;
+    _performSearch();
+  }
+
   @override
   Widget build(BuildContext context) {
     final quickSymbols = ['{', '}', '[', ']', '(', ')', ';', '=', '<', '>', '/', '_', ':', '"', '\''];
@@ -187,6 +277,11 @@ class _EditorScreenState extends State<EditorScreen> {
                 ],
               ),
               actions: [
+                IconButton(
+                  onPressed: () => setState(() => _showSearchBar = !_showSearchBar),
+                  icon: Icon(Icons.search_rounded, color: _showSearchBar ? VegaTheme.accent : Colors.white, size: 24),
+                  tooltip: 'Поиск и замена',
+                ),
                 IconButton(
                   onPressed: () => setState(() => _isFullscreen = true),
                   icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 24),
@@ -238,6 +333,13 @@ class _EditorScreenState extends State<EditorScreen> {
                               IconButton(
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(8),
+                                icon: Icon(Icons.search_rounded, color: _showSearchBar ? VegaTheme.accent : Colors.white, size: 20),
+                                onPressed: () => setState(() => _showSearchBar = !_showSearchBar),
+                                tooltip: 'Поиск и замена',
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
                                 icon: const Icon(Icons.save_rounded, color: VegaTheme.accent, size: 20),
                                 onPressed: _saveFile,
                                 tooltip: 'Сохранить',
@@ -254,6 +356,8 @@ class _EditorScreenState extends State<EditorScreen> {
                         ],
                       ),
                     ),
+                  if (_showSearchBar)
+                    _buildSearchBar(),
                   Expanded(
                     child: Container(
                       margin: _isFullscreen ? const EdgeInsets.all(2) : const EdgeInsets.all(12),
@@ -386,6 +490,136 @@ class _EditorScreenState extends State<EditorScreen> {
           style: TextStyle(color: VegaTheme.textSecondary.withOpacity(0.8), fontSize: 10),
         ),
       ],
+    );
+  }
+
+  Widget _buildSearchBar() {
+    final matchesCount = _searchMatchOffsets.length;
+    final matchDisplay = matchesCount > 0 ? '${_currentMatchIndex + 1}/$matchesCount' : '0/0';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: VegaTheme.border, width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: VegaTheme.border, width: 0.5),
+                  ),
+                  child: TextField(
+                    controller: _searchQueryCtrl,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: const InputDecoration(
+                      hintText: 'Найти...',
+                      hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                matchDisplay,
+                style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _prevMatch,
+                icon: const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white, size: 20),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(6),
+                tooltip: 'Предыдущее совпадение',
+              ),
+              IconButton(
+                onPressed: _nextMatch,
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 20),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(6),
+                tooltip: 'Следующее совпадение',
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _showSearchBar = false;
+                    _searchQueryCtrl.clear();
+                  });
+                },
+                icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 20),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(6),
+                tooltip: 'Закрыть поиск',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: VegaTheme.border, width: 0.5),
+                  ),
+                  child: TextField(
+                    controller: _replaceQueryCtrl,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: const InputDecoration(
+                      hintText: 'Заменить на...',
+                      hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton(
+                onPressed: _replaceCurrent,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: VegaTheme.accent,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                child: const Text('Заменить', style: TextStyle(color: Colors.white, fontSize: 11)),
+              ),
+              const SizedBox(width: 6),
+              ElevatedButton(
+                onPressed: _replaceAll,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white12,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                child: const Text('Все', style: TextStyle(color: Colors.white, fontSize: 11)),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
