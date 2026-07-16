@@ -216,6 +216,7 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
           );
         }
       }
+    }
   }
 
   Future<void> _loadDir(String path) async {
