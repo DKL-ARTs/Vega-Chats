@@ -1848,7 +1848,7 @@ class _IdeScreenState extends State<IdeScreen> {
                               };
                               final prompt = prompts[actionType] ?? 'Проанализируй файл $fileName';
                               setState(() {
-                                _inputController.text = prompt;
+                                _chatInputCtrl.text = prompt;
                               });
                               Navigator.pop(context); // Close drawer
                             } catch (e) {
