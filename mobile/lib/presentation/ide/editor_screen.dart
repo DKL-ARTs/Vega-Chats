@@ -37,11 +37,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // === TERMINAL STATE ===
   bool _showTerminal = false;
-  final _termInputCtrl = TextEditingController();
-  final _termScrollCtrl = ScrollController();
-  final ValueNotifier<List<String>> _termOutputNotifier = ValueNotifier<List<String>>([]);
-  WebSocketChannel? _termChannel;
-  bool _termConnected = false;
+  final List<Map<String, dynamic>> _terminals = [];
+  int _activeTerminalIndex = 0;
   
   // === SEARCH & REPLACE STATE ===
   bool _showSearchBar = false;
@@ -60,6 +57,8 @@ class _EditorScreenState extends State<EditorScreen> {
     _tabs.add({'path': widget.filePath, 'name': widget.fileName});
     _activePath = widget.filePath;
     
+    _addNewTerminalTab();
+    
     _codeCtrl = SyntaxHighlightingController(fileName: widget.fileName);
     _codeCtrl.addListener(_onCodeChanged);
     _searchQueryCtrl.addListener(_performSearch);
@@ -75,10 +74,12 @@ class _EditorScreenState extends State<EditorScreen> {
     _searchQueryCtrl.dispose();
     _replaceQueryCtrl.dispose();
     
-    _termChannel?.sink.close();
-    _termInputCtrl.dispose();
-    _termScrollCtrl.dispose();
-    _termOutputNotifier.dispose();
+    for (final term in _terminals) {
+      (term['channel'] as WebSocketChannel?)?.sink.close();
+      (term['inputCtrl'] as TextEditingController).dispose();
+      (term['scrollCtrl'] as ScrollController).dispose();
+      (term['outputNotifier'] as ValueNotifier<List<String>>).dispose();
+    }
     super.dispose();
   }
 
@@ -153,8 +154,55 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Future<void> _connectTerminal() async {
-    if (_termConnected) return;
+  void _addNewTerminalTab() {
+    final nextId = _terminals.isEmpty ? 1 : (_terminals.last['id'] as int) + 1;
+    final term = <String, dynamic>{
+      'id': nextId,
+      'name': 'Терминал $nextId',
+      'inputCtrl': TextEditingController(),
+      'scrollCtrl': ScrollController(),
+      'outputNotifier': ValueNotifier<List<String>>([]),
+      'channel': null,
+      'connected': false,
+    };
+    setState(() {
+      _terminals.add(term);
+      _activeTerminalIndex = _terminals.length - 1;
+    });
+    if (_showTerminal) {
+      _connectActiveTerminal();
+    }
+  }
+
+  void _closeTerminalTab(int index) {
+    final term = _terminals[index];
+    final channel = term['channel'] as WebSocketChannel?;
+    channel?.sink.close();
+    (term['inputCtrl'] as TextEditingController).dispose();
+    (term['scrollCtrl'] as ScrollController).dispose();
+    (term['outputNotifier'] as ValueNotifier<List<String>>).dispose();
+    
+    setState(() {
+      _terminals.removeAt(index);
+      if (_activeTerminalIndex >= _terminals.length) {
+        _activeTerminalIndex = _terminals.length - 1;
+      }
+      if (_terminals.isEmpty) {
+        _showTerminal = false;
+        _activeTerminalIndex = 0;
+      }
+    });
+    
+    if (_showTerminal && _terminals.isNotEmpty) {
+      _connectActiveTerminal();
+    }
+  }
+
+  Future<void> _connectActiveTerminal() async {
+    if (_terminals.isEmpty) return;
+    final term = _terminals[_activeTerminalIndex];
+    if (term['connected'] == true) return;
+    
     try {
       final prefs = await SharedPreferences.getInstance();
       String baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
@@ -169,33 +217,48 @@ class _EditorScreenState extends State<EditorScreen> {
       if (wsUrl.endsWith('/')) wsUrl = wsUrl.substring(0, wsUrl.length - 1);
       wsUrl += '/ws/terminal';
 
-      _termChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
-      _termChannel!.stream.listen(
+      final outputNotifier = term['outputNotifier'] as ValueNotifier<List<String>>;
+      final channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      term['channel'] = channel;
+      
+      channel.stream.listen(
         (data) {
-          _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add(data.toString());
-          _scrollTerminalToBottom();
+          outputNotifier.value = List.from(outputNotifier.value)..add(data.toString());
+          _scrollActiveTerminalToBottom();
         },
         onError: (e) {
-          _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('Ошибка WebSocket: $e');
-          setState(() => _termConnected = false);
+          outputNotifier.value = List.from(outputNotifier.value)..add('Ошибка WebSocket: $e');
+          setState(() {
+            term['connected'] = false;
+          });
         },
         onDone: () {
-          _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('WebSocket соединение закрыто.');
-          setState(() => _termConnected = false);
+          outputNotifier.value = List.from(outputNotifier.value)..add('WebSocket соединение закрыто.');
+          setState(() {
+            term['connected'] = false;
+          });
         },
       );
-      setState(() => _termConnected = true);
+      setState(() {
+        term['connected'] = true;
+      });
     } catch (e) {
-      _termOutputNotifier.value = List.from(_termOutputNotifier.value)..add('Не удалось подключить терминал: $e');
-      setState(() => _termConnected = false);
+      final outputNotifier = term['outputNotifier'] as ValueNotifier<List<String>>;
+      outputNotifier.value = List.from(outputNotifier.value)..add('Не удалось подключить терминал: $e');
+      setState(() {
+        term['connected'] = false;
+      });
     }
   }
 
-  void _scrollTerminalToBottom() {
+  void _scrollActiveTerminalToBottom() {
+    if (_terminals.isEmpty) return;
+    final term = _terminals[_activeTerminalIndex];
+    final scrollCtrl = term['scrollCtrl'] as ScrollController;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_termScrollCtrl.hasClients) {
-        _termScrollCtrl.animateTo(
-          _termScrollCtrl.position.maxScrollExtent,
+      if (scrollCtrl.hasClients) {
+        scrollCtrl.animateTo(
+          scrollCtrl.position.maxScrollExtent,
           duration: const Duration(milliseconds: 100),
           curve: Curves.easeOut,
         );
@@ -203,65 +266,126 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
-  void _sendTerminalCommand() {
-    final cmd = _termInputCtrl.text.trim();
-    if (cmd.isEmpty || _termChannel == null) return;
-    _termChannel!.sink.add(cmd);
-    _termInputCtrl.clear();
+  void _sendActiveTerminalCommand() {
+    if (_terminals.isEmpty) return;
+    final term = _terminals[_activeTerminalIndex];
+    final inputCtrl = term['inputCtrl'] as TextEditingController;
+    final cmd = inputCtrl.text.trim();
+    final channel = term['channel'] as WebSocketChannel?;
+    if (cmd.isEmpty || channel == null) return;
+    
+    channel.sink.add(cmd);
+    inputCtrl.clear();
   }
 
   Widget _buildTerminalContent() {
+    if (_terminals.isEmpty) {
+      return const Center(child: Text('Нет активных терминалов', style: TextStyle(color: VegaTheme.textSecondary)));
+    }
+
+    final activeTerm = _terminals[_activeTerminalIndex];
+    final outputNotifier = activeTerm['outputNotifier'] as ValueNotifier<List<String>>;
+    final inputCtrl = activeTerm['inputCtrl'] as TextEditingController;
+    final scrollCtrl = activeTerm['scrollCtrl'] as ScrollController;
+
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          height: 32,
           color: const Color(0xFF1E293B),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.terminal_rounded, color: VegaTheme.accent, size: 14),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'Терминал',
-                    style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _termConnected ? Colors.greenAccent : Colors.redAccent,
-                    ),
-                  ),
-                ],
+              Expanded(
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _terminals.length,
+                  itemBuilder: (ctx, index) {
+                    final term = _terminals[index];
+                    final isActive = index == _activeTerminalIndex;
+                    final isTermConnected = term['connected'] == true;
+
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _activeTerminalIndex = index;
+                        });
+                        _connectActiveTerminal();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: isActive ? const Color(0xFF0F172A) : Colors.transparent,
+                          border: Border(
+                            bottom: BorderSide(
+                              color: isActive ? VegaTheme.accent : Colors.transparent,
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 5,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isTermConnected ? Colors.greenAccent : Colors.redAccent,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              term['name'] ?? '',
+                              style: TextStyle(
+                                color: isActive ? Colors.white : VegaTheme.textSecondary,
+                                fontSize: 11,
+                                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () => _closeTerminalTab(index),
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: 12,
+                                color: isActive ? Colors.white60 : Colors.white24,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      _termOutputNotifier.value = [];
-                    },
-                    icon: const Icon(Icons.delete_sweep_rounded, color: Colors.white60, size: 16),
-                    constraints: const BoxConstraints(),
-                    padding: EdgeInsets.zero,
-                    tooltip: 'Очистить вывод',
-                  ),
-                  const SizedBox(width: 10),
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _showTerminal = false;
-                      });
-                    },
-                    icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 16),
-                    constraints: const BoxConstraints(),
-                    padding: EdgeInsets.zero,
-                    tooltip: 'Закрыть терминал',
-                  ),
-                ],
+              IconButton(
+                onPressed: _addNewTerminalTab,
+                icon: const Icon(Icons.add_rounded, color: Colors.white, size: 16),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                tooltip: 'Создать сессию',
+              ),
+              const VerticalDivider(color: Colors.white10, width: 1, indent: 6, endIndent: 6),
+              IconButton(
+                onPressed: () {
+                  outputNotifier.value = [];
+                },
+                icon: const Icon(Icons.delete_sweep_rounded, color: Colors.white60, size: 16),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                tooltip: 'Очистить вывод',
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _showTerminal = false;
+                  });
+                },
+                icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 16),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                tooltip: 'Закрыть панель',
               ),
             ],
           ),
@@ -272,10 +396,10 @@ class _EditorScreenState extends State<EditorScreen> {
             padding: const EdgeInsets.all(8),
             width: double.infinity,
             child: ValueListenableBuilder<List<String>>(
-              valueListenable: _termOutputNotifier,
+              valueListenable: outputNotifier,
               builder: (context, lines, child) {
                 return ListView.builder(
-                  controller: _termScrollCtrl,
+                  controller: scrollCtrl,
                   itemCount: lines.length,
                   itemBuilder: (ctx, i) {
                     final line = lines[i];
@@ -311,7 +435,7 @@ class _EditorScreenState extends State<EditorScreen> {
               const Text('\$ ', style: TextStyle(color: VegaTheme.accent, fontSize: 13, fontFamily: 'monospace')),
               Expanded(
                 child: TextField(
-                  controller: _termInputCtrl,
+                  controller: inputCtrl,
                   style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
                   decoration: const InputDecoration(
                     hintText: 'Введите команду...',
@@ -320,11 +444,11 @@ class _EditorScreenState extends State<EditorScreen> {
                     isDense: true,
                     contentPadding: EdgeInsets.symmetric(vertical: 6),
                   ),
-                  onSubmitted: (_) => _sendTerminalCommand(),
+                  onSubmitted: (_) => _sendActiveTerminalCommand(),
                 ),
               ),
               IconButton(
-                onPressed: _sendTerminalCommand,
+                onPressed: _sendActiveTerminalCommand,
                 icon: const Icon(Icons.send_rounded, color: VegaTheme.accent, size: 16),
                 constraints: const BoxConstraints(),
                 padding: const EdgeInsets.all(4),
@@ -550,7 +674,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     setState(() {
                       _showTerminal = !_showTerminal;
                     });
-                    if (_showTerminal) _connectTerminal();
+                    if (_showTerminal) _connectActiveTerminal();
                   },
                   icon: Icon(Icons.terminal_rounded, color: _showTerminal ? VegaTheme.accent : Colors.white, size: 24),
                   tooltip: 'Терминал',
@@ -625,7 +749,7 @@ class _EditorScreenState extends State<EditorScreen> {
                                   setState(() {
                                     _showTerminal = !_showTerminal;
                                   });
-                                  if (_showTerminal) _connectTerminal();
+                                  if (_showTerminal) _connectActiveTerminal();
                                 },
                                 tooltip: 'Терминал',
                               ),
