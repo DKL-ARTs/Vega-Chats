@@ -1,7 +1,11 @@
 import os
+import shutil
+import subprocess
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from fastapi.responses import FileResponse
+from app.config import settings
 
 router = APIRouter()
 
@@ -21,51 +25,73 @@ class FileRename(BaseModel):
 
 class GitCommitReq(BaseModel):
     message: str
+    cwd: str = None
 
-from app.config import settings
-
-def safe_path(path: str, root: str = None) -> Path:
-    if root is None:
-        root = settings.workspace_root
+def safe_path(path: str) -> Path:
+    # Resolve the path to absolute
     p = Path(path)
+    
+    # If the client specifies an absolute path that is inside allowed directories, allow it directly
+    allowed_prefixes = ('/root', '/sdcard', '/storage', '/var', '/tmp')
     if p.is_absolute():
-        p = Path(root) / p.relative_to("/") if str(p).startswith("/") else p
+        resolved = p.resolve()
+        if any(str(resolved).startswith(prefix) for prefix in allowed_prefixes):
+            return resolved
+    
+    # Otherwise resolve it relative to settings.workspace_root
+    root = Path(settings.workspace_root).resolve()
+    if p.is_absolute():
+        try:
+            # try to strip root slash if any
+            relative = p.relative_to("/")
+            resolved = (root / relative).resolve()
+        except ValueError:
+            resolved = (root / str(p).lstrip("/")).resolve()
     else:
-        p = Path(root) / p
-    p = p.resolve()
-    if not str(p).startswith(str(Path(root).resolve())):
-        raise HTTPException(403, "Path traversal detected")
-    return p
+        resolved = (root / p).resolve()
+        
+    return resolved
 
 @router.post("/files/read")
 async def read_file(req: FileRead):
     p = safe_path(req.path)
     if not p.exists():
         raise HTTPException(404, "File not found")
-    return {"content": p.read_text(), "path": str(p)}
+    if p.is_dir():
+        raise HTTPException(400, "Path is a directory")
+    return {"content": p.read_text(encoding='utf-8', errors='replace'), "path": str(p)}
 
 @router.post("/files/write")
 async def write_file(req: FileWrite):
     p = safe_path(req.path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(req.content)
+    p.write_text(req.content, encoding='utf-8')
     return {"ok": True, "path": str(p)}
 
 @router.post("/files/list")
 async def list_files(req: FileRead):
     p = safe_path(req.path)
+    if not p.exists():
+        raise HTTPException(404, "Directory not found")
     if not p.is_dir():
         raise HTTPException(400, "Not a directory")
     items = []
-    for child in sorted(p.iterdir()):
-        items.append({
-            "name": child.name,
-            "is_dir": child.is_dir(),
-            "size": child.stat().st_size if child.is_file() else 0,
-        })
+    try:
+        for child in sorted(p.iterdir()):
+            try:
+                is_dir = child.is_dir()
+                size = child.stat().st_size if child.is_file() else 0
+                items.append({
+                    "name": child.name,
+                    "is_dir": is_dir,
+                    "size": size,
+                })
+            except Exception:
+                # Skip files with permission errors
+                pass
+    except Exception as e:
+        raise HTTPException(500, f"Error listing directory: {str(e)}")
     return {"items": items, "path": str(p)}
-
-from fastapi.responses import FileResponse
 
 @router.get("/files/download")
 async def download_file(path: str):
@@ -80,7 +106,6 @@ async def download_file(path: str):
 
 @router.post("/files/delete")
 async def delete_file(req: FileDelete):
-    import shutil
     p = safe_path(req.path)
     if not p.exists():
         raise HTTPException(404, "File/directory not found")
@@ -106,15 +131,14 @@ async def rename_file(req: FileRename):
         raise HTTPException(500, f"Error renaming file/directory: {str(e)}")
 
 @router.get("/git/status")
-async def git_status():
-    import subprocess
-    # Check if git repo exists
-    if not (Path(settings.workspace_root) / ".git").exists():
+async def git_status(cwd: str = Query(None)):
+    git_root = safe_path(cwd) if cwd else Path(settings.workspace_root)
+    if not (git_root / ".git").exists():
         return {"ok": False, "error": "Not a git repository"}
     try:
         res = subprocess.run(
             ["git", "status", "-s"],
-            cwd=settings.workspace_root,
+            cwd=str(git_root),
             capture_output=True,
             text=True,
             check=True
@@ -133,35 +157,34 @@ async def git_status():
         return {"ok": False, "error": str(e)}
 
 @router.post("/git/init")
-async def git_init():
-    import subprocess
+async def git_init(req: FileRead):
+    git_root = safe_path(req.path)
     try:
-        subprocess.run(["git", "init"], cwd=settings.workspace_root, check=True)
+        subprocess.run(["git", "init"], cwd=str(git_root), check=True)
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 @router.post("/git/commit-push")
 async def git_commit_push(req: GitCommitReq):
-    import subprocess
-    # Check if git repo exists
-    if not (Path(settings.workspace_root) / ".git").exists():
+    git_root = safe_path(req.cwd) if req.cwd else Path(settings.workspace_root)
+    if not (git_root / ".git").exists():
         return {"ok": False, "error": "Not a git repository"}
     try:
         # 1. git add .
-        subprocess.run(["git", "add", "."], cwd=settings.workspace_root, check=True)
+        subprocess.run(["git", "add", "."], cwd=str(git_root), check=True)
         # 2. git commit -m message
-        subprocess.run(["git", "commit", "-m", req.message], cwd=settings.workspace_root, check=True)
+        subprocess.run(["git", "commit", "-m", req.message], cwd=str(git_root), check=True)
         # 3. Get current branch
-        branch_res = subprocess.run(["git", "branch", "--show-current"], cwd=settings.workspace_root, capture_output=True, text=True, check=True)
+        branch_res = subprocess.run(["git", "branch", "--show-current"], cwd=str(git_root), capture_output=True, text=True, check=True)
         branch = branch_res.stdout.strip() or "main"
         
         # 4. Try pushing to "new", then "origin", then default
-        push_res = subprocess.run(["git", "push", "new", branch], cwd=settings.workspace_root, capture_output=True, text=True)
+        push_res = subprocess.run(["git", "push", "new", branch], cwd=str(git_root), capture_output=True, text=True)
         if push_res.returncode != 0:
-            push_res = subprocess.run(["git", "push", "origin", branch], cwd=settings.workspace_root, capture_output=True, text=True)
+            push_res = subprocess.run(["git", "push", "origin", branch], cwd=str(git_root), capture_output=True, text=True)
             if push_res.returncode != 0:
-                push_res = subprocess.run(["git", "push"], cwd=settings.workspace_root, capture_output=True, text=True)
+                push_res = subprocess.run(["git", "push"], cwd=str(git_root), capture_output=True, text=True)
         
         if push_res.returncode != 0:
             return {"ok": False, "error": f"Push failed: {push_res.stderr.strip() or push_res.stdout.strip()}"}
@@ -169,4 +192,3 @@ async def git_commit_push(req: GitCommitReq):
         return {"ok": True, "stdout": push_res.stdout.strip(), "stderr": push_res.stderr.strip()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
-

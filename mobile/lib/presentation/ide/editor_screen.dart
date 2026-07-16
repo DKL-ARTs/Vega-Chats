@@ -65,6 +65,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Timer? _debounceTimer;
   String _saveStatus = 'saved'; // 'saved' | 'saving' | 'error'
   String _lastSavedContent = '';
+  List<String> _autocompleteSuggestions = [];
 
   @override
   void initState() {
@@ -101,6 +102,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _initAndLoad() async {
     final prefs = await SharedPreferences.getInstance();
     _client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+    final workspaceRoot = prefs.getString('workspace_root') ?? '/root/workspace';
     
     setState(() {
       _editorFontSize = prefs.getDouble('editor_font_size') ?? 13.0;
@@ -108,6 +110,8 @@ class _EditorScreenState extends State<EditorScreen> {
       _editorWordWrap = prefs.getBool('editor_word_wrap') ?? true;
       _editorShowLineNumbers = prefs.getBool('editor_show_line_numbers') ?? true;
       _editorAutoCloseBrackets = prefs.getBool('editor_auto_close_brackets') ?? true;
+      _currentPath = workspaceRoot;
+      _codeCtrl.autoCloseBrackets = _editorAutoCloseBrackets;
     });
 
     await _loadTabFileContent(_activePath);
@@ -493,6 +497,8 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _onCodeChanged() {
+    _updateAutocompleteSuggestions();
+    
     if (_codeCtrl.text == _lastSavedContent) {
       return;
     }
@@ -502,6 +508,102 @@ class _EditorScreenState extends State<EditorScreen> {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(seconds: 1), () {
       _autoSaveFile();
+    });
+  }
+
+  void _updateAutocompleteSuggestions() {
+    final text = _codeCtrl.text;
+    final selection = _codeCtrl.selection;
+    if (selection.start < 0 || selection.start != selection.end) {
+      setState(() {
+        _autocompleteSuggestions = [];
+      });
+      return;
+    }
+    
+    final pos = selection.start;
+    // Find the start of the current word
+    int wordStart = pos;
+    while (wordStart > 0) {
+      final char = text[wordStart - 1];
+      if (RegExp(r'[a-zA-Z0-9_]').hasMatch(char)) {
+        wordStart--;
+      } else {
+        break;
+      }
+    }
+    
+    if (wordStart == pos) {
+      setState(() {
+        _autocompleteSuggestions = [];
+      });
+      return;
+    }
+    
+    final prefix = text.substring(wordStart, pos).toLowerCase();
+    if (prefix.isEmpty) {
+      setState(() {
+        _autocompleteSuggestions = [];
+      });
+      return;
+    }
+    
+    // 1. Gather all words from the current file
+    final allWords = RegExp(r'\b[a-zA-Z_][a-zA-Z0-9_]{2,}\b')
+        .allMatches(text)
+        .map((m) => m.group(0)!)
+        .toSet();
+        
+    // 2. Add language keywords based on file extension
+    final ext = p.extension(_activePath).toLowerCase();
+    final keywords = <String>[];
+    if (ext == '.py') {
+      keywords.addAll(['def', 'class', 'return', 'import', 'from', 'elif', 'print', 'self', 'while', 'for', 'if', 'else', 'try', 'except', 'None', 'True', 'False']);
+    } else if (ext == '.js' || ext == '.ts' || ext == '.dart') {
+      keywords.addAll(['const', 'let', 'var', 'function', 'return', 'class', 'import', 'await', 'async', 'final', 'extends', 'if', 'else', 'try', 'catch', 'null', 'true', 'false', 'super', 'this']);
+    } else if (ext == '.html' || ext == '.xml') {
+      keywords.addAll(['div', 'span', 'class', 'id', 'href', 'style', 'script', 'header', 'footer', 'title', 'head', 'body', 'html', 'xml']);
+    } else if (ext == '.css') {
+      keywords.addAll(['color', 'background', 'margin', 'padding', 'width', 'height', 'border', 'display', 'position', 'font-size', 'font-family']);
+    }
+    
+    allWords.addAll(keywords);
+    
+    // Filter words starting with prefix, but not matching exactly
+    final suggestions = allWords
+        .where((w) => w.toLowerCase().startsWith(prefix) && w.toLowerCase() != prefix)
+        .take(10)
+        .toList();
+        
+    setState(() {
+      _autocompleteSuggestions = suggestions;
+    });
+  }
+
+  void _applySuggestion(String suggestion) {
+    final text = _codeCtrl.text;
+    final selection = _codeCtrl.selection;
+    if (selection.start < 0) return;
+    
+    final pos = selection.start;
+    int wordStart = pos;
+    while (wordStart > 0) {
+      final char = text[wordStart - 1];
+      if (RegExp(r'[a-zA-Z0-9_]').hasMatch(char)) {
+        wordStart--;
+      } else {
+        break;
+      }
+    }
+    
+    final newText = text.replaceRange(wordStart, pos, suggestion);
+    _codeCtrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: wordStart + suggestion.length),
+    );
+    
+    setState(() {
+      _autocompleteSuggestions = [];
     });
   }
 
@@ -561,6 +663,68 @@ class _EditorScreenState extends State<EditorScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Ошибка сохранения: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+  }
+
+  Future<void> _runCode() async {
+    // 1. Save file first
+    await _saveFile();
+    
+    // 2. Identify interpreter based on extension
+    final ext = p.extension(_activePath).toLowerCase();
+    String? interpreter;
+    if (ext == '.py') {
+      interpreter = 'python3';
+    } else if (ext == '.js') {
+      interpreter = 'node';
+    } else if (ext == '.sh') {
+      interpreter = 'bash';
+    }
+    
+    if (interpreter == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Тип файла ${ext} не поддерживается для прямого запуска. Попробуем выполнить как bash скрипт.'),
+            backgroundColor: Colors.orangeAccent,
+          ),
+        );
+      }
+      interpreter = 'bash';
+    }
+    
+    final runCmd = '$interpreter "${_activePath}"';
+    
+    // 3. Ensure terminal is visible
+    setState(() {
+      _showTerminal = true;
+    });
+    
+    // 4. Ensure terminal session exists
+    if (_terminals.isEmpty) {
+      _addNewTerminalTab();
+    }
+    
+    final term = _terminals[_activeTerminalIndex];
+    if (term['connected'] != true) {
+      await _connectActiveTerminal();
+      // Wait for WebSocket connection to establish
+      await Future.delayed(const Duration(milliseconds: 1000));
+    }
+    
+    final channel = term['channel'] as WebSocketChannel?;
+    if (channel != null) {
+      // Send the run command to the persistent shell session
+      channel.sink.add(runCmd);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Не удалось подключиться к терминалу для запуска кода'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }
@@ -789,6 +953,11 @@ class _EditorScreenState extends State<EditorScreen> {
                   icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 24),
                   tooltip: 'Полноэкранный режим',
                 ),
+                 IconButton(
+                  onPressed: _runCode,
+                  icon: const Icon(Icons.play_arrow_rounded, color: Colors.greenAccent, size: 26),
+                  tooltip: 'Запустить код',
+                ),
                 IconButton(
                   onPressed: _saveFile,
                   icon: const Icon(Icons.save_rounded, color: VegaTheme.accent, size: 24),
@@ -925,6 +1094,13 @@ class _EditorScreenState extends State<EditorScreen> {
                               IconButton(
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(8),
+                                icon: const Icon(Icons.play_arrow_rounded, color: Colors.greenAccent, size: 22),
+                                onPressed: _runCode,
+                                tooltip: 'Запустить код',
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
                                 icon: const Icon(Icons.save_rounded, color: VegaTheme.accent, size: 20),
                                 onPressed: _saveFile,
                                 tooltip: 'Сохранить',
@@ -1042,6 +1218,44 @@ class _EditorScreenState extends State<EditorScreen> {
                       border: Border.all(color: VegaTheme.border, width: 0.5),
                     ),
                     child: _buildTerminalContent(),
+                  ),
+                
+                if (_autocompleteSuggestions.isNotEmpty)
+                  Container(
+                    height: 38,
+                    color: const Color(0xFF0F172A),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      itemCount: _autocompleteSuggestions.length,
+                      itemBuilder: (ctx, idx) {
+                        final suggestion = _autocompleteSuggestions[idx];
+                        return GestureDetector(
+                          onTap: () => _applySuggestion(suggestion),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: VegaTheme.accent.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: VegaTheme.accent.withOpacity(0.4), width: 0.5),
+                            ),
+                            child: Center(
+                              child: Text(
+                                suggestion,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 
                 // Quick coding symbols accessory bar above phone keyboard
@@ -1372,13 +1586,16 @@ class _EditorScreenState extends State<EditorScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (_currentPath != '/root/workspace')
+                  if (_currentPath != '/' && _currentPath.isNotEmpty)
                     GestureDetector(
                       onTap: () {
                         final parts = _currentPath.split('/');
-                        parts.removeLast();
-                        setState(() => _currentPath = parts.join('/'));
-                        _loadExplorerFiles();
+                        if (parts.isNotEmpty) {
+                          parts.removeLast();
+                          final newPath = parts.join('/');
+                          setState(() => _currentPath = newPath.isEmpty ? '/' : newPath);
+                          _loadExplorerFiles();
+                        }
                       },
                       child: const Text('Назад', style: TextStyle(color: VegaTheme.accent, fontSize: 11, fontWeight: FontWeight.bold)),
                     )
@@ -1626,6 +1843,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         });
                         setState(() {
                           _editorAutoCloseBrackets = val;
+                          _codeCtrl.autoCloseBrackets = val;
                         });
                         _saveSetting('editor_auto_close_brackets', val);
                       },
@@ -1743,11 +1961,83 @@ class AutoCloseBracketsFormatter extends TextInputFormatter {
 
 class SyntaxHighlightingController extends TextEditingController {
   String fileName;
+  bool autoCloseBrackets = true;
 
   SyntaxHighlightingController({required this.fileName, String? text}) : super(text: text);
 
   void updateFileName(String name) {
     fileName = name;
+  }
+
+  @override
+  set value(TextEditingValue newValue) {
+    if (!autoCloseBrackets) {
+      super.value = newValue;
+      return;
+    }
+    
+    final oldText = text;
+    final oldSelection = selection;
+    final newText = newValue.text;
+    final newSelection = newValue.selection;
+
+    // Check if the user typed a single character
+    if (newText.length == oldText.length + 1 && newSelection.isCollapsed && oldSelection.isCollapsed) {
+      final cursorOffset = newSelection.start;
+      final insertedChar = newText[cursorOffset - 1];
+      
+      // 1. Auto-close brackets/quotes
+      const opening = ['(', '{', '[', '"', '\''];
+      const closing = [')', '}', ']', '"', '\''];
+      
+      final idx = opening.indexOf(insertedChar);
+      if (idx != -1) {
+        bool shouldClose = true;
+        if (insertedChar == '"' || insertedChar == '\'') {
+          // Don't close if cursor is right before an alphanumeric character
+          if (cursorOffset < newText.length && RegExp(r'[a-zA-Z0-9_]').hasMatch(newText[cursorOffset])) {
+            shouldClose = false;
+          }
+        }
+        
+        if (shouldClose) {
+          final closingChar = closing[idx];
+          final textWithClosing = newText.replaceRange(cursorOffset, cursorOffset, closingChar);
+          super.value = TextEditingValue(
+            text: textWithClosing,
+            selection: TextSelection.collapsed(offset: cursorOffset),
+          );
+          return;
+        }
+      }
+      
+      // 2. Smart Indent on Enter (\n)
+      if (insertedChar == '\n' && cursorOffset > 1) {
+        final textBeforeCursor = oldText.substring(0, cursorOffset - 1);
+        final lines = textBeforeCursor.split('\n');
+        if (lines.isNotEmpty) {
+          final prevLine = lines.last;
+          final match = RegExp(r'^(\s*)').firstMatch(prevLine);
+          String indent = match != null ? match.group(1) ?? '' : '';
+          
+          final trimmedPrev = prevLine.trim();
+          if (trimmedPrev.endsWith(':') || trimmedPrev.endsWith('{')) {
+            indent += '    ';
+          }
+          
+          if (indent.isNotEmpty) {
+            final textWithIndent = newText.replaceRange(cursorOffset, cursorOffset, indent);
+            super.value = TextEditingValue(
+              text: textWithIndent,
+              selection: TextSelection.collapsed(offset: cursorOffset + indent.length),
+            );
+            return;
+          }
+        }
+      }
+    }
+    
+    super.value = newValue;
   }
 
   static final RegExp _jsDartPattern = RegExp(

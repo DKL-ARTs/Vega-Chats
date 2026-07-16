@@ -74,6 +74,7 @@ class _IdeScreenState extends State<IdeScreen> {
   bool _speechEnabled = false;
   bool _isListening = false;
   String _lastWords = '';
+  String _preListeningText = '';
   final List<Map<String, dynamic>> _attachedFiles = [];
   bool _chatHasText = false;
 
@@ -96,9 +97,11 @@ class _IdeScreenState extends State<IdeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
     final apiKey = prefs.getString('api_key') ?? '';
+    final workspaceRoot = prefs.getString('workspace_root') ?? '/root/workspace';
     setState(() {
       _client.baseUrl = baseUrl;
       _client.apiKey = apiKey;
+      _currentPath = workspaceRoot;
     });
     
     // Load directory files and IDE chat context
@@ -139,18 +142,47 @@ class _IdeScreenState extends State<IdeScreen> {
     }
   }
 
+  String _formatDictation(String input) {
+    var formatted = input;
+    final replacements = {
+      ' запятая': ',',
+      'запятая': ',',
+      ' точка': '.',
+      'точка': '.',
+      ' знак вопроса': '?',
+      'знак вопроса': '?',
+      ' знак восклицания': '!',
+      'знак восклицания': '!',
+      ' двоеточие': ':',
+      'двоеточие': ':',
+      ' новая строка': '\n',
+      'новая строка': '\n',
+      ' абзац': '\n',
+      'абзац': '\n',
+    };
+    
+    replacements.forEach((key, val) {
+      formatted = formatted.replaceAll(key, val);
+      formatted = formatted.replaceAll(key[0].toUpperCase() + key.substring(1), val);
+    });
+    return formatted;
+  }
+
   void _startListening() async {
     if (!_speechEnabled) {
       await _initSpeech();
     }
     if (_speechEnabled) {
+      _preListeningText = _chatInputCtrl.text;
       setState(() => _isListening = true);
       await _speechToText.listen(
         onResult: (result) {
           setState(() {
-            _lastWords = result.recognizedWords;
+            _lastWords = _formatDictation(result.recognizedWords);
             if (_lastWords.isNotEmpty) {
-              _chatInputCtrl.text = _lastWords;
+              _chatInputCtrl.text = _preListeningText + 
+                  (_preListeningText.isEmpty ? "" : (_preListeningText.endsWith('\n') ? "" : " ")) + 
+                  _lastWords;
               _chatInputCtrl.selection = TextSelection.fromPosition(
                 TextPosition(offset: _chatInputCtrl.text.length),
               );
@@ -464,6 +496,77 @@ class _IdeScreenState extends State<IdeScreen> {
         ],
       ),
     );
+  }
+
+  void _createNewFolder() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Text(
+          'Новая папка',
+          style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+          decoration: const InputDecoration(
+            hintText: 'Имя папки',
+            hintStyle: TextStyle(color: VegaTheme.textSecondary),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                Navigator.pop(ctx);
+                final folderPath = '$_currentPath/$name';
+                try {
+                  // Create placeholder .keep file to force creation of folder via API
+                  await _client.writeFile('$folderPath/.keep', '');
+                  _loadFiles();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Ошибка создания папки: $e'), backgroundColor: Colors.redAccent),
+                    );
+                  }
+                }
+              }
+            },
+            child: const Text('Создать', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _setAsWorkspaceRoot() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('workspace_root', _currentPath);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 16),
+              const SizedBox(width: 8),
+              Text('Папка "$_currentPath" установлена как рабочая!'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Future<void> _deleteFileOrDir(Map<String, dynamic> item) async {
@@ -1495,12 +1598,30 @@ class _IdeScreenState extends State<IdeScreen> {
                                 'Проводник файлов',
                                 style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
                               ),
-                              IconButton(
-                                onPressed: _createNewFile,
-                                icon: const Icon(Icons.add, color: VegaTheme.accent, size: 20),
-                                tooltip: 'Создать файл',
-                                constraints: const BoxConstraints(),
-                                padding: EdgeInsets.zero,
+                              Row(
+                                children: [
+                                  IconButton(
+                                    onPressed: _setAsWorkspaceRoot,
+                                    icon: const Icon(Icons.home_work_rounded, color: Colors.greenAccent, size: 20),
+                                    tooltip: 'Установить как рабочую папку',
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  ),
+                                  IconButton(
+                                    onPressed: _createNewFolder,
+                                    icon: const Icon(Icons.create_new_folder_rounded, color: VegaTheme.accent, size: 20),
+                                    tooltip: 'Создать папку',
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  ),
+                                  IconButton(
+                                    onPressed: _createNewFile,
+                                    icon: const Icon(Icons.note_add_rounded, color: VegaTheme.accent, size: 20),
+                                    tooltip: 'Создать файл',
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -1522,13 +1643,16 @@ class _IdeScreenState extends State<IdeScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              if (_currentPath != '/root/workspace')
+                              if (_currentPath != '/' && _currentPath.isNotEmpty)
                                 GestureDetector(
                                   onTap: () {
                                     final parts = _currentPath.split('/');
-                                    parts.removeLast();
-                                    setState(() => _currentPath = parts.join('/'));
-                                    _loadFiles();
+                                    if (parts.isNotEmpty) {
+                                      parts.removeLast();
+                                      final newPath = parts.join('/');
+                                      setState(() => _currentPath = newPath.isEmpty ? '/' : newPath);
+                                      _loadFiles();
+                                    }
                                   },
                                   child: const Text('Назад', style: TextStyle(color: VegaTheme.accent, fontSize: 11, fontWeight: FontWeight.bold)),
                                 )
