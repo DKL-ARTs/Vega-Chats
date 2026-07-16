@@ -1666,7 +1666,7 @@ class _IdeScreenState extends State<IdeScreen> {
             const SizedBox(height: 18),
             ElevatedButton.icon(
               onPressed: _initializeGitRepo,
-              icon: const Icon(Icons.git_branch, size: 16, color: Colors.white),
+              icon: const Icon(Icons.merge_type_rounded, size: 16, color: Colors.white),
               label: const Text('Инициализировать Git', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: VegaTheme.accent,
