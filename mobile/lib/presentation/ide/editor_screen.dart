@@ -34,6 +34,7 @@ class _EditorScreenState extends State<EditorScreen> {
   String _currentPath = '/root/workspace';
   List<Map<String, dynamic>> _files = [];
   bool _filesLoading = false;
+  String _fileSearchQuery = '';
 
   // === TERMINAL STATE ===
   bool _showTerminal = false;
@@ -1304,31 +1305,87 @@ class _EditorScreenState extends State<EditorScreen> {
                 ],
               ),
             ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              color: VegaTheme.surface,
+              child: Container(
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: VegaTheme.border, width: 0.5),
+                ),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Icon(Icons.search_rounded, color: Colors.white38, size: 16),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        decoration: const InputDecoration(
+                          hintText: 'Поиск файлов...',
+                          hintStyle: TextStyle(color: Colors.white38, fontSize: 12),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        onChanged: (val) {
+                          setState(() {
+                            _fileSearchQuery = val.trim().toLowerCase();
+                          });
+                        },
+                      ),
+                    ),
+                    if (_fileSearchQuery.isNotEmpty)
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _fileSearchQuery = '';
+                          });
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.only(right: 8),
+                          child: Icon(Icons.close_rounded, color: Colors.white38, size: 16),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
             Expanded(
               child: _filesLoading
                   ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
-                  : _files.isEmpty
-                      ? const Center(child: Text('Папка пуста', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13)))
-                      : ListView.builder(
-                          itemCount: _files.length,
-                          itemBuilder: (ctx, i) {
-                            final item = _files[i];
-                            final isDir = item['is_dir'] == true;
-                            return ListTile(
-                              dense: true,
-                              leading: Icon(
-                                isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                                color: isDir ? VegaTheme.accent : VegaTheme.textSecondary,
-                                size: 18,
-                              ),
-                              title: Text(
-                                item['name'],
-                                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 12.5),
-                              ),
-                              onTap: () => _openFileFromExplorer(item),
+                  : () {
+                      final filteredFiles = _files.where((f) {
+                        final name = (f['name'] as String).toLowerCase();
+                        return name.contains(_fileSearchQuery);
+                      }).toList();
+                      
+                      return filteredFiles.isEmpty
+                          ? const Center(child: Text('Ничего не найдено', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13)))
+                          : ListView.builder(
+                              itemCount: filteredFiles.length,
+                              itemBuilder: (ctx, i) {
+                                final item = filteredFiles[i];
+                                final isDir = item['is_dir'] == true;
+                                return ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
+                                    color: isDir ? VegaTheme.accent : VegaTheme.textSecondary,
+                                    size: 18,
+                                  ),
+                                  title: Text(
+                                    item['name'],
+                                    style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 12.5),
+                                  ),
+                                  onTap: () => _openFileFromExplorer(item),
+                                );
+                              },
                             );
-                          },
-                        ),
+                    }(),
             ),
           ],
         ),
