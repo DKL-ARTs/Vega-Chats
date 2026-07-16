@@ -71,6 +71,153 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
     }
   }
 
+  void _createNewFile() {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Text('Создать файл', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: 'Имя файла (например, script.py)',
+            hintStyle: const TextStyle(color: Colors.white38),
+            filled: true,
+            fillColor: const Color(0xFF0F172A),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: VegaTheme.accent),
+            onPressed: () async {
+              final name = ctrl.text.trim();
+              if (name.isEmpty) return;
+              try {
+                final file = File(p.join(_currentPath, name));
+                if (await file.exists()) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Файл уже существует'), backgroundColor: Colors.orangeAccent),
+                    );
+                  }
+                  return;
+                }
+                await file.create();
+                Navigator.pop(ctx);
+                await _loadDir(_currentPath);
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Не удалось создать файл: $e'), backgroundColor: Colors.redAccent),
+                  );
+                }
+              }
+            },
+            child: const Text('Создать'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _createNewFolder() {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Text('Создать папку', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: 'Имя папки',
+            hintStyle: const TextStyle(color: Colors.white38),
+            filled: true,
+            fillColor: const Color(0xFF0F172A),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: VegaTheme.accent),
+            onPressed: () async {
+              final name = ctrl.text.trim();
+              if (name.isEmpty) return;
+              try {
+                final dir = Directory(p.join(_currentPath, name));
+                if (await dir.exists()) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Папка уже существует'), backgroundColor: Colors.orangeAccent),
+                    );
+                  }
+                  return;
+                }
+                await dir.create();
+                Navigator.pop(ctx);
+                await _loadDir(_currentPath);
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Не удалось создать папку: $e'), backgroundColor: Colors.redAccent),
+                  );
+                }
+              }
+            },
+            child: const Text('Создать'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteEntity(FileSystemEntity entity) async {
+    final name = p.basename(entity.path);
+    final isDir = entity is Directory;
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: Text(isDir ? 'Удалить папку?' : 'Удалить файл?', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Text('Вы действительно хотите удалить "$name"? Это действие нельзя отменить.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await entity.delete(recursive: true);
+        await _loadDir(_currentPath);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('"$name" успешно удален'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Не удалось удалить: $e'), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+  }
+
   Future<void> _loadDir(String path) async {
     setState(() {
       _loading = true;
@@ -328,6 +475,38 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.add_box_rounded, color: Colors.greenAccent, size: 20),
+                color: VegaTheme.surface,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onSelected: (val) {
+                  if (val == 'create_file') {
+                    _createNewFile();
+                  } else if (val == 'create_folder') {
+                    _createNewFolder();
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: 'create_file',
+                    child: Row(children: [
+                      Icon(Icons.note_add_rounded, color: Colors.greenAccent, size: 16),
+                      SizedBox(width: 8),
+                      Text('Создать файл', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ]),
+                  ),
+                  const PopupMenuItem(
+                    value: 'create_folder',
+                    child: Row(children: [
+                      Icon(Icons.create_new_folder_rounded, color: Colors.amberAccent, size: 16),
+                      SizedBox(width: 8),
+                      Text('Создать папку', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ]),
+                  ),
+                ],
+              ),
               if (_currentPath != '/')
                 GestureDetector(
                   onTap: _navigateUp,
@@ -453,6 +632,9 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
                                     case 'open_editor':
                                       if (!isDir) await _openFile(entity);
                                       break;
+                                    case 'delete':
+                                      await _deleteEntity(entity);
+                                      break;
                                     case 'ai_explain':
                                     case 'ai_tests':
                                     case 'ai_refactor':
@@ -470,6 +652,14 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
                                       Icon(Icons.link_rounded, color: VegaTheme.textPrimary, size: 16),
                                       SizedBox(width: 8),
                                       Text('Копировать путь', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                    ]),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    child: Row(children: [
+                                      Icon(Icons.delete_forever_rounded, color: Colors.redAccent, size: 16),
+                                      SizedBox(width: 8),
+                                      Text('Удалить', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
                                     ]),
                                   ),
                                   if (!isDir) ...[

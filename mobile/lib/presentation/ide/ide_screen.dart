@@ -21,6 +21,7 @@ import '../chat/widgets/terminal_command_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'editor_screen.dart';
 import 'phone_file_browser.dart';
+import '../terminal/terminal_screen.dart';
 
 class IdeScreen extends StatefulWidget {
   const IdeScreen({super.key});
@@ -627,120 +628,11 @@ class _IdeScreenState extends State<IdeScreen> {
       builder: (ctx) {
         return Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            height: MediaQuery.of(ctx).size.height * 0.65,
-            decoration: const BoxDecoration(
-              color: Color(0xFF090D16), // Dark terminal background
-              borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                // Bottom sheet drag handle
-                Center(
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 10, bottom: 8),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-                  ),
-                ),
-                // Terminal Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.terminal, color: VegaTheme.accent, size: 18),
-                          SizedBox(width: 8),
-                          Text(
-                            'Консоль разработчика',
-                            style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          Container(
-                            width: 8, height: 8,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _termConnected ? Colors.green : Colors.redAccent,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _termConnected ? 'Подключен' : 'Отключен',
-                            style: TextStyle(
-                              color: _termConnected ? Colors.green : Colors.redAccent,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(color: Colors.white10, height: 10),
-                // Terminal logs output
-                Expanded(
-                  child: Container(
-                    color: const Color(0xFF020617), // Deep black console
-                    padding: const EdgeInsets.all(12),
-                    child: ValueListenableBuilder<List<String>>(
-                      valueListenable: _termOutputNotifier,
-                      builder: (ctx, termLines, _) {
-                        return ListView.builder(
-                          controller: _termScrollCtrl,
-                          itemCount: termLines.length,
-                          itemBuilder: (ctx, i) {
-                            final line = termLines[i];
-                            final isCommand = line.startsWith('\$');
-                            final baseStyle = TextStyle(
-                              color: isCommand ? VegaTheme.accent : const Color(0xFFE2E8F0),
-                              fontFamily: 'monospace',
-                              fontSize: 12,
-                              height: 1.4,
-                              fontWeight: isCommand ? FontWeight.bold : FontWeight.normal,
-                            );
-                            return SelectableText.rich(
-                              _parseAnsiText(line, baseStyle),
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                // Terminal Input
-                Container(
-                  color: VegaTheme.surface,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  child: Row(
-                    children: [
-                      const Text('\$ ', style: TextStyle(color: VegaTheme.accent, fontFamily: 'monospace', fontSize: 15, fontWeight: FontWeight.bold)),
-                      Expanded(
-                        child: TextField(
-                          controller: _termInputCtrl,
-                          style: const TextStyle(color: VegaTheme.textPrimary, fontFamily: 'monospace', fontSize: 13),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'Введите команду shell...',
-                            hintStyle: TextStyle(color: VegaTheme.textSecondary, fontSize: 13),
-                          ),
-                          onSubmitted: (_) => _sendTerminalCommand(),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _sendTerminalCommand,
-                        icon: const Icon(Icons.send_rounded, color: VegaTheme.accent),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          child: SizedBox(
+            height: MediaQuery.of(ctx).size.height * 0.70,
+            child: TerminalScreen(
+              embedMode: true,
+              onClose: () => Navigator.pop(ctx),
             ),
           ),
         );

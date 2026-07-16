@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,7 +45,9 @@ class _TermLine {
 }
 
 class TerminalScreen extends StatefulWidget {
-  const TerminalScreen({super.key});
+  final bool embedMode;
+  final VoidCallback? onClose;
+  const TerminalScreen({super.key, this.embedMode = false, this.onClose});
 
   @override
   State<TerminalScreen> createState() => _TerminalScreenState();
@@ -279,6 +280,12 @@ class _TerminalScreenState extends State<TerminalScreen>
   @override
   Widget build(BuildContext context) {
     if (_sessions.isEmpty) {
+      if (widget.embedMode) {
+        return Container(
+          color: const Color(0xFF0A0F1A),
+          child: const Center(child: CircularProgressIndicator(color: VegaTheme.accent)),
+        );
+      }
       return Scaffold(
         backgroundColor: VegaTheme.dark,
         body: const Center(child: CircularProgressIndicator(color: VegaTheme.accent)),
@@ -286,6 +293,171 @@ class _TerminalScreenState extends State<TerminalScreen>
     }
 
     final session = _sessions[_activeIndex.clamp(0, _sessions.length - 1)];
+
+    final terminalContent = Column(
+      children: [
+        // Shortcuts bar
+        Container(
+          height: 36,
+          color: VegaTheme.surface,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            itemCount: _shortcuts.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (ctx, i) {
+              final s = _shortcuts[i];
+              return GestureDetector(
+                onTap: () => _sendCommand(session, s['cmd']),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: VegaTheme.border),
+                  ),
+                  child: Text(
+                    s['label']!,
+                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+
+        // Terminal output
+        Expanded(
+          child: _sessions.length > 1
+              ? TabBarView(
+                  controller: _tabController,
+                  children: _sessions.map((s) => _buildSessionOutput(s)).toList(),
+                )
+              : _buildSessionOutput(session),
+        ),
+
+        // Input bar
+        _buildInputBar(session),
+      ],
+    );
+
+    if (widget.embedMode) {
+      return Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF0A0F1A),
+          borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Bottom sheet drag handle & header combined
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 4),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              color: VegaTheme.surface,
+              child: Row(
+                children: [
+                  const Icon(Icons.terminal_rounded, color: VegaTheme.accent, size: 16),
+                  const SizedBox(width: 6),
+                  const Text('Консоль', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  // Reconnect
+                  if (!session.connected)
+                    IconButton(
+                      icon: const Icon(Icons.refresh_rounded, color: VegaTheme.accent, size: 18),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => _connectSession(session),
+                    ),
+                  const SizedBox(width: 8),
+                  // Clear
+                  IconButton(
+                    icon: const Icon(Icons.delete_sweep_rounded, color: Colors.white38, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () => _clearSession(_activeIndex),
+                  ),
+                  const SizedBox(width: 8),
+                  // Copy
+                  IconButton(
+                    icon: const Icon(Icons.copy_rounded, color: Colors.white38, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () => _copyOutput(_activeIndex),
+                  ),
+                  const SizedBox(width: 8),
+                  // Add session
+                  IconButton(
+                    icon: const Icon(Icons.add_rounded, color: VegaTheme.accent, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _addSession,
+                  ),
+                  const SizedBox(width: 8),
+                  // Close button
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white38, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: widget.onClose ?? () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            if (_sessions.length > 1)
+              Container(
+                color: const Color(0xFF0F172A),
+                height: 34,
+                child: TabBar(
+                  controller: _tabController,
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  indicatorColor: VegaTheme.accent,
+                  indicatorWeight: 2,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white38,
+                  labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  tabs: _sessions.asMap().entries.map((e) {
+                    final i = e.key;
+                    final s = e.value;
+                    return Tab(
+                      child: GestureDetector(
+                        onLongPress: () => _renameSession(i),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 5, height: 5,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: s.connected ? Colors.greenAccent : Colors.redAccent,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(s.name),
+                            const SizedBox(width: 4),
+                            GestureDetector(
+                              onTap: () => _closeSession(i),
+                              child: const Icon(Icons.close_rounded, size: 12, color: Colors.white38),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            Expanded(child: terminalContent),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0F1A),
@@ -300,32 +472,27 @@ class _TerminalScreenState extends State<TerminalScreen>
           ],
         ),
         actions: [
-          // Reconnect
           if (!session.connected)
             IconButton(
               icon: const Icon(Icons.refresh_rounded, color: VegaTheme.accent),
               tooltip: 'Переподключить',
               onPressed: () => _connectSession(session),
             ),
-          // Clear
           IconButton(
             icon: const Icon(Icons.delete_sweep_rounded, color: Colors.white38),
             tooltip: 'Очистить',
             onPressed: () => _clearSession(_activeIndex),
           ),
-          // Copy all output
           IconButton(
             icon: const Icon(Icons.copy_rounded, color: Colors.white38),
             tooltip: 'Копировать вывод',
             onPressed: () => _copyOutput(_activeIndex),
           ),
-          // Add session
           IconButton(
             icon: const Icon(Icons.add_rounded, color: VegaTheme.accent),
             tooltip: 'Новая сессия',
             onPressed: _addSession,
           ),
-          // Status dot
           Padding(
             padding: const EdgeInsets.only(right: 14, left: 2),
             child: Center(
@@ -400,52 +567,7 @@ class _TerminalScreenState extends State<TerminalScreen>
               )
             : null,
       ),
-      body: Column(
-        children: [
-          // Shortcuts bar
-          Container(
-            height: 36,
-            color: VegaTheme.surface,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              itemCount: _shortcuts.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 6),
-              itemBuilder: (ctx, i) {
-                final s = _shortcuts[i];
-                return GestureDetector(
-                  onTap: () => _sendCommand(session, s['cmd']),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: VegaTheme.border),
-                    ),
-                    child: Text(
-                      s['label']!,
-                      style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // Terminal output
-          Expanded(
-            child: _sessions.length > 1
-                ? TabBarView(
-                    controller: _tabController,
-                    children: _sessions.map((s) => _buildSessionOutput(s)).toList(),
-                  )
-                : _buildSessionOutput(session),
-          ),
-
-          // Input bar
-          _buildInputBar(session),
-        ],
-      ),
+      body: terminalContent,
     );
   }
 
