@@ -103,6 +103,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _initAndLoad() async {
     final prefs = await SharedPreferences.getInstance();
     _client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
+    _client.apiKey = prefs.getString('api_key') ?? '';
     final workspaceRoot = prefs.getString('workspace_root') ?? '/root/workspace';
     
     setState(() {
@@ -731,6 +732,222 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  Future<void> _showInlineAiAssistant() async {
+    final selection = _codeCtrl.selection;
+    if (selection.start < 0 || selection.start == selection.end) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Пожалуйста, выделите участок кода для работы с ИИ'),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
+
+    final selectedText = _codeCtrl.text.substring(selection.start, selection.end);
+    final promptCtrl = TextEditingController();
+    
+    // Show request prompt dialog
+    final instruction = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Row(
+          children: [
+            Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 20),
+            SizedBox(width: 8),
+            Text('Изменить с помощью ИИ', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              maxHeight: 100,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: SingleChildScrollView(
+                child: Text(
+                  selectedText,
+                  style: const TextStyle(color: Colors.white54, fontFamily: 'monospace', fontSize: 11),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: promptCtrl,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Что изменить? (например, "оптимизируй", "добавь логирование")',
+                hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                filled: true,
+                fillColor: const Color(0xFF0F172A),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: VegaTheme.accent),
+            onPressed: () => Navigator.pop(ctx, promptCtrl.text.trim()),
+            child: const Text('Отправить'),
+          ),
+        ],
+      ),
+    );
+
+    if (instruction == null || instruction.isEmpty) return;
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        content: Row(
+          children: [
+            CircularProgressIndicator(color: VegaTheme.accent),
+            SizedBox(width: 16),
+            Text('ИИ генерирует код...', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final fullText = _codeCtrl.text;
+      final systemPrompt = 'Ты — профессиональный ИИ-ассистент разработчика, встроенный в мобильный редактор кода.\n'
+          'Тебе передан файл с кодом и выделенный участок кода.\n'
+          'Пользователь дал тебе команду изменить этот выделенный участок.\n'
+          'Верни ТОЛЬКО измененный выделенный участок кода. Не пиши никаких пояснений, введений, оберток markdown или другого кода, кроме самого измененного участка. Твой ответ должен быть готов к непосредственной вставке в файл на место выделенного куска.';
+      
+      final userPrompt = 'Полный файл:\n'
+          '[[[\n'
+          '$fullText\n'
+          ']]]\n\n'
+          'Выделенный участок для изменения:\n'
+          '[[[\n'
+          '$selectedText\n'
+          ']]]\n\n'
+          'Инструкция пользователя:\n'
+          '$instruction';
+
+      // Call API chat
+      final response = await _client.chat(
+        messages: [
+          {'role': 'system', 'content': systemPrompt},
+          {'role': 'user', 'content': userPrompt},
+        ],
+        model: 'openrouter/auto',
+      );
+
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      // Clean the response
+      var cleanResponse = response.trim();
+      if (cleanResponse.startsWith('```')) {
+        final lines = cleanResponse.split('\n');
+        if (lines.isNotEmpty && lines.first.startsWith('```')) {
+          lines.removeAt(0);
+        }
+        if (lines.isNotEmpty && lines.last.startsWith('```')) {
+          lines.removeLast();
+        }
+        cleanResponse = lines.join('\n');
+      }
+
+      // Show Diff / Accept-Reject preview
+      final accept = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: VegaTheme.surface,
+          title: const Text('Применить изменения ИИ?', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Сравнение кода:', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: SingleChildScrollView(
+                      child: RichText(
+                        text: TextSpan(
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11, height: 1.4),
+                          children: [
+                            const TextSpan(text: '--- БЫЛО:\n', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                            TextSpan(text: '$selectedText\n\n', style: TextStyle(color: Colors.redAccent.withOpacity(0.8))),
+                            const TextSpan(text: '+++ СТАЛО:\n', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                            TextSpan(text: '$cleanResponse\n', style: const TextStyle(color: Colors.greenAccent)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Отклонить', style: TextStyle(color: Colors.redAccent)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Принять'),
+            ),
+          ],
+        ),
+      );
+
+      if (accept == true) {
+        // Replace in controller
+        final start = selection.start;
+        final end = selection.end;
+        final newFullText = _codeCtrl.text.replaceRange(start, end, cleanResponse);
+        
+        _codeCtrl.value = TextEditingValue(
+          text: newFullText,
+          selection: TextSelection.collapsed(offset: start + cleanResponse.length),
+        );
+        
+        // Auto-save
+        await _saveFile();
+      }
+    } catch (e) {
+      // Close loading dialog if open
+      if (mounted) Navigator.pop(context);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка ИИ: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+  }
+
   void _insertSymbol(String symbol) {
     final text = _codeCtrl.text;
     final selection = _codeCtrl.selection;
@@ -935,6 +1152,11 @@ class _EditorScreenState extends State<EditorScreen> {
                   tooltip: 'Поиск и замена',
                 ),
                 IconButton(
+                  onPressed: _showInlineAiAssistant,
+                  icon: const Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 26),
+                  tooltip: 'Изменить с ИИ',
+                ),
+                IconButton(
                   onPressed: () {
                     setState(() {
                       _showTerminal = !_showTerminal;
@@ -954,7 +1176,12 @@ class _EditorScreenState extends State<EditorScreen> {
                   icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 24),
                   tooltip: 'Полноэкранный режим',
                 ),
-                 IconButton(
+                IconButton(
+                  onPressed: _showInlineAiAssistant,
+                  icon: const Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 26),
+                  tooltip: 'Изменить с ИИ',
+                ),
+                IconButton(
                   onPressed: _runCode,
                   icon: const Icon(Icons.play_arrow_rounded, color: Colors.greenAccent, size: 26),
                   tooltip: 'Запустить код',
@@ -1072,6 +1299,13 @@ class _EditorScreenState extends State<EditorScreen> {
                                 icon: Icon(Icons.search_rounded, color: _showSearchBar ? VegaTheme.accent : Colors.white, size: 20),
                                 onPressed: () => setState(() => _showSearchBar = !_showSearchBar),
                                 tooltip: 'Поиск и замена',
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
+                                icon: const Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 22),
+                                onPressed: _showInlineAiAssistant,
+                                tooltip: 'Изменить с ИИ',
                               ),
                               IconButton(
                                 constraints: const BoxConstraints(),
