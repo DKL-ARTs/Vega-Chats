@@ -624,22 +624,22 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: VegaTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.edit, color: VegaTheme.accent),
-              title: Text('Редактировать', style: TextStyle(color: VegaTheme.textPrimary)),
+              leading: const Icon(Icons.edit, color: VegaTheme.accent),
+              title: const Text('Редактировать', style: TextStyle(color: VegaTheme.textPrimary)),
               onTap: () {
                 Navigator.pop(ctx);
                 _editMessage(index, message['content'] ?? '');
               },
             ),
             ListTile(
-              leading: Icon(Icons.copy, color: VegaTheme.accent),
-              title: Text('Копировать', style: TextStyle(color: VegaTheme.textPrimary)),
+              leading: const Icon(Icons.copy, color: VegaTheme.accent),
+              title: const Text('Копировать', style: TextStyle(color: VegaTheme.textPrimary)),
               onTap: () {
                 Navigator.pop(ctx);
                 _copyMessage(message['content'] ?? '');
@@ -652,10 +652,130 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _editMessage(int index, String currentText) {
-    _controller.text = currentText;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Режим редактирования — введите новое сообщение'), duration: Duration(seconds: 2)),
+    final textController = TextEditingController(text: currentText);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Text('Редактировать сообщение', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16)),
+        content: TextField(
+          controller: textController,
+          maxLines: 6,
+          minLines: 1,
+          style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final newText = textController.text.trim();
+              if (newText.isNotEmpty) {
+                Navigator.pop(ctx);
+                await _submitEditedMessage(index, newText);
+              }
+            },
+            child: const Text('Отправить', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _submitEditedMessage(int userIndex, String newText) async {
+    if (_loading) return;
+    
+    setState(() {
+      _messages[userIndex]['content'] = newText;
+      while (_messages.length > userIndex + 1) {
+        _messages.removeLast();
+      }
+      _loading = true;
+    });
+
+    if (_currentChatId != null) {
+      await ChatHistory.updateAndTruncateMessages(_currentChatId!, userIndex, newText);
+    }
+
+    _startThinking();
+    try {
+      final msgs = _messages.sublist(0, userIndex + 1).map((m) =>
+        {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
+        
+      List<Map<String, String>>? regenFiles;
+      final userMsg = _messages[userIndex];
+      final filePaths = userMsg['filePaths'] as List<dynamic>? ?? [];
+      final fileNames = userMsg['fileNames'] as List<dynamic>? ?? [];
+      final singlePath = userMsg['filePath']?.toString() ?? '';
+      final singleName = userMsg['fileName']?.toString() ?? 'file';
+
+      if (filePaths.isNotEmpty) {
+        regenFiles = [];
+        for (int i = 0; i < filePaths.length; i++) {
+          try {
+            final bytes = await File(filePaths[i] as String).readAsBytes();
+            regenFiles.add({'name': fileNames.length > i ? fileNames[i] as String : 'file', 'content': base64Encode(bytes)});
+          } catch (_) {}
+        }
+        if (regenFiles.isEmpty) regenFiles = null;
+      } else if (userMsg['isImage'] != true && singlePath.isNotEmpty) {
+        try {
+          final bytes = await File(singlePath).readAsBytes();
+          regenFiles = [{'name': singleName, 'content': base64Encode(bytes)}];
+        } catch (_) {}
+      }
+
+      setState(() {
+        _messages.add({'role': 'assistant', 'content': ''});
+      });
+
+      final responseBuffer = StringBuffer();
+      bool firstChunk = true;
+      await _client.streamChat(
+        messages: msgs,
+        model: _model,
+        provider: _provider,
+        geminiApiKey: _geminiApiKey,
+        systemPrompt: _activeProjectPrompt,
+        files: regenFiles,
+        onChunk: (chunk) {
+          if (firstChunk) {
+            _stopThinking();
+            firstChunk = false;
+          }
+          responseBuffer.write(chunk);
+          if (mounted) {
+            setState(() {
+              _messages.last['content'] = responseBuffer.toString();
+            });
+          }
+        },
+        onError: (error) {
+          _stopThinking();
+          if (mounted) {
+            setState(() {
+              _messages.last['content'] = 'Error: $error';
+            });
+          }
+        },
+      );
+      _stopThinking();
+      final finalResponse = responseBuffer.toString();
+      if (_currentChatId != null && finalResponse.isNotEmpty) {
+        await ChatHistory.addMessage(_currentChatId!, 'assistant', finalResponse);
+      }
+    } catch (e) {
+      if (mounted) setState(() { _messages.last["content"] = "Error: $e"; });
+    } finally {
+      if (mounted) setState(() { _loading = false; _stopThinking(); });
+    }
   }
 
   Future<void> _deleteChat(int chatId) async {

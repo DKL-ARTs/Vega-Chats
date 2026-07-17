@@ -162,4 +162,29 @@ class ChatHistory {
       }
     }
   }
+
+  static Future<void> updateAndTruncateMessages(int chatId, int index, String newContent) async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString(_key);
+    if (data == null) return;
+    List<dynamic> chats;
+    try {
+      chats = jsonDecode(data) as List<dynamic>;
+    } catch (e) {
+      return;
+    }
+    for (int i = 0; i < chats.length; i++) {
+      if (chats[i] is Map && chats[i]['id'] == chatId) {
+        final chat = chats[i] as Map<String, dynamic>;
+        final messages = (chat['messages'] as List?) ?? [];
+        if (index >= 0 && index < messages.length) {
+          final newMessages = messages.sublist(0, index + 1);
+          newMessages.last['content'] = newContent;
+          chat['messages'] = newMessages;
+          await prefs.setString(_key, jsonEncode(chats));
+        }
+        return;
+      }
+    }
+  }
 }

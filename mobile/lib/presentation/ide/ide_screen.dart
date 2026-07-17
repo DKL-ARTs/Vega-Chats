@@ -1355,11 +1355,6 @@ class _IdeScreenState extends State<IdeScreen> {
                   }
 
                 case 'done':
-                  _chatMessages.add({
-                    'role': 'agent_done',
-                    'content': event['warning'] as String? ??
-                        'Готово за ${event['iterations'] ?? '?'} итераций',
-                  });
                   _chatLoading = false;
 
                 case 'error':
@@ -1477,9 +1472,6 @@ class _IdeScreenState extends State<IdeScreen> {
 
   void _copyMessage(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Сообщение скопировано'), duration: Duration(seconds: 1)),
-    );
   }
 
   void _showUserMessageMenu(BuildContext context, Map<String, dynamic> message, int index) {
@@ -1514,10 +1506,55 @@ class _IdeScreenState extends State<IdeScreen> {
   }
 
   void _editMessage(int index, String currentText) {
-    _chatInputCtrl.text = currentText;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Режим редактирования — введите новое сообщение'), duration: Duration(seconds: 2)),
+    final textController = TextEditingController(text: currentText);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        title: const Text('Редактировать сообщение', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16)),
+        content: TextField(
+          controller: textController,
+          maxLines: 6,
+          minLines: 1,
+          style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final newText = textController.text.trim();
+              if (newText.isNotEmpty) {
+                Navigator.pop(ctx);
+                await _submitEditedMessage(index, newText);
+              }
+            },
+            child: const Text('Отправить', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _submitEditedMessage(int userIndex, String newText) async {
+    if (_chatLoading) return;
+
+    setState(() {
+      _chatMessages[userIndex]['content'] = newText;
+    });
+
+    if (_ideChatId != null) {
+      await ChatHistory.updateAndTruncateMessages(_ideChatId!, userIndex, newText);
+    }
+
+    await _sendChatMessage(regenerateUserIndex: userIndex);
   }
 
   Widget _buildImagesRow(Map<String, dynamic> msg) {
