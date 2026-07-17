@@ -1,6 +1,6 @@
 name: vega_chat
 description: Vega Chat - AI-powered mobile IDE
-version: 0.2.0+2
+version: 0.3.0+3
 
 environment:
   sdk: ^3.4.0
