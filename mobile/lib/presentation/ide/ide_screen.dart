@@ -3455,6 +3455,7 @@ class _IdeScreenState extends State<IdeScreen> {
                         );
                       },
                     ),
+                  ),
             ),
           ),
 
