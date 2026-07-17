@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 
@@ -50,6 +51,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _editorWordWrap = true;
   bool _editorShowLineNumbers = true;
   bool _editorAutoCloseBrackets = true;
+  String _editorFontFamily = 'JetBrains Mono';
 
   // === TERMINAL STATE ===
   bool _showTerminal = false;
@@ -112,6 +114,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _editorWordWrap = prefs.getBool('editor_word_wrap') ?? true;
       _editorShowLineNumbers = prefs.getBool('editor_show_line_numbers') ?? true;
       _editorAutoCloseBrackets = prefs.getBool('editor_auto_close_brackets') ?? true;
+      _editorFontFamily = prefs.getString('editor_font_family') ?? 'JetBrains Mono';
       _currentPath = workspaceRoot;
       _codeCtrl.autoCloseBrackets = _editorAutoCloseBrackets;
     });
@@ -1381,11 +1384,9 @@ class _EditorScreenState extends State<EditorScreen> {
                                   child: Text(
                                     numberString,
                                     textAlign: TextAlign.right,
-                                    style: TextStyle(
+                                    style: _getEditorTextStyle().copyWith(
                                       color: VegaTheme.textSecondary.withOpacity(0.5),
-                                      fontFamily: 'monospace',
                                       fontSize: _editorFontSize - 1.0,
-                                      height: 1.5,
                                     ),
                                   ),
                                 );
@@ -1400,12 +1401,7 @@ class _EditorScreenState extends State<EditorScreen> {
                                     maxLines: null,
                                     expands: true,
                                     inputFormatters: _editorAutoCloseBrackets ? [AutoCloseBracketsFormatter()] : [],
-                                    style: TextStyle(
-                                      color: _getCodeTextColor(),
-                                      fontFamily: 'monospace',
-                                      fontSize: _editorFontSize,
-                                      height: 1.5,
-                                    ),
+                                    style: _getEditorTextStyle(),
                                     decoration: const InputDecoration(
                                       border: InputBorder.none,
                                       contentPadding: EdgeInsets.all(12),
@@ -1422,12 +1418,7 @@ class _EditorScreenState extends State<EditorScreen> {
                                         maxLines: null,
                                         expands: true,
                                         inputFormatters: _editorAutoCloseBrackets ? [AutoCloseBracketsFormatter()] : [],
-                                        style: TextStyle(
-                                          color: _getCodeTextColor(),
-                                          fontFamily: 'monospace',
-                                          fontSize: _editorFontSize,
-                                          height: 1.5,
-                                        ),
+                                        style: _getEditorTextStyle(),
                                         decoration: const InputDecoration(
                                           border: InputBorder.none,
                                           contentPadding: EdgeInsets.all(12),
@@ -1925,6 +1916,26 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  TextStyle _getEditorTextStyle() {
+    final baseStyle = TextStyle(
+      fontSize: _editorFontSize,
+      height: 1.5,
+      color: _getCodeTextColor(),
+    );
+    switch (_editorFontFamily) {
+      case 'JetBrains Mono':
+        return GoogleFonts.jetbrainsMono(textStyle: baseStyle);
+      case 'Fira Code':
+        return GoogleFonts.firaCode(textStyle: baseStyle);
+      case 'Source Code Pro':
+        return GoogleFonts.sourceCodePro(textStyle: baseStyle);
+      case 'Roboto Mono':
+        return GoogleFonts.robotoMono(textStyle: baseStyle);
+      default:
+        return baseStyle.copyWith(fontFamily: 'monospace');
+    }
+  }
+
   Color _getEditorBgColor() {
     switch (_editorTheme) {
       case 'oled':
@@ -2036,7 +2047,27 @@ class _EditorScreenState extends State<EditorScreen> {
                         _saveSetting('editor_font_size', val);
                       },
                     ),
+                    const SizedBox(height: 12),
+                    const Text('Шрифт редактора', style: TextStyle(color: Colors.white70, fontSize: 12)),
                     const SizedBox(height: 8),
+                    SizedBox(
+                      height: 32,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          _buildFontButton(setModalState, 'JetBrains Mono', 'JetBrains'),
+                          const SizedBox(width: 8),
+                          _buildFontButton(setModalState, 'Fira Code', 'Fira Code'),
+                          const SizedBox(width: 8),
+                          _buildFontButton(setModalState, 'Source Code Pro', 'Source Code'),
+                          const SizedBox(width: 8),
+                          _buildFontButton(setModalState, 'Roboto Mono', 'Roboto'),
+                          const SizedBox(width: 8),
+                          _buildFontButton(setModalState, 'monospace', 'System'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     SwitchListTile(
                       title: const Text('Перенос строк (Word Wrap)', style: TextStyle(color: Colors.white, fontSize: 13)),
                       value: _editorWordWrap,
@@ -2121,6 +2152,42 @@ class _EditorScreenState extends State<EditorScreen> {
             color: isSelected ? Colors.white : Colors.white60,
             fontSize: 10.5,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFontButton(StateSetter setModalState, String fontKey, String label) {
+    final isSelected = _editorFontFamily == fontKey;
+    return GestureDetector(
+      onTap: () {
+        setModalState(() {
+          _editorFontFamily = fontKey;
+        });
+        setState(() {
+          _editorFontFamily = fontKey;
+        });
+        _saveSetting('editor_font_family', fontKey);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? VegaTheme.accent : Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? VegaTheme.accent : Colors.white24,
+            width: 1,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ),
