@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 
@@ -69,6 +70,7 @@ class _EditorScreenState extends State<EditorScreen> {
   String _saveStatus = 'saved'; // 'saved' | 'saving' | 'error'
   String _lastSavedContent = '';
   List<String> _autocompleteSuggestions = [];
+  bool _showMarkdownPreview = false; // Markdown preview mode for .md files
 
   @override
   void initState() {
@@ -1089,6 +1091,21 @@ class _EditorScreenState extends State<EditorScreen> {
                 ],
               ),
               actions: [
+                // Markdown preview toggle — shown only for .md files
+                if (_activePath.toLowerCase().endsWith('.md'))
+                  IconButton(
+                    onPressed: () => setState(() => _showMarkdownPreview = !_showMarkdownPreview),
+                    icon: Icon(
+                      _showMarkdownPreview
+                          ? Icons.code_rounded
+                          : Icons.visibility_rounded,
+                      color: _showMarkdownPreview
+                          ? const Color(0xFFF59E0B)
+                          : Colors.white70,
+                      size: 22,
+                    ),
+                    tooltip: _showMarkdownPreview ? 'Редактор' : 'Просмотр MD',
+                  ),
                 IconButton(
                   onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
                   icon: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 24),
@@ -1358,6 +1375,59 @@ class _EditorScreenState extends State<EditorScreen> {
                   if (_showSearchBar)
                     _buildSearchBar(),
                   _buildTabBar(),
+                  // Markdown Preview or Code Editor
+                  if (_showMarkdownPreview && _activePath.toLowerCase().endsWith('.md'))
+                    Expanded(
+                      child: Container(
+                        margin: _isFullscreen ? const EdgeInsets.all(2) : const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D1117),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: VegaTheme.border, width: 0.5),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(20),
+                            child: MarkdownBody(
+                              data: _codeCtrl.text,
+                              styleSheet: MarkdownStyleSheet(
+                                h1: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
+                                h2: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                                h3: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                                p: const TextStyle(color: Color(0xFFCDD9E5), fontSize: 14, height: 1.7),
+                                code: TextStyle(
+                                  color: const Color(0xFFF59E0B),
+                                  backgroundColor: const Color(0xFF161B22),
+                                  fontFamily: 'monospace',
+                                  fontSize: 13,
+                                ),
+                                codeblockDecoration: BoxDecoration(
+                                  color: const Color(0xFF161B22),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.white10),
+                                ),
+                                blockquoteDecoration: BoxDecoration(
+                                  border: Border(left: BorderSide(color: VegaTheme.accent, width: 4)),
+                                  color: VegaTheme.accent.withOpacity(0.05),
+                                ),
+                                blockquote: const TextStyle(color: Color(0xFFCDD9E5), fontSize: 14),
+                                strong: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                em: const TextStyle(color: Color(0xFFCDD9E5), fontStyle: FontStyle.italic),
+                                a: const TextStyle(color: Color(0xFF58A6FF)),
+                                tableHead: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                tableBody: const TextStyle(color: Color(0xFFCDD9E5)),
+                                listBullet: const TextStyle(color: Color(0xFFF59E0B)),
+                                horizontalRuleDecoration: BoxDecoration(
+                                  border: Border(top: BorderSide(color: Colors.white12, width: 1)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
                   Expanded(
                     child: Container(
                       margin: _isFullscreen ? const EdgeInsets.all(2) : const EdgeInsets.all(12),

@@ -42,7 +42,7 @@ class _IdeScreenState extends State<IdeScreen> {
   final Map<String, String> _originalFileContents = {};
 
   // === GIT STATE ===
-  String _activeDrawerTab = 'files'; // 'files' | 'phone' | 'git'
+  String _activeDrawerTab = 'files'; // 'files' | 'phone' | 'git' | 'search'
   List<Map<String, dynamic>> _gitFiles = [];
   bool _gitLoading = false;
   bool _gitIsRepo = true;
@@ -50,6 +50,13 @@ class _IdeScreenState extends State<IdeScreen> {
   bool _gitPushing = false;
   List<String> _gitBranches = [];
   String _gitCurrentBranch = 'main';
+
+  // === SEARCH STATE ===
+  final _searchCtrl = TextEditingController();
+  bool _searchLoading = false;
+  List<Map<String, dynamic>> _searchResults = [];
+  String _searchError = '';
+  String _lastSearchQuery = '';
 
   // === AI DEV CHAT STATE ===
   int? _ideChatId;
@@ -1894,6 +1901,39 @@ class _IdeScreenState extends State<IdeScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _activeDrawerTab = 'search'),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _activeDrawerTab == 'search' ? const Color(0xFFF59E0B) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _activeDrawerTab == 'search' ? const Color(0xFFF59E0B) : Colors.white10,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.search_rounded, size: 12,
+                              color: _activeDrawerTab == 'search' ? Colors.white : VegaTheme.textSecondary),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Поиск',
+                              style: TextStyle(
+                                color: _activeDrawerTab == 'search' ? Colors.white : VegaTheme.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -2192,10 +2232,268 @@ class _IdeScreenState extends State<IdeScreen> {
                             }
                           },
                         )
-                      : _buildGitTab(),
+                      : _activeDrawerTab == 'git'
+                          ? _buildGitTab()
+                          : _buildSearchTab(),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _runSearch() async {
+    final query = _searchCtrl.text.trim();
+    if (query.isEmpty) return;
+    setState(() {
+      _searchLoading = true;
+      _searchError = '';
+      _searchResults = [];
+      _lastSearchQuery = query;
+    });
+    try {
+      final res = await _client.searchInFiles(query, cwd: _currentPath);
+      if (res['ok'] == true) {
+        setState(() {
+          _searchResults = List<Map<String, dynamic>>.from(res['results'] ?? []);
+        });
+      } else {
+        setState(() => _searchError = res['error'] ?? 'Ошибка поиска');
+      }
+    } catch (e) {
+      setState(() => _searchError = e.toString());
+    } finally {
+      setState(() => _searchLoading = false);
+    }
+  }
+
+  Widget _buildSearchTab() {
+    return Column(
+      children: [
+        // Search input
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: TextField(
+                    controller: _searchCtrl,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Поиск по проекту...',
+                      hintStyle: TextStyle(color: VegaTheme.textSecondary, fontSize: 13),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                      prefixIcon: Icon(Icons.search_rounded, size: 16, color: VegaTheme.textSecondary),
+                    ),
+                    onSubmitted: (_) => _runSearch(),
+                    textInputAction: TextInputAction.search,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: _runSearch,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: _searchLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.search_rounded, color: Colors.white, size: 18),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Error
+        if (_searchError.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Text(_searchError,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+          ),
+        // Stats
+        if (_searchResults.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline_rounded, size: 12, color: VegaTheme.textSecondary),
+                const SizedBox(width: 4),
+                Text(
+                  '${_searchResults.length} файл(ов) для "$_lastSearchQuery"',
+                  style: TextStyle(color: VegaTheme.textSecondary, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        // Empty state
+        if (_searchResults.isEmpty && !_searchLoading && _lastSearchQuery.isNotEmpty && _searchError.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Icon(Icons.search_off_rounded, size: 40, color: VegaTheme.textSecondary.withOpacity(0.4)),
+                const SizedBox(height: 8),
+                Text('Ничего не найдено', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13)),
+              ],
+            ),
+          ),
+        if (_searchResults.isEmpty && !_searchLoading && _lastSearchQuery.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Icon(Icons.manage_search_rounded, size: 40, color: VegaTheme.textSecondary.withOpacity(0.3)),
+                const SizedBox(height: 8),
+                Text('Введите запрос для поиска\nпо всем файлам проекта',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
+              ],
+            ),
+          ),
+        // Results list
+        Expanded(
+          child: ListView.builder(
+            itemCount: _searchResults.length,
+            itemBuilder: (context, i) {
+              final fileResult = _searchResults[i];
+              final fileName = fileResult['file'] as String? ?? '';
+              final fullPath = fileResult['full_path'] as String? ?? '';
+              final matches = List<Map<String, dynamic>>.from(fileResult['matches'] ?? []);
+              return Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                  childrenPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Icon(Icons.insert_drive_file_rounded,
+                        size: 12, color: Color(0xFFF59E0B)),
+                  ),
+                  title: Text(
+                    fileName,
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('${matches.length}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10)),
+                  ),
+                  initiallyExpanded: _searchResults.length <= 3,
+                  children: matches.map((match) {
+                    final lineNum = match['line'] as int? ?? 0;
+                    final content = match['content'] as String? ?? '';
+                    // Highlight the query
+                    final query = _lastSearchQuery;
+                    return GestureDetector(
+                      onTap: () async {
+                        Navigator.pop(context); // close drawer
+                        final fileContent = await _client.readFile(fullPath);
+                        if (!mounted) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EditorScreen(
+                              fileName: fileName.split('/').last,
+                              initialContent: fileContent['content'] as String? ?? '',
+                              filePath: fullPath,
+                              client: _client,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.03),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$lineNum',
+                              style: TextStyle(
+                                color: const Color(0xFFF59E0B).withOpacity(0.7),
+                                fontSize: 10,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildHighlightedLine(content, query),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHighlightedLine(String text, String query) {
+    if (query.isEmpty) {
+      return Text(text,
+          style: const TextStyle(color: Colors.white60, fontSize: 11, fontFamily: 'monospace'),
+          overflow: TextOverflow.ellipsis);
+    }
+    final lowerText = text.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    final idx = lowerText.indexOf(lowerQuery);
+    if (idx == -1) {
+      return Text(text,
+          style: const TextStyle(color: Colors.white60, fontSize: 11, fontFamily: 'monospace'),
+          overflow: TextOverflow.ellipsis);
+    }
+    return RichText(
+      overflow: TextOverflow.ellipsis,
+      text: TextSpan(
+        style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+        children: [
+          TextSpan(text: text.substring(0, idx),
+              style: const TextStyle(color: Colors.white60)),
+          TextSpan(
+            text: text.substring(idx, idx + query.length),
+            style: const TextStyle(
+              color: Color(0xFFF59E0B),
+              backgroundColor: Color(0x33F59E0B),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          TextSpan(text: text.substring(idx + query.length),
+              style: const TextStyle(color: Colors.white60)),
+        ],
       ),
     );
   }

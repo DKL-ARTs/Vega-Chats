@@ -210,6 +210,15 @@ class ApiClient {
     return jsonDecode(resp.body);
   }
 
+  Future<Map<String, dynamic>> searchInFiles(String query, {String? cwd}) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/files/search'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'query': query, if (cwd != null) 'cwd': cwd}),
+    );
+    return jsonDecode(resp.body);
+  }
+
   Future<String> chat({
     required List<Map<String, dynamic>> messages,
     String model = 'openrouter/auto',

@@ -308,3 +308,56 @@ async def git_pull(req: GitCommitReq):
         return {"ok": True, "stdout": res.stdout.strip()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+class SearchReq(BaseModel):
+    query: str
+    cwd: str = None
+    extensions: list = None  # e.g. ['.py', '.dart', '.js']
+
+@router.post("/files/search")
+async def search_in_files(req: SearchReq):
+    search_root = safe_path(req.cwd) if req.cwd else Path(settings.workspace_root)
+    if not search_root.exists():
+        return {"ok": False, "error": "Directory not found"}
+    try:
+        # Build grep command
+        cmd = ["grep", "-r", "-n", "--include=*", "-l", req.query, str(search_root)]
+        # First get matching files
+        files_res = subprocess.run(
+            ["grep", "-r", "-l", "--include=*", req.query, str(search_root)],
+            capture_output=True, text=True, timeout=10
+        )
+        matching_files = [f for f in files_res.stdout.strip().split("\n") if f]
+        
+        results = []
+        for file_path in matching_files[:30]:  # Cap at 30 files
+            try:
+                # Get matching lines in this file
+                lines_res = subprocess.run(
+                    ["grep", "-n", req.query, file_path],
+                    capture_output=True, text=True, timeout=5
+                )
+                matches = []
+                for line in lines_res.stdout.strip().split("\n"):
+                    if line and ":" in line:
+                        parts = line.split(":", 1)
+                        try:
+                            line_num = int(parts[0])
+                            line_content = parts[1].strip() if len(parts) > 1 else ""
+                            matches.append({"line": line_num, "content": line_content[:200]})
+                        except ValueError:
+                            pass
+                if matches:
+                    rel_path = file_path.replace(str(search_root) + "/", "")
+                    results.append({
+                        "file": rel_path,
+                        "full_path": file_path,
+                        "matches": matches[:10]  # Cap at 10 matches per file
+                    })
+            except Exception:
+                pass
+        return {"ok": True, "results": results, "total": len(results)}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "Search timeout — попробуйте более конкретный запрос"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
