@@ -767,7 +767,7 @@ class _EditorScreenState extends State<EditorScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Container(
-              maxHeight: 100,
+              constraints: const BoxConstraints(maxHeight: 100),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: const Color(0xFF0F172A),
@@ -1924,7 +1924,7 @@ class _EditorScreenState extends State<EditorScreen> {
     );
     switch (_editorFontFamily) {
       case 'JetBrains Mono':
-        return GoogleFonts.jetbrainsMono(textStyle: baseStyle);
+        return GoogleFonts.jetBrainsMono(textStyle: baseStyle);
       case 'Fira Code':
         return GoogleFonts.firaCode(textStyle: baseStyle);
       case 'Source Code Pro':

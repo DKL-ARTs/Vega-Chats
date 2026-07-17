@@ -557,7 +557,7 @@ class _IdeScreenState extends State<IdeScreen> {
                         child: Text('Загрузка веток...', style: TextStyle(color: Colors.white30, fontSize: 12)),
                       )
                     : Container(
-                        maxHeight: 120,
+                        constraints: const BoxConstraints(maxHeight: 120),
                         decoration: BoxDecoration(
                           color: const Color(0xFF0F172A),
                           borderRadius: BorderRadius.circular(6),
@@ -630,7 +630,10 @@ class _IdeScreenState extends State<IdeScreen> {
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, isDense: true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      ),
                       onPressed: () async {
                         final newBranch = newBranchCtrl.text.trim();
                         if (newBranch.isNotEmpty) {
