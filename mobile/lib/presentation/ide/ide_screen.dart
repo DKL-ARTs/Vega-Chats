@@ -1200,12 +1200,10 @@ class _IdeScreenState extends State<IdeScreen> {
       _chatLoading = true;
       _cancelStream = false;
     });
-
     _chatInputCtrl.clear();
 
     String msgContent = text;
     final List<Map<String, String>> files = [];
-
     String firstFilePath = '';
     String firstFileName = '';
     bool firstIsImage = false;
@@ -1221,7 +1219,6 @@ class _IdeScreenState extends State<IdeScreen> {
       final path = f['path'] as String;
       final name = f['name'] as String;
       final isImg = f['isImage'] == true;
-
       final bytes = await File(path).readAsBytes();
       if (isImg) {
         final ext = name.split('.').last.toLowerCase();
@@ -1244,7 +1241,7 @@ class _IdeScreenState extends State<IdeScreen> {
         .map((f) => f['name'] as String)
         .toList();
 
-    // Lazy chat creation: create on first message if no chat exists yet
+    // Lazy chat creation
     if (_ideChatId == null) {
       final displayText = text.isNotEmpty ? text : msgContent;
       final title = displayText.length > 30 ? '${displayText.substring(0, 30)}...' : displayText;
@@ -1255,7 +1252,6 @@ class _IdeScreenState extends State<IdeScreen> {
       await _loadIdeChats();
     }
 
-    // Save user message to history
     await ChatHistory.addMessage(
       _ideChatId!, 'user', msgContent,
       filePath: firstFilePath, fileName: firstFileName, isImage: firstIsImage,
@@ -1275,86 +1271,169 @@ class _IdeScreenState extends State<IdeScreen> {
     });
     _scrollChatToBottom();
 
-    // Prepare system instructions for IDE Agent
-    const ideSystemPrompt = 
-        "Ты — высококлассный Senior Full-Stack разработчик и искусственный интеллект-ассистент, встроенный в IDE среду Vega.\n"
-        "Твоя задача — писать идеальный, рабочий, готовый к запуску код для проекта в папке /root/workspace.\n"
-        "Ты можешь создавать/обновлять файлы, используя блоки:\n"
-        "[WRITE_FILE:путь_к_файлу]\nсодержимое\n[/WRITE_FILE]\n\n"
-        "А также запускать любые команды в терминале, выводя их в формате:\n"
-        "<execute_command>команда</execute_command>\n"
-        "Никогда не урезай код. Пиши его полностью.";
-
     final prefs = await SharedPreferences.getInstance();
+    final geminiKey = prefs.getString('gemini_api_key') ?? '';
+
+    // ── AGENT MODE (Gemini function calling) ──
+    if (geminiKey.isNotEmpty) {
+      try {
+        await _client.runAgent(
+          task: msgContent,
+          cwd: _currentPath,
+          geminiApiKey: geminiKey,
+          onEvent: (event) {
+            if (!mounted || _cancelStream) return;
+            final type = event['type'] as String? ?? '';
+
+            setState(() {
+              switch (type) {
+                case 'tool_call':
+                  _chatMessages.add({
+                    'role': 'tool_call',
+                    'tool': event['tool'] ?? '',
+                    'args': event['args'] ?? {},
+                    'content': _describeToolCall(
+                      event['tool'] as String? ?? '',
+                      (event['args'] as Map?)?.cast<String, dynamic>() ?? {},
+                    ),
+                  });
+
+                case 'tool_result':
+                  _chatMessages.add({
+                    'role': 'tool_result',
+                    'tool': event['tool'] ?? '',
+                    'content': event['result'] ?? '',
+                  });
+
+                case 'message':
+                  final content = event['content'] as String? ?? '';
+                  if (content.isNotEmpty) {
+                    // Append to last assistant message or create new
+                    if (_chatMessages.isNotEmpty && _chatMessages.last['role'] == 'assistant') {
+                      _chatMessages.last['content'] = (_chatMessages.last['content'] ?? '') + content;
+                    } else {
+                      _chatMessages.add({'role': 'assistant', 'content': content});
+                    }
+                  }
+
+                case 'done':
+                  _chatMessages.add({
+                    'role': 'agent_done',
+                    'content': event['warning'] as String? ??
+                        'Готово за ${event['iterations'] ?? '?'} итераций',
+                  });
+                  _chatLoading = false;
+
+                case 'error':
+                  _chatMessages.add({
+                    'role': 'assistant',
+                    'content': '❌ ${event['message'] ?? 'Ошибка агента'}',
+                  });
+                  _chatLoading = false;
+              }
+            });
+            _scrollChatToBottom();
+          },
+          onError: (err) {
+            if (!mounted) return;
+            setState(() {
+              _chatMessages.add({'role': 'assistant', 'content': '❌ $err'});
+              _chatLoading = false;
+            });
+          },
+        );
+
+        // Save final assistant text to history
+        final lastAssistant = _chatMessages.lastWhere(
+          (m) => m['role'] == 'assistant',
+          orElse: () => {'content': ''},
+        );
+        final finalResponse = lastAssistant['content'] as String? ?? '';
+        if (finalResponse.isNotEmpty) {
+          await ChatHistory.addMessage(_ideChatId!, 'assistant', finalResponse);
+          await _processWriteFiles(finalResponse);
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _chatMessages.add({'role': 'assistant', 'content': '❌ $e'});
+            _chatLoading = false;
+          });
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _chatLoading = false);
+          _scrollChatToBottom();
+        }
+      }
+      return;
+    }
+
+    // ── FALLBACK: regular streamChat (no Gemini key) ──
+    const ideSystemPrompt =
+        'Ты — Senior Full-Stack разработчик в IDE Vega.\n'
+        'Пиши полный, рабочий код. Никогда не урезай.\n'
+        'Для файлов используй: [WRITE_FILE:путь]\nкод\n[/WRITE_FILE]\n'
+        'Для команд: <execute_command>команда</execute_command>';
+
     final provider = prefs.getString('provider') ?? 'openrouter';
     final savedModel = prefs.getString('model') ?? 'openrouter/auto';
     final model = prefs.getString('model_for_backend') ?? savedModel;
-    final geminiKey = prefs.getString('gemini_api_key') ?? '';
 
-    // Convert messages for API call
-    final messagesForApi = _chatMessages.map((m) => {
-      'role': m['role'].toString(),
-      'content': m['content'].toString(),
-    }).toList();
+    final messagesForApi = _chatMessages
+        .where((m) => m['role'] == 'user' || m['role'] == 'assistant')
+        .map((m) => {'role': m['role'].toString(), 'content': m['content'].toString()})
+        .toList();
 
-    // Insert assistant message placeholder
-    setState(() {
-      _chatMessages.add({'role': 'assistant', 'content': ''});
-    });
-
+    setState(() => _chatMessages.add({'role': 'assistant', 'content': ''}));
     final responseBuffer = StringBuffer();
-    bool firstChunk = true;
 
     try {
       await _client.streamChat(
         messages: messagesForApi,
         model: model,
         provider: provider,
-        geminiApiKey: geminiKey,
         systemPrompt: ideSystemPrompt,
         files: files.isEmpty ? null : files,
         onChunk: (chunk) {
-          if (_cancelStream) return;
-          if (firstChunk) {
-            firstChunk = false;
-          }
+          if (_cancelStream || !mounted) return;
           responseBuffer.write(chunk);
-          if (mounted) {
-            setState(() {
-              _chatMessages.last['content'] = responseBuffer.toString();
-            });
-            _scrollChatToBottom();
-          }
+          setState(() => _chatMessages.last['content'] = responseBuffer.toString());
+          _scrollChatToBottom();
         },
         onError: (err) {
-          if (mounted) {
-            setState(() {
-              _chatMessages.last['content'] = 'Ошибка: $err';
-              _chatLoading = false;
-            });
-          }
+          if (mounted) setState(() {
+            _chatMessages.last['content'] = 'Ошибка: $err';
+            _chatLoading = false;
+          });
         },
       );
 
       final finalResponse = responseBuffer.toString();
       if (finalResponse.isNotEmpty) {
         await ChatHistory.addMessage(_ideChatId!, 'assistant', finalResponse);
-        // Auto-save any [WRITE_FILE:...] blocks to workspace
         await _processWriteFiles(finalResponse);
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _chatMessages.last['content'] = 'Ошибка запроса: $e';
-        });
-      }
+      if (mounted) setState(() => _chatMessages.last['content'] = 'Ошибка: $e');
     } finally {
       if (mounted) {
-        setState(() {
-          _chatLoading = false;
-        });
+        setState(() => _chatLoading = false);
         _scrollChatToBottom();
       }
+    }
+  }
+
+  String _describeToolCall(String tool, Map<String, dynamic> args) {
+    switch (tool) {
+      case 'read_file': return args['path'] ?? '';
+      case 'write_file': return args['path'] ?? '';
+      case 'list_files': return args['path'] ?? '';
+      case 'run_command': return args['command'] ?? '';
+      case 'create_directory': return args['path'] ?? '';
+      case 'delete_file': return args['path'] ?? '';
+      case 'search_in_files': return '"${args['query']}" в ${args['path'] ?? ''}';
+      default: return args.values.join(', ');
     }
   }
 
@@ -1661,6 +1740,46 @@ class _IdeScreenState extends State<IdeScreen> {
   // ==========================================
   // === UI BUILDERS ===
   // ==========================================
+
+  Color _agentToolColor(String tool) {
+    switch (tool) {
+      case 'read_file': return const Color(0xFF38BDF8);
+      case 'write_file': return const Color(0xFF4ADE80);
+      case 'list_files': return const Color(0xFFF59E0B);
+      case 'run_command': return const Color(0xFFA78BFA);
+      case 'create_directory': return const Color(0xFF34D399);
+      case 'delete_file': return const Color(0xFFF87171);
+      case 'search_in_files': return const Color(0xFFFBBF24);
+      default: return VegaTheme.accent;
+    }
+  }
+
+  IconData _agentToolIcon(String tool) {
+    switch (tool) {
+      case 'read_file': return Icons.visibility_rounded;
+      case 'write_file': return Icons.edit_rounded;
+      case 'list_files': return Icons.folder_open_rounded;
+      case 'run_command': return Icons.terminal_rounded;
+      case 'create_directory': return Icons.create_new_folder_rounded;
+      case 'delete_file': return Icons.delete_rounded;
+      case 'search_in_files': return Icons.search_rounded;
+      default: return Icons.build_rounded;
+    }
+  }
+
+  String _agentToolLabel(String tool) {
+    switch (tool) {
+      case 'read_file': return 'READ';
+      case 'write_file': return 'WRITE';
+      case 'list_files': return 'LIST';
+      case 'run_command': return 'RUN';
+      case 'create_directory': return 'MKDIR';
+      case 'delete_file': return 'DELETE';
+      case 'search_in_files': return 'SEARCH';
+      default: return tool.toUpperCase();
+    }
+  }
+
   Widget _buildWelcomeScreen() {
     final suggestions = [
       {'icon': '💻', 'text': 'Создать файл index.html', 'prompt': 'Создай простой файл index.html с базовой разметкой'},
@@ -2936,54 +3055,46 @@ class _IdeScreenState extends State<IdeScreen> {
               tooltip: 'Консоль',
             ),
             const SizedBox(width: 8),
-            const Text(
-              'Режим IDE',
-              style: TextStyle(
-                color: VegaTheme.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                letterSpacing: -0.5,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Режим IDE',
+                  style: TextStyle(
+                    color: VegaTheme.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFF22C55E),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'AI Agent',
+                      style: TextStyle(
+                        color: Color(0xFF6366F1),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
         actions: [
-          // Agent mode button
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AgentScreen(
-                    client: _client,
-                    initialCwd: _currentPath,
-                  ),
-                ),
-              );
-            },
-            child: Container(
-              margin: const EdgeInsets.only(right: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.smart_toy_rounded, color: Colors.white, size: 14),
-                  SizedBox(width: 4),
-                  Text('Агент',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-          ),
           IconButton(
             icon: const Icon(Icons.arrow_forward_ios_rounded, color: VegaTheme.textPrimary, size: 20),
             onPressed: () => Navigator.pop(context),
@@ -3020,7 +3131,115 @@ class _IdeScreenState extends State<IdeScreen> {
                         }
                         
                         final msg = _chatMessages[idx];
-                        final isUser = msg['role'] == 'user';
+                        final role = msg['role'] as String? ?? '';
+                        final isUser = role == 'user';
+
+                        // ── Tool Call chip ──
+                        if (role == 'tool_call') {
+                          final tool = msg['tool'] as String? ?? '';
+                          final desc = msg['content'] as String? ?? '';
+                          final color = _agentToolColor(tool);
+                          final icon = _agentToolIcon(tool);
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: color.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: color.withOpacity(0.35)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(icon, color: color, size: 12),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        _agentToolLabel(tool),
+                                        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.3),
+                                      ),
+                                      if (desc.isNotEmpty) ...[
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            desc,
+                                            style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace'),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        // ── Tool Result (collapsible) ──
+                        if (role == 'tool_result') {
+                          final result = msg['content'] as String? ?? '';
+                          final preview = result.length > 120 ? result.substring(0, 120) + '…' : result;
+                          return Theme(
+                            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                            child: ExpansionTile(
+                              dense: true,
+                              tilePadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                              childrenPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.chevron_right_rounded, color: Colors.white24, size: 14),
+                              title: Text(
+                                preview,
+                                style: const TextStyle(color: Colors.white30, fontSize: 11, fontFamily: 'monospace'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: const SizedBox.shrink(),
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  margin: const EdgeInsets.only(bottom: 4),
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0D1117),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    result,
+                                    style: const TextStyle(color: Colors.white54, fontSize: 11, fontFamily: 'monospace'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        // ── Agent Done banner ──
+                        if (role == 'agent_done') {
+                          return Container(
+                            margin: const EdgeInsets.symmetric(vertical: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF22C55E).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF22C55E).withOpacity(0.35)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 15),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    msg['content'] as String? ?? 'Готово',
+                                    style: const TextStyle(color: Color(0xFF22C55E), fontSize: 12, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
                         final content = msg['content'] ?? '';
                         final cleanContent = _cleanMessageContent(content);
                         final cmd = _extractCommand(content);
