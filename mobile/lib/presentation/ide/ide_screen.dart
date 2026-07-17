@@ -1189,86 +1189,124 @@ class _IdeScreenState extends State<IdeScreen> {
     _loadChatMessages();
   }
 
-  Future<void> _sendChatMessage() async {
-    final text = _chatInputCtrl.text.trim();
-    if (text.isEmpty && _attachedFiles.isEmpty) return;
-    if (_chatLoading) return;
-
-    final attachedSnapshot = List<Map<String, dynamic>>.from(_attachedFiles);
-    setState(() {
-      _attachedFiles.clear();
-      _chatLoading = true;
-      _cancelStream = false;
-    });
-    _chatInputCtrl.clear();
-
-    String msgContent = text;
-    final List<Map<String, String>> files = [];
+  Future<void> _sendChatMessage({int? regenerateUserIndex}) async {
+    String msgContent = '';
+    List<Map<String, String>> files = [];
     String firstFilePath = '';
     String firstFileName = '';
     bool firstIsImage = false;
+    List<String> allFilePaths = [];
+    List<String> allFileNames = [];
 
-    if (attachedSnapshot.isNotEmpty) {
-      final first = attachedSnapshot.first;
-      firstFilePath = first['path'] ?? '';
-      firstFileName = first['name'] ?? '';
-      firstIsImage = first['isImage'] == true;
-    }
-
-    for (final f in attachedSnapshot) {
-      final path = f['path'] as String;
-      final name = f['name'] as String;
-      final isImg = f['isImage'] == true;
-      final bytes = await File(path).readAsBytes();
-      if (isImg) {
-        final ext = name.split('.').last.toLowerCase();
-        final mime = ext == 'png' ? 'image/png' : (ext == 'gif' ? 'image/gif' : 'image/jpeg');
-        final b64 = base64Encode(bytes);
-        msgContent = msgContent.isEmpty
-            ? '![image](data:$mime;base64,$b64)'
-            : '$msgContent\n\n![image](data:$mime;base64,$b64)';
-      } else {
-        files.add({'name': name, 'content': base64Encode(bytes)});
-      }
-    }
-
-    final List<String> allFilePaths = attachedSnapshot
-        .where((f) => f['isImage'] != true)
-        .map((f) => f['path'] as String)
-        .toList();
-    final List<String> allFileNames = attachedSnapshot
-        .where((f) => f['isImage'] != true)
-        .map((f) => f['name'] as String)
-        .toList();
-
-    // Lazy chat creation
-    if (_ideChatId == null) {
-      final displayText = text.isNotEmpty ? text : msgContent;
-      final title = displayText.length > 30 ? '${displayText.substring(0, 30)}...' : displayText;
-      final chatId = await ChatHistory.createChat(title, projectId: 'ide');
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('ide_chat_id', chatId);
-      setState(() => _ideChatId = chatId);
-      await _loadIdeChats();
-    }
-
-    await ChatHistory.addMessage(
-      _ideChatId!, 'user', msgContent,
-      filePath: firstFilePath, fileName: firstFileName, isImage: firstIsImage,
-      filePaths: allFilePaths, fileNames: allFileNames,
-    );
-
-    setState(() {
-      _chatMessages.add({
-        'role': 'user',
-        'content': msgContent,
-        'filePath': firstFilePath,
-        'fileName': firstFileName,
-        'isImage': firstIsImage,
-        'filePaths': allFilePaths,
-        'fileNames': allFileNames,
+    if (regenerateUserIndex != null) {
+      if (_chatLoading) return;
+      setState(() {
+        _chatLoading = true;
+        _cancelStream = false;
       });
-    });
+
+      final userMsg = _chatMessages[regenerateUserIndex];
+      msgContent = userMsg['content'] as String? ?? '';
+      firstFilePath = userMsg['filePath'] as String? ?? '';
+      firstFileName = userMsg['fileName'] as String? ?? '';
+      firstIsImage = userMsg['isImage'] == true;
+      allFilePaths = List<String>.from(userMsg['filePaths'] ?? []);
+      allFileNames = List<String>.from(userMsg['fileNames'] ?? []);
+
+      for (int i = 0; i < allFilePaths.length; i++) {
+        try {
+          final bytes = await File(allFilePaths[i]).readAsBytes();
+          files.add({'name': allFileNames.length > i ? allFileNames[i] : 'file', 'content': base64Encode(bytes)});
+        } catch (_) {}
+      }
+
+      setState(() {
+        while (_chatMessages.length > regenerateUserIndex + 1) {
+          _chatMessages.removeLast();
+        }
+      });
+
+      if (_ideChatId != null) {
+        await ChatHistory.removeLastAssistantMessage(_ideChatId!);
+      }
+    } else {
+      final text = _chatInputCtrl.text.trim();
+      if (text.isEmpty && _attachedFiles.isEmpty) return;
+      if (_chatLoading) return;
+
+      final attachedSnapshot = List<Map<String, dynamic>>.from(_attachedFiles);
+      setState(() {
+        _attachedFiles.clear();
+        _chatLoading = true;
+        _cancelStream = false;
+      });
+      _chatInputCtrl.clear();
+
+      msgContent = text;
+
+      if (attachedSnapshot.isNotEmpty) {
+        final first = attachedSnapshot.first;
+        firstFilePath = first['path'] ?? '';
+        firstFileName = first['name'] ?? '';
+        firstIsImage = first['isImage'] == true;
+      }
+
+      for (final f in attachedSnapshot) {
+        final path = f['path'] as String;
+        final name = f['name'] as String;
+        final isImg = f['isImage'] == true;
+        final bytes = await File(path).readAsBytes();
+        if (isImg) {
+          final ext = name.split('.').last.toLowerCase();
+          final mime = ext == 'png' ? 'image/png' : (ext == 'gif' ? 'image/gif' : 'image/jpeg');
+          final b64 = base64Encode(bytes);
+          msgContent = msgContent.isEmpty
+              ? '![image](data:$mime;base64,$b64)'
+              : '$msgContent\n\n![image](data:$mime;base64,$b64)';
+        } else {
+          files.add({'name': name, 'content': base64Encode(bytes)});
+        }
+      }
+
+      allFilePaths = attachedSnapshot
+          .where((f) => f['isImage'] != true)
+          .map((f) => f['path'] as String)
+          .toList();
+      allFileNames = attachedSnapshot
+          .where((f) => f['isImage'] != true)
+          .map((f) => f['name'] as String)
+          .toList();
+
+      // Lazy chat creation
+      if (_ideChatId == null) {
+        final displayText = text.isNotEmpty ? text : msgContent;
+        final title = displayText.length > 30 ? '${displayText.substring(0, 30)}...' : displayText;
+        final chatId = await ChatHistory.createChat(title, projectId: 'ide');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('ide_chat_id', chatId);
+        setState(() => _ideChatId = chatId);
+        await _loadIdeChats();
+      }
+
+      await ChatHistory.addMessage(
+        _ideChatId!, 'user', msgContent,
+        filePath: firstFilePath, fileName: firstFileName, isImage: firstIsImage,
+        filePaths: allFilePaths, fileNames: allFileNames,
+      );
+
+      setState(() {
+        _chatMessages.add({
+          'role': 'user',
+          'content': msgContent,
+          'filePath': firstFilePath,
+          'fileName': firstFileName,
+          'isImage': firstIsImage,
+          'filePaths': allFilePaths,
+          'fileNames': allFileNames,
+        });
+      });
+    }
+
     _scrollChatToBottom();
 
     final prefs = await SharedPreferences.getInstance();
@@ -1435,6 +1473,51 @@ class _IdeScreenState extends State<IdeScreen> {
       case 'search_in_files': return '"${args['query']}" в ${args['path'] ?? ''}';
       default: return args.values.join(', ');
     }
+  }
+
+  void _copyMessage(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Сообщение скопировано'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  void _showUserMessageMenu(BuildContext context, Map<String, dynamic> message, int index) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit, color: VegaTheme.accent),
+              title: const Text('Редактировать', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _editMessage(index, message['content'] ?? '');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy, color: VegaTheme.accent),
+              title: const Text('Копировать', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _copyMessage(message['content'] ?? '');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _editMessage(int index, String currentText) {
+    _chatInputCtrl.text = currentText;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Режим редактирования — введите новое сообщение'), duration: Duration(seconds: 2)),
+    );
   }
 
   Widget _buildImagesRow(Map<String, dynamic> msg) {
@@ -3112,159 +3195,261 @@ class _IdeScreenState extends State<IdeScreen> {
               padding: const EdgeInsets.only(bottom: 85),
               child: _chatMessages.isEmpty
                   ? _buildWelcomeScreen()
-                  : ListView.builder(
-                      controller: _chatScrollCtrl,
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _chatMessages.length + (_chatLoading ? 1 : 0),
-                      itemBuilder: (context, idx) {
-                        if (_chatLoading && idx == _chatMessages.length) {
-                          return Align(
-                            alignment: Alignment.centerLeft,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Text(
-                                _thinkingText,
-                                style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 13, fontStyle: FontStyle.italic),
+                  : SelectionArea(
+                      child: ListView.builder(
+                        controller: _chatScrollCtrl,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _chatMessages.length + (_chatLoading ? 1 : 0),
+                        itemBuilder: (context, idx) {
+                          if (_chatLoading && idx == _chatMessages.length) {
+                            return Align(
+                              alignment: Alignment.centerLeft,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: Text(
+                                  _thinkingText,
+                                  style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 13, fontStyle: FontStyle.italic),
+                                ),
                               ),
-                            ),
-                          );
-                        }
-                        
-                        final msg = _chatMessages[idx];
-                        final role = msg['role'] as String? ?? '';
-                        final isUser = role == 'user';
+                            );
+                          }
+                          
+                          final msg = _chatMessages[idx];
+                          final role = msg['role'] as String? ?? '';
+                          final isUser = role == 'user';
 
-                        // ── Tool Call chip ──
-                        if (role == 'tool_call') {
-                          final tool = msg['tool'] as String? ?? '';
-                          final desc = msg['content'] as String? ?? '';
-                          final color = _agentToolColor(tool);
-                          final icon = _agentToolIcon(tool);
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: color.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: color.withOpacity(0.35)),
+                          // ── Tool Call chip ──
+                          if (role == 'tool_call') {
+                            final tool = msg['tool'] as String? ?? '';
+                            final desc = msg['content'] as String? ?? '';
+                            final color = _agentToolColor(tool);
+                            final icon = _agentToolIcon(tool);
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: color.withOpacity(0.35)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(icon, color: color, size: 12),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          _agentToolLabel(tool),
+                                          style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.3),
+                                        ),
+                                        if (desc.isNotEmpty) ...[
+                                          const SizedBox(width: 6),
+                                          Flexible(
+                                            child: Text(
+                                              desc,
+                                              style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace'),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          // ── Tool Result (collapsible) ──
+                          if (role == 'tool_result') {
+                            final result = msg['content'] as String? ?? '';
+                            final preview = result.length > 120 ? result.substring(0, 120) + '…' : result;
+                            return Theme(
+                              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                              child: ExpansionTile(
+                                dense: true,
+                                tilePadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                                childrenPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.chevron_right_rounded, color: Colors.white24, size: 14),
+                                title: Text(
+                                  preview,
+                                  style: const TextStyle(color: Colors.white30, fontSize: 11, fontFamily: 'monospace'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: const SizedBox.shrink(),
+                                children: [
+                                  Container(
+                                    width: double.infinity,
+                                    margin: const EdgeInsets.only(bottom: 4),
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0D1117),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      result,
+                                      style: const TextStyle(color: Colors.white54, fontSize: 11, fontFamily: 'monospace'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          // ── Agent Done banner ──
+                          if (role == 'agent_done') {
+                            return Container(
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF22C55E).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF22C55E).withOpacity(0.35)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 15),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      msg['content'] as String? ?? 'Готово',
+                                      style: const TextStyle(color: Color(0xFF22C55E), fontSize: 12, fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          final content = msg['content'] ?? '';
+                          final cleanContent = _cleanMessageContent(content);
+                          final cmd = _extractCommand(content);
+
+                          return Column(
+                            crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                            children: [
+                              if (msg['isImage'] == true || (msg['content'] as String? ?? '').contains('base64,'))
+                                 Container(
+                                   margin: const EdgeInsets.only(bottom: 8),
+                                   child: _buildImagesRow(msg),
+                                 ),
+                              if (isUser && msg['isImage'] != true && (
+                                (msg['filePaths'] as List<dynamic>?)?.isNotEmpty == true ||
+                                ((msg['filePath'] ?? '') as String).isNotEmpty
+                              ))
+                                 Padding(
+                                   padding: const EdgeInsets.only(bottom: 8),
+                                   child: _buildFileChips(msg),
+                                 ),
+                              if (cleanContent.isNotEmpty)
+                                isUser
+                                    ? GestureDetector(
+                                        onLongPress: () => _showUserMessageMenu(context, msg, idx),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                          margin: const EdgeInsets.only(bottom: 8),
+                                          decoration: BoxDecoration(
+                                            color: VegaTheme.userBubble,
+                                            borderRadius: BorderRadius.circular(14),
+                                            border: Border.all(color: VegaTheme.border, width: 0.5),
+                                          ),
+                                          child: MarkdownBody(
+                                            data: cleanContent,
+                                            selectable: false,
+                                            builders: {
+                                              'pre': CodeBlockBuilder(),
+                                            },
+                                            styleSheet: MarkdownStyleSheet(
+                                              p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14, height: 1.5),
+                                              code: const TextStyle(
+                                                color: VegaTheme.accent,
+                                                backgroundColor: Colors.black26,
+                                                fontFamily: 'monospace',
+                                                fontSize: 12.5,
+                                              ),
+                                              codeblockDecoration: BoxDecoration(
+                                                color: const Color(0xFF1E293B),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : Padding(
+                                        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+                                        child: MarkdownBody(
+                                          data: cleanContent,
+                                          selectable: false,
+                                          builders: {
+                                            'pre': CodeBlockBuilder(),
+                                          },
+                                          styleSheet: MarkdownStyleSheet(
+                                            p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14, height: 1.5),
+                                            code: const TextStyle(
+                                              color: VegaTheme.accent,
+                                              backgroundColor: Colors.black26,
+                                              fontFamily: 'monospace',
+                                              fontSize: 12.5,
+                                            ),
+                                            codeblockDecoration: BoxDecoration(
+                                              color: const Color(0xFF1E293B),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                              
+                              // File cards for WRITE_FILE blocks
+                              if (!isUser)
+                                _buildWrittenFileCards(content),
+                              
+                              // Inline terminal run request
+                              if (cmd != null)
+                                TerminalCommandWidget(
+                                  command: cmd,
+                                  onFinished: (output, success) {
+                                    _onTerminalWidgetFinished(idx, cmd, output, success);
+                                  },
+                                ),
+                              
+                              // Action buttons under assistant message
+                              if (!isUser && cleanContent.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12, left: 8, top: 4),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(icon, color: color, size: 12),
-                                      const SizedBox(width: 5),
-                                      Text(
-                                        _agentToolLabel(tool),
-                                        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.3),
-                                      ),
-                                      if (desc.isNotEmpty) ...[
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            desc,
-                                            style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace'),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
+                                      InkWell(
+                                        onTap: () => _copyMessage(cleanContent),
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(4),
+                                          child: Icon(Icons.copy, size: 16, color: VegaTheme.textSecondary),
                                         ),
-                                      ],
+                                      ),
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        onTap: () {
+                                          int userIdx = idx - 1;
+                                          while (userIdx >= 0 && _chatMessages[userIdx]['role'] != 'user') {
+                                            userIdx--;
+                                          }
+                                          if (userIdx >= 0) {
+                                            _sendChatMessage(regenerateUserIndex: userIdx);
+                                          }
+                                        },
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(4),
+                                          child: Icon(Icons.refresh, size: 16, color: VegaTheme.textSecondary),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        // ── Tool Result (collapsible) ──
-                        if (role == 'tool_result') {
-                          final result = msg['content'] as String? ?? '';
-                          final preview = result.length > 120 ? result.substring(0, 120) + '…' : result;
-                          return Theme(
-                            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                            child: ExpansionTile(
-                              dense: true,
-                              tilePadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                              childrenPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.chevron_right_rounded, color: Colors.white24, size: 14),
-                              title: Text(
-                                preview,
-                                style: const TextStyle(color: Colors.white30, fontSize: 11, fontFamily: 'monospace'),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              trailing: const SizedBox.shrink(),
-                              children: [
-                                Container(
-                                  width: double.infinity,
-                                  margin: const EdgeInsets.only(bottom: 4),
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0D1117),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    result,
-                                    style: const TextStyle(color: Colors.white54, fontSize: 11, fontFamily: 'monospace'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        // ── Agent Done banner ──
-                        if (role == 'agent_done') {
-                          return Container(
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF22C55E).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFF22C55E).withOpacity(0.35)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 15),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    msg['content'] as String? ?? 'Готово',
-                                    style: const TextStyle(color: Color(0xFF22C55E), fontSize: 12, fontWeight: FontWeight.w600),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        final content = msg['content'] ?? '';
-                        final cleanContent = _cleanMessageContent(content);
-                        final cmd = _extractCommand(content);
-
-                        return Column(
-                          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                          children: [
-                            if (msg['isImage'] == true || (msg['content'] as String? ?? '').contains('base64,'))
-                               Container(
-                                 margin: const EdgeInsets.only(bottom: 8),
-                                 child: _buildImagesRow(msg),
-                               ),
-                            if (isUser && msg['isImage'] != true && (
-                              (msg['filePaths'] as List<dynamic>?)?.isNotEmpty == true ||
-                              ((msg['filePath'] ?? '') as String).isNotEmpty
-                            ))
-                               Padding(
-                                 padding: const EdgeInsets.only(bottom: 8),
-                                 child: _buildFileChips(msg),
-                               ),
-                            if (cleanContent.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                margin: const EdgeInsets.only(bottom: 8),
-                                decoration: BoxDecoration(
                                   color: isUser ? VegaTheme.userBubble : VegaTheme.surface,
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(color: VegaTheme.border, width: 0.5),
