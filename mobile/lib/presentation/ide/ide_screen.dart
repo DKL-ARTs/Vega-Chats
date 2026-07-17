@@ -3450,45 +3450,7 @@ class _IdeScreenState extends State<IdeScreen> {
                                     ],
                                   ),
                                 ),
-                                  color: isUser ? VegaTheme.userBubble : VegaTheme.surface,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: VegaTheme.border, width: 0.5),
-                                ),
-                                child: MarkdownBody(
-                                  data: cleanContent,
-                                  selectable: true,
-                                  builders: {
-                                    'pre': CodeBlockBuilder(),
-                                  },
-                                  styleSheet: MarkdownStyleSheet(
-                                    p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14, height: 1.5),
-                                    code: const TextStyle(
-                                      color: VegaTheme.accent,
-                                      backgroundColor: Colors.black26,
-                                      fontFamily: 'monospace',
-                                      fontSize: 12.5,
-                                    ),
-                                    codeblockDecoration: BoxDecoration(
-                                      color: const Color(0xFF1E293B),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            
-                            // File cards for WRITE_FILE blocks
-                            if (!isUser)
-                              _buildWrittenFileCards(content),
-                            
-                            // Inline terminal run request
-                            if (cmd != null)
-                              TerminalCommandWidget(
-                                command: cmd,
-                                onFinished: (output, success) {
-                                  _onTerminalWidgetFinished(idx, cmd, output, success);
-                                },
-                              ),
-                            const SizedBox(height: 8),
+                              const SizedBox(height: 8),
                           ],
                         );
                       },
