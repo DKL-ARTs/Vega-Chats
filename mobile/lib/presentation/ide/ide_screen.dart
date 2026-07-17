@@ -22,6 +22,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'editor_screen.dart';
 import 'phone_file_browser.dart';
 import '../terminal/terminal_screen.dart';
+import '../agent/agent_screen.dart';
 
 class IdeScreen extends StatefulWidget {
   const IdeScreen({super.key});
@@ -2947,6 +2948,42 @@ class _IdeScreenState extends State<IdeScreen> {
           ],
         ),
         actions: [
+          // Agent mode button
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AgentScreen(
+                    client: _client,
+                    initialCwd: _currentPath,
+                  ),
+                ),
+              );
+            },
+            child: Container(
+              margin: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.smart_toy_rounded, color: Colors.white, size: 14),
+                  SizedBox(width: 4),
+                  Text('Агент',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.arrow_forward_ios_rounded, color: VegaTheme.textPrimary, size: 20),
             onPressed: () => Navigator.pop(context),

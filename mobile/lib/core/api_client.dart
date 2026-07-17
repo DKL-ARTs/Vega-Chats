@@ -71,6 +71,49 @@ class ApiClient {
     }
   }
 
+  /// Run the autonomous agent. Streams events via callbacks.
+  Future<void> runAgent({
+    required String task,
+    required String cwd,
+    required String geminiApiKey,
+    String model = 'gemini-2.5-flash',
+    int maxIterations = 30,
+    required void Function(Map<String, dynamic> event) onEvent,
+    required void Function(String error) onError,
+  }) async {
+    final wsScheme = baseUrl.startsWith('https') ? 'wss' : 'ws';
+    final cleanUrl = baseUrl.replaceFirst(RegExp(r'^https?://'), '');
+    final wsUrl = '$wsScheme://$cleanUrl';
+
+    WebSocketChannel? channel;
+    try {
+      channel = WebSocketChannel.connect(Uri.parse('$wsUrl/api/agent/run'));
+
+      // Send initial config
+      channel.sink.add(jsonEncode({
+        'task': task,
+        'cwd': cwd,
+        'gemini_api_key': geminiApiKey,
+        'model': model,
+        'max_iterations': maxIterations,
+      }));
+
+      await for (final raw in channel.stream) {
+        try {
+          final event = jsonDecode(raw as String) as Map<String, dynamic>;
+          onEvent(event);
+          if (event['type'] == 'done' || event['type'] == 'error') break;
+        } catch (e) {
+          print('Agent WS parse error: $e');
+        }
+      }
+    } catch (e) {
+      onError(e.toString());
+    } finally {
+      channel?.sink.close();
+    }
+  }
+
   Future<Map<String, dynamic>> readFile(String path) async {
     final resp = await http.post(
       Uri.parse('$baseUrl/api/files/read'),
