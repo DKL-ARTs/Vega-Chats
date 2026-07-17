@@ -48,6 +48,8 @@ class _IdeScreenState extends State<IdeScreen> {
   bool _gitIsRepo = true;
   final _gitMsgCtrl = TextEditingController();
   bool _gitPushing = false;
+  List<String> _gitBranches = [];
+  String _gitCurrentBranch = 'main';
 
   // === AI DEV CHAT STATE ===
   int? _ideChatId;
@@ -280,12 +282,21 @@ class _IdeScreenState extends State<IdeScreen> {
       _gitLoading = true;
     });
     try {
-      final res = await _client.gitStatus();
+      final res = await _client.gitStatus(cwd: _currentPath);
       if (res['ok'] == true) {
         setState(() {
           _gitFiles = List<Map<String, dynamic>>.from(res['files'] ?? []);
           _gitIsRepo = true;
         });
+        
+        // Load branches in the background
+        final branchRes = await _client.gitBranches(cwd: _currentPath);
+        if (branchRes['ok'] == true && mounted) {
+          setState(() {
+            _gitBranches = List<String>.from(branchRes['branches'] ?? []);
+            _gitCurrentBranch = branchRes['current'] ?? 'main';
+          });
+        }
       } else {
         setState(() {
           _gitIsRepo = false;
@@ -307,7 +318,7 @@ class _IdeScreenState extends State<IdeScreen> {
   Future<void> _initializeGitRepo() async {
     setState(() => _gitLoading = true);
     try {
-      final res = await _client.gitInit();
+      final res = await _client.gitInit(_currentPath);
       if (res['ok'] == true) {
         _loadGitStatus();
       } else {
@@ -327,14 +338,14 @@ class _IdeScreenState extends State<IdeScreen> {
   Future<void> _commitAndPushGit() async {
     final msg = _gitMsgCtrl.text.trim();
     if (msg.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите сообщение коммита'), backgroundColor: Colors.orangeAccent),
-      );
-      return;
+       ScaffoldMessenger.of(context).showSnackBar(
+         const SnackBar(content: Text('Введите сообщение коммита'), backgroundColor: Colors.orangeAccent),
+       );
+       return;
     }
     setState(() => _gitPushing = true);
     try {
-      final res = await _client.gitCommitPush(msg);
+      final res = await _client.gitCommitPush(msg, cwd: _currentPath);
       if (res['ok'] == true) {
         _gitMsgCtrl.clear();
         _loadGitStatus();
@@ -361,6 +372,308 @@ class _IdeScreenState extends State<IdeScreen> {
         setState(() => _gitPushing = false);
       }
     }
+  }
+
+  Future<void> _gitPull() async {
+    setState(() => _gitLoading = true);
+    try {
+      final res = await _client.gitPull(cwd: _currentPath);
+      if (res['ok'] == true) {
+        _loadGitStatus();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Успешно стянуто (Pull) с GitHub!'), backgroundColor: Colors.green),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка Pull: ${res['error']}'), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка Pull: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      setState(() => _gitLoading = false);
+    }
+  }
+
+  Future<void> _toggleStageUnstage(Map<String, dynamic> file) async {
+    final status = file['status'] ?? '';
+    final path = file['path'] ?? '';
+    // A staged status starts with A, M, D and does NOT have a space at the start
+    final isStaged = status.isNotEmpty && !status.startsWith(' ') && !status.startsWith('?');
+    
+    setState(() => _gitLoading = true);
+    try {
+      final res = isStaged 
+          ? await _client.gitUnstage(path, cwd: _currentPath)
+          : await _client.gitStage(path, cwd: _currentPath);
+      if (res['ok'] == true) {
+        _loadGitStatus();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка изменения индекса: ${res['error']}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e')),
+        );
+      }
+    } finally {
+      setState(() => _gitLoading = false);
+    }
+  }
+
+  Future<void> _showGitFileDiff(String path) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        backgroundColor: VegaTheme.surface,
+        content: Row(
+          children: [
+            CircularProgressIndicator(color: VegaTheme.accent),
+            SizedBox(width: 16),
+            Text('Загрузка diff...', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final res = await _client.gitDiff(filePath: path, cwd: _currentPath);
+      if (mounted) Navigator.pop(context); // Close loading dialog
+
+      if (res['ok'] == true) {
+        final diffText = res['diff'] as String? ?? '';
+        final diffLines = diffText.split('\n');
+
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: VegaTheme.surface,
+              title: Text('Diff: $path', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 400,
+                child: diffText.trim().isEmpty
+                    ? const Center(child: Text('Нет изменений во встроенном diff (возможно, файл бинарный или пустой)', style: TextStyle(color: Colors.white54, fontSize: 12)))
+                    : Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: ListView.builder(
+                          itemCount: diffLines.length,
+                          itemBuilder: (context, idx) {
+                            final line = diffLines[idx];
+                            Color color = Colors.white70;
+                            if (line.startsWith('+')) {
+                              color = Colors.greenAccent;
+                            } else if (line.startsWith('-')) {
+                              color = Colors.redAccent;
+                            } else if (line.startsWith('@@')) {
+                              color = Colors.cyanAccent;
+                            }
+                            return Text(
+                              line,
+                              style: TextStyle(
+                                color: color,
+                                fontFamily: 'monospace',
+                                fontSize: 10.5,
+                                height: 1.3,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Закрыть', style: TextStyle(color: VegaTheme.accent)),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка загрузки diff: ${res['error']}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Close loading dialog
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showBranchSelector() async {
+    final branchNameCtrl = TextEditingController();
+    final newBranchCtrl = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: VegaTheme.surface,
+          title: const Text('Управление ветками Git', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Текущая ветка:', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                Text(
+                  _gitCurrentBranch,
+                  style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                const Text('Переключиться на ветку:', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                const SizedBox(height: 6),
+                _gitBranches.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text('Загрузка веток...', style: TextStyle(color: Colors.white30, fontSize: 12)),
+                      )
+                    : Container(
+                        maxHeight: 120,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: _gitBranches.length,
+                          itemBuilder: (ctx, i) {
+                            final b = _gitBranches[i];
+                            final isCurrent = b == _gitCurrentBranch;
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                b,
+                                style: TextStyle(
+                                  color: isCurrent ? Colors.blueAccent : Colors.white70,
+                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              trailing: isCurrent ? const Icon(Icons.check, color: Colors.blueAccent, size: 16) : null,
+                              onTap: isCurrent
+                                  ? null
+                                  : () async {
+                                      Navigator.pop(ctx);
+                                      setState(() => _gitLoading = true);
+                                      try {
+                                        final checkoutRes = await _client.gitCheckout(b, cwd: _currentPath);
+                                        if (checkoutRes['ok'] == true) {
+                                          _loadGitStatus();
+                                        } else {
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Ошибка переключения: ${checkoutRes['error']}')),
+                                            );
+                                          }
+                                        }
+                                      } catch (e) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Ошибка: $e')),
+                                          );
+                                        }
+                                      } finally {
+                                        setState(() => _gitLoading = false);
+                                      }
+                                    },
+                            );
+                          },
+                        ),
+                      ),
+                const SizedBox(height: 16),
+                const Text('Создать новую ветку:', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: newBranchCtrl,
+                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        decoration: const InputDecoration(
+                          hintText: 'Имя ветки...',
+                          hintStyle: TextStyle(color: Colors.white30, fontSize: 12),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.blueAccent)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, isDense: true),
+                      onPressed: () async {
+                        final newBranch = newBranchCtrl.text.trim();
+                        if (newBranch.isNotEmpty) {
+                          Navigator.pop(ctx);
+                          setState(() => _gitLoading = true);
+                          try {
+                            final checkoutRes = await _client.gitCheckout(newBranch, create: true, cwd: _currentPath);
+                            if (checkoutRes['ok'] == true) {
+                              _loadGitStatus();
+                            } else {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Ошибка создания ветки: ${checkoutRes['error']}')),
+                                );
+                              }
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Ошибка: $e')),
+                              );
+                            }
+                          } finally {
+                            setState(() => _gitLoading = false);
+                          }
+                        }
+                      },
+                      child: const Text('Создать', style: TextStyle(fontSize: 12)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Закрыть', style: TextStyle(color: Colors.white54)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openFileItem(Map<String, dynamic> item) async {
@@ -1928,20 +2241,58 @@ class _IdeScreenState extends State<IdeScreen> {
       children: [
         // Changed files list header
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Изменения (${_gitFiles.length})',
-                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  Text(
+                    'Изменения (${_gitFiles.length})',
+                    style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _showBranchSelector,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blueAccent.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.fork_right_rounded, color: Colors.blueAccent, size: 12),
+                          const SizedBox(width: 2),
+                          Text(
+                            _gitCurrentBranch,
+                            style: const TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              IconButton(
-                onPressed: _loadGitStatus,
-                icon: const Icon(Icons.refresh_rounded, color: VegaTheme.textSecondary, size: 18),
-                tooltip: 'Обновить статус',
-                constraints: const BoxConstraints(),
-                padding: EdgeInsets.zero,
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: _gitPull,
+                    icon: const Icon(Icons.download_rounded, color: Colors.greenAccent, size: 18),
+                    tooltip: 'Pull с GitHub',
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                  ),
+                  IconButton(
+                    onPressed: _loadGitStatus,
+                    icon: const Icon(Icons.refresh_rounded, color: VegaTheme.textSecondary, size: 18),
+                    tooltip: 'Обновить статус',
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1983,24 +2334,44 @@ class _IdeScreenState extends State<IdeScreen> {
                       statusLetter = status;
                     }
 
+                    final isStaged = status.isNotEmpty && !status.startsWith(' ') && !status.startsWith('?');
                     return ListTile(
+                      onTap: () => _showGitFileDiff(path),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                       leading: Icon(Icons.insert_drive_file_rounded, color: statusColor, size: 18),
                       title: Text(
                         path,
                         style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 12, fontFamily: 'monospace'),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      trailing: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: statusColor.withOpacity(0.3), width: 0.5),
-                        ),
-                        child: Text(
-                          statusLetter,
-                          style: TextStyle(color: statusColor, fontSize: 9, fontWeight: FontWeight.bold),
-                        ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: statusColor.withOpacity(0.3), width: 0.5),
+                            ),
+                            child: Text(
+                              statusLetter,
+                              style: TextStyle(color: statusColor, fontSize: 9, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            onPressed: () => _toggleStageUnstage(file),
+                            icon: Icon(
+                              isStaged ? Icons.remove_circle_outline_rounded : Icons.add_circle_outline_rounded,
+                              color: isStaged ? Colors.redAccent : Colors.greenAccent,
+                              size: 16,
+                            ),
+                            constraints: const BoxConstraints(),
+                            padding: const EdgeInsets.all(4),
+                            tooltip: isStaged ? 'Убрать из индекса' : 'Добавить в индекс',
+                          ),
+                        ],
                       ),
                     );
                   },

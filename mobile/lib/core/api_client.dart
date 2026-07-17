@@ -116,27 +116,96 @@ class ApiClient {
     return jsonDecode(resp.body);
   }
 
-  Future<Map<String, dynamic>> gitStatus() async {
+  Future<Map<String, dynamic>> gitStatus({String? cwd}) async {
+    final uri = Uri.parse('$baseUrl/api/git/status').replace(
+      queryParameters: cwd != null ? {'cwd': cwd} : null,
+    );
     final resp = await http.get(
-      Uri.parse('$baseUrl/api/git/status'),
+      uri,
       headers: {'Content-Type': 'application/json'},
     );
     return jsonDecode(resp.body);
   }
 
-  Future<Map<String, dynamic>> gitInit() async {
+  Future<Map<String, dynamic>> gitInit(String path) async {
     final resp = await http.post(
       Uri.parse('$baseUrl/api/git/init'),
       headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'path': path}),
     );
     return jsonDecode(resp.body);
   }
 
-  Future<Map<String, dynamic>> gitCommitPush(String message) async {
+  Future<Map<String, dynamic>> gitCommitPush(String message, {String? cwd}) async {
     final resp = await http.post(
       Uri.parse('$baseUrl/api/git/commit-push'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'message': message}),
+      body: jsonEncode({'message': message, if (cwd != null) 'cwd': cwd}),
+    );
+    return jsonDecode(resp.body);
+  }
+
+  Future<Map<String, dynamic>> gitStage(String filePath, {String? cwd}) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/git/stage'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'file_path': filePath, if (cwd != null) 'cwd': cwd}),
+    );
+    return jsonDecode(resp.body);
+  }
+
+  Future<Map<String, dynamic>> gitUnstage(String filePath, {String? cwd}) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/git/unstage'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'file_path': filePath, if (cwd != null) 'cwd': cwd}),
+    );
+    return jsonDecode(resp.body);
+  }
+
+  Future<Map<String, dynamic>> gitDiff({String? filePath, String? cwd}) async {
+    final qParams = <String, String>{};
+    if (filePath != null) qParams['file_path'] = filePath;
+    if (cwd != null) qParams['cwd'] = cwd;
+    final uri = Uri.parse('$baseUrl/api/git/diff').replace(
+      queryParameters: qParams.isNotEmpty ? qParams : null,
+    );
+    final resp = await http.get(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+    );
+    return jsonDecode(resp.body);
+  }
+
+  Future<Map<String, dynamic>> gitBranches({String? cwd}) async {
+    final uri = Uri.parse('$baseUrl/api/git/branches').replace(
+      queryParameters: cwd != null ? {'cwd': cwd} : null,
+    );
+    final resp = await http.get(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+    );
+    return jsonDecode(resp.body);
+  }
+
+  Future<Map<String, dynamic>> gitCheckout(String branchName, {bool create = false, String? cwd}) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/git/checkout'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'branch_name': branchName,
+        'create': create,
+        if (cwd != null) 'cwd': cwd,
+      }),
+    );
+    return jsonDecode(resp.body);
+  }
+
+  Future<Map<String, dynamic>> gitPull({String? cwd}) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/git/pull'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({if (cwd != null) 'cwd': cwd, 'message': ''}),
     );
     return jsonDecode(resp.body);
   }

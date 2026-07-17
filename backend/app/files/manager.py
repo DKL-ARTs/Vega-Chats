@@ -27,6 +27,15 @@ class GitCommitReq(BaseModel):
     message: str
     cwd: str = None
 
+class GitStageReq(BaseModel):
+    file_path: str
+    cwd: str = None
+
+class GitCheckoutReq(BaseModel):
+    branch_name: str
+    create: bool = False
+    cwd: str = None
+
 def safe_path(path: str) -> Path:
     # Resolve the path to absolute
     p = Path(path)
@@ -190,5 +199,112 @@ async def git_commit_push(req: GitCommitReq):
             return {"ok": False, "error": f"Push failed: {push_res.stderr.strip() or push_res.stdout.strip()}"}
             
         return {"ok": True, "stdout": push_res.stdout.strip(), "stderr": push_res.stderr.strip()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@router.post("/git/stage")
+async def git_stage(req: GitStageReq):
+    git_root = safe_path(req.cwd) if req.cwd else Path(settings.workspace_root)
+    if not (git_root / ".git").exists():
+        return {"ok": False, "error": "Not a git repository"}
+    try:
+        subprocess.run(["git", "add", req.file_path], cwd=str(git_root), check=True)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@router.post("/git/unstage")
+async def git_unstage(req: GitStageReq):
+    git_root = safe_path(req.cwd) if req.cwd else Path(settings.workspace_root)
+    if not (git_root / ".git").exists():
+        return {"ok": False, "error": "Not a git repository"}
+    try:
+        subprocess.run(["git", "reset", "HEAD", req.file_path], cwd=str(git_root), check=True)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@router.get("/git/diff")
+async def git_diff(file_path: str = Query(None), cwd: str = Query(None)):
+    git_root = safe_path(cwd) if cwd else Path(settings.workspace_root)
+    if not (git_root / ".git").exists():
+        return {"ok": False, "error": "Not a git repository"}
+    try:
+        cmd = ["git", "diff"]
+        if file_path:
+            cmd.append(file_path)
+        res = subprocess.run(cmd, cwd=str(git_root), capture_output=True, text=True)
+        
+        diff_out = res.stdout
+        if not diff_out and file_path:
+            res_cached = subprocess.run(["git", "diff", "--cached", file_path], cwd=str(git_root), capture_output=True, text=True)
+            diff_out = res_cached.stdout
+            if not diff_out:
+                full_p = git_root / file_path
+                if full_p.exists() and full_p.is_file():
+                    try:
+                        content = full_p.read_text(errors='ignore')
+                        diff_out = "\n".join(f"+{line}" for line in content.split("\n"))
+                    except:
+                        pass
+        return {"ok": True, "diff": diff_out}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@router.get("/git/branches")
+async def git_branches(cwd: str = Query(None)):
+    git_root = safe_path(cwd) if cwd else Path(settings.workspace_root)
+    if not (git_root / ".git").exists():
+        return {"ok": False, "error": "Not a git repository"}
+    try:
+        res = subprocess.run(["git", "branch"], cwd=str(git_root), capture_output=True, text=True, check=True)
+        lines = res.stdout.split("\n")
+        branches = []
+        current = "main"
+        for line in lines:
+            trimmed = line.strip()
+            if not trimmed:
+                continue
+            is_current = trimmed.startswith("*")
+            name = trimmed.replace("*", "").strip()
+            branches.append(name)
+            if is_current:
+                current = name
+        return {"ok": True, "branches": branches, "current": current}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@router.post("/git/checkout")
+async def git_checkout(req: GitCheckoutReq):
+    git_root = safe_path(req.cwd) if req.cwd else Path(settings.workspace_root)
+    if not (git_root / ".git").exists():
+        return {"ok": False, "error": "Not a git repository"}
+    try:
+        cmd = ["git", "checkout"]
+        if req.create:
+            cmd.extend(["-b", req.branch_name])
+        else:
+            cmd.append(req.branch_name)
+        res = subprocess.run(cmd, cwd=str(git_root), capture_output=True, text=True)
+        if res.returncode != 0:
+            return {"ok": False, "error": res.stderr.strip() or res.stdout.strip()}
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@router.post("/git/pull")
+async def git_pull(req: GitCommitReq):
+    git_root = safe_path(req.cwd) if req.cwd else Path(settings.workspace_root)
+    if not (git_root / ".git").exists():
+        return {"ok": False, "error": "Not a git repository"}
+    try:
+        res = subprocess.run(["git", "pull", "new"], cwd=str(git_root), capture_output=True, text=True)
+        if res.returncode != 0:
+            res = subprocess.run(["git", "pull", "origin"], cwd=str(git_root), capture_output=True, text=True)
+            if res.returncode != 0:
+                res = subprocess.run(["git", "pull"], cwd=str(git_root), capture_output=True, text=True)
+        if res.returncode != 0:
+            return {"ok": False, "error": res.stderr.strip() or res.stdout.strip()}
+        return {"ok": True, "stdout": res.stdout.strip()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
