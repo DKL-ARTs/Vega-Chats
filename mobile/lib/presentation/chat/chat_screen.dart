@@ -691,30 +691,45 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _submitEditedMessage(int userIndex, String newText) async {
     if (_loading) return;
-    
+
+    int assistantIndex = userIndex + 1;
+    while (assistantIndex < _messages.length && _messages[assistantIndex]['role'] != 'assistant') {
+      assistantIndex++;
+    }
+    if (assistantIndex >= _messages.length) {
+      assistantIndex = _messages.length - 1;
+    }
+
+    final prefix = _messages.sublist(0, userIndex);
+    final targetUser = Map<String, dynamic>.from(_messages[userIndex]);
+    targetUser['content'] = newText;
+    final suffix = assistantIndex + 1 < _messages.length 
+        ? _messages.sublist(assistantIndex + 1) 
+        : <Map<String, dynamic>>[];
+
+    final newAssistant = {'role': 'assistant', 'content': ''};
+
     setState(() {
-      _messages[userIndex]['content'] = newText;
-      while (_messages.length > userIndex + 1) {
-        _messages.removeLast();
-      }
+      _messages.clear();
+      _messages.addAll(prefix);
+      _messages.add(targetUser);
+      _messages.add(newAssistant);
+      _messages.addAll(suffix);
       _loading = true;
     });
 
-    if (_currentChatId != null) {
-      await ChatHistory.updateAndTruncateMessages(_currentChatId!, userIndex, newText);
-    }
+    final newAssistantIndexInState = prefix.length + 1;
 
     _startThinking();
     try {
-      final msgs = _messages.sublist(0, userIndex + 1).map((m) =>
+      final msgs = _messages.sublist(0, newAssistantIndexInState).map((m) =>
         {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
         
       List<Map<String, String>>? regenFiles;
-      final userMsg = _messages[userIndex];
-      final filePaths = userMsg['filePaths'] as List<dynamic>? ?? [];
-      final fileNames = userMsg['fileNames'] as List<dynamic>? ?? [];
-      final singlePath = userMsg['filePath']?.toString() ?? '';
-      final singleName = userMsg['fileName']?.toString() ?? 'file';
+      final filePaths = targetUser['filePaths'] as List<dynamic>? ?? [];
+      final fileNames = targetUser['fileNames'] as List<dynamic>? ?? [];
+      final singlePath = targetUser['filePath']?.toString() ?? '';
+      final singleName = targetUser['fileName']?.toString() ?? 'file';
 
       if (filePaths.isNotEmpty) {
         regenFiles = [];
@@ -725,16 +740,12 @@ class _ChatScreenState extends State<ChatScreen> {
           } catch (_) {}
         }
         if (regenFiles.isEmpty) regenFiles = null;
-      } else if (userMsg['isImage'] != true && singlePath.isNotEmpty) {
+      } else if (targetUser['isImage'] != true && singlePath.isNotEmpty) {
         try {
           final bytes = await File(singlePath).readAsBytes();
           regenFiles = [{'name': singleName, 'content': base64Encode(bytes)}];
         } catch (_) {}
       }
-
-      setState(() {
-        _messages.add({'role': 'assistant', 'content': ''});
-      });
 
       final responseBuffer = StringBuffer();
       bool firstChunk = true;
@@ -753,7 +764,7 @@ class _ChatScreenState extends State<ChatScreen> {
           responseBuffer.write(chunk);
           if (mounted) {
             setState(() {
-              _messages.last['content'] = responseBuffer.toString();
+              _messages[newAssistantIndexInState]['content'] = responseBuffer.toString();
             });
           }
         },
@@ -761,18 +772,18 @@ class _ChatScreenState extends State<ChatScreen> {
           _stopThinking();
           if (mounted) {
             setState(() {
-              _messages.last['content'] = 'Error: $error';
+              _messages[newAssistantIndexInState]['content'] = 'Error: $error';
             });
           }
         },
       );
       _stopThinking();
-      final finalResponse = responseBuffer.toString();
-      if (_currentChatId != null && finalResponse.isNotEmpty) {
-        await ChatHistory.addMessage(_currentChatId!, 'assistant', finalResponse);
+      
+      if (_currentChatId != null) {
+        await ChatHistory.overwriteMessages(_currentChatId!, _messages);
       }
     } catch (e) {
-      if (mounted) setState(() { _messages.last["content"] = "Error: $e"; });
+      if (mounted) setState(() { _messages[newAssistantIndexInState]["content"] = "Error: $e"; });
     } finally {
       if (mounted) setState(() { _loading = false; _stopThinking(); });
     }

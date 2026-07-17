@@ -1198,6 +1198,10 @@ class _IdeScreenState extends State<IdeScreen> {
     List<String> allFilePaths = [];
     List<String> allFileNames = [];
 
+    final List<Map<String, dynamic>> prefix;
+    final Map<String, dynamic> targetUser;
+    final List<Map<String, dynamic>> suffix;
+
     if (regenerateUserIndex != null) {
       if (_chatLoading) return;
       setState(() {
@@ -1220,15 +1224,19 @@ class _IdeScreenState extends State<IdeScreen> {
         } catch (_) {}
       }
 
-      setState(() {
-        while (_chatMessages.length > regenerateUserIndex + 1) {
-          _chatMessages.removeLast();
-        }
-      });
-
-      if (_ideChatId != null) {
-        await ChatHistory.removeLastAssistantMessage(_ideChatId!);
+      int assistantIndex = regenerateUserIndex + 1;
+      while (assistantIndex < _chatMessages.length && _chatMessages[assistantIndex]['role'] != 'assistant') {
+        assistantIndex++;
       }
+      if (assistantIndex >= _chatMessages.length) {
+        assistantIndex = _chatMessages.length - 1;
+      }
+
+      prefix = _chatMessages.sublist(0, regenerateUserIndex);
+      targetUser = _chatMessages[regenerateUserIndex];
+      suffix = assistantIndex + 1 < _chatMessages.length
+          ? _chatMessages.sublist(assistantIndex + 1)
+          : <Map<String, dynamic>>[];
     } else {
       final text = _chatInputCtrl.text.trim();
       if (text.isEmpty && _attachedFiles.isEmpty) return;
@@ -1305,6 +1313,10 @@ class _IdeScreenState extends State<IdeScreen> {
           'fileNames': allFileNames,
         });
       });
+
+      prefix = _chatMessages.sublist(0, _chatMessages.length - 1);
+      targetUser = _chatMessages.last;
+      suffix = <Map<String, dynamic>>[];
     }
 
     _scrollChatToBottom();
@@ -1314,6 +1326,7 @@ class _IdeScreenState extends State<IdeScreen> {
 
     // ── AGENT MODE (Gemini function calling) ──
     if (geminiKey.isNotEmpty) {
+      final currentRunMessages = <Map<String, dynamic>>[];
       try {
         await _client.runAgent(
           task: msgContent,
@@ -1326,7 +1339,7 @@ class _IdeScreenState extends State<IdeScreen> {
             setState(() {
               switch (type) {
                 case 'tool_call':
-                  _chatMessages.add({
+                  currentRunMessages.add({
                     'role': 'tool_call',
                     'tool': event['tool'] ?? '',
                     'args': event['args'] ?? {},
@@ -1335,63 +1348,94 @@ class _IdeScreenState extends State<IdeScreen> {
                       (event['args'] as Map?)?.cast<String, dynamic>() ?? {},
                     ),
                   });
+                  break;
 
                 case 'tool_result':
-                  _chatMessages.add({
+                  currentRunMessages.add({
                     'role': 'tool_result',
                     'tool': event['tool'] ?? '',
                     'content': event['result'] ?? '',
                   });
+                  break;
 
                 case 'message':
                   final content = event['content'] as String? ?? '';
                   if (content.isNotEmpty) {
-                    // Append to last assistant message or create new
-                    if (_chatMessages.isNotEmpty && _chatMessages.last['role'] == 'assistant') {
-                      _chatMessages.last['content'] = (_chatMessages.last['content'] ?? '') + content;
+                    if (currentRunMessages.isNotEmpty && currentRunMessages.last['role'] == 'assistant') {
+                      currentRunMessages.last['content'] = (currentRunMessages.last['content'] ?? '') + content;
                     } else {
-                      _chatMessages.add({'role': 'assistant', 'content': content});
+                      currentRunMessages.add({'role': 'assistant', 'content': content});
                     }
                   }
+                  break;
 
                 case 'done':
                   _chatLoading = false;
+                  break;
 
                 case 'error':
-                  _chatMessages.add({
+                  currentRunMessages.add({
                     'role': 'assistant',
                     'content': '❌ ${event['message'] ?? 'Ошибка агента'}',
                   });
                   _chatLoading = false;
+                  break;
               }
+
+              _chatMessages = [
+                ...prefix,
+                targetUser,
+                ...currentRunMessages,
+                ...suffix,
+              ];
             });
             _scrollChatToBottom();
+
+            if (_ideChatId != null) {
+              ChatHistory.overwriteMessages(_ideChatId!, _chatMessages);
+            }
           },
           onError: (err) {
             if (!mounted) return;
             setState(() {
-              _chatMessages.add({'role': 'assistant', 'content': '❌ $err'});
+              currentRunMessages.add({'role': 'assistant', 'content': '❌ $err'});
+              _chatMessages = [
+                ...prefix,
+                targetUser,
+                ...currentRunMessages,
+                ...suffix,
+              ];
               _chatLoading = false;
             });
+            if (_ideChatId != null) {
+              ChatHistory.overwriteMessages(_ideChatId!, _chatMessages);
+            }
           },
         );
 
-        // Save final assistant text to history
-        final lastAssistant = _chatMessages.lastWhere(
+        final lastAssistant = currentRunMessages.lastWhere(
           (m) => m['role'] == 'assistant',
           orElse: () => {'content': ''},
         );
         final finalResponse = lastAssistant['content'] as String? ?? '';
         if (finalResponse.isNotEmpty) {
-          await ChatHistory.addMessage(_ideChatId!, 'assistant', finalResponse);
           await _processWriteFiles(finalResponse);
         }
       } catch (e) {
         if (mounted) {
           setState(() {
-            _chatMessages.add({'role': 'assistant', 'content': '❌ $e'});
+            currentRunMessages.add({'role': 'assistant', 'content': '❌ $e'});
+            _chatMessages = [
+              ...prefix,
+              targetUser,
+              ...currentRunMessages,
+              ...suffix,
+            ];
             _chatLoading = false;
           });
+          if (_ideChatId != null) {
+            ChatHistory.overwriteMessages(_ideChatId!, _chatMessages);
+          }
         }
       } finally {
         if (mounted) {
@@ -1413,12 +1457,24 @@ class _IdeScreenState extends State<IdeScreen> {
     final savedModel = prefs.getString('model') ?? 'openrouter/auto';
     final model = prefs.getString('model_for_backend') ?? savedModel;
 
-    final messagesForApi = _chatMessages
-        .where((m) => m['role'] == 'user' || m['role'] == 'assistant')
-        .map((m) => {'role': m['role'].toString(), 'content': m['content'].toString()})
-        .toList();
+    final messagesForApi = [
+      ...prefix,
+      targetUser,
+    ].where((m) => m['role'] == 'user' || m['role'] == 'assistant')
+     .map((m) => {'role': m['role'].toString(), 'content': m['content'].toString()})
+     .toList();
 
-    setState(() => _chatMessages.add({'role': 'assistant', 'content': ''}));
+    final newAssistantIndexInState = prefix.length + 1;
+
+    setState(() {
+      _chatMessages = [
+        ...prefix,
+        targetUser,
+        {'role': 'assistant', 'content': ''},
+        ...suffix,
+      ];
+    });
+
     final responseBuffer = StringBuffer();
 
     try {
@@ -1431,12 +1487,14 @@ class _IdeScreenState extends State<IdeScreen> {
         onChunk: (chunk) {
           if (_cancelStream || !mounted) return;
           responseBuffer.write(chunk);
-          setState(() => _chatMessages.last['content'] = responseBuffer.toString());
+          setState(() {
+            _chatMessages[newAssistantIndexInState]['content'] = responseBuffer.toString();
+          });
           _scrollChatToBottom();
         },
         onError: (err) {
           if (mounted) setState(() {
-            _chatMessages.last['content'] = 'Ошибка: $err';
+            _chatMessages[newAssistantIndexInState]['content'] = 'Ошибка: $err';
             _chatLoading = false;
           });
         },
@@ -1444,11 +1502,15 @@ class _IdeScreenState extends State<IdeScreen> {
 
       final finalResponse = responseBuffer.toString();
       if (finalResponse.isNotEmpty) {
-        await ChatHistory.addMessage(_ideChatId!, 'assistant', finalResponse);
+        if (_ideChatId != null) {
+          await ChatHistory.overwriteMessages(_ideChatId!, _chatMessages);
+        }
         await _processWriteFiles(finalResponse);
       }
     } catch (e) {
-      if (mounted) setState(() => _chatMessages.last['content'] = 'Ошибка: $e');
+      if (mounted) setState(() {
+        _chatMessages[newAssistantIndexInState]['content'] = 'Ошибка: $e';
+      });
     } finally {
       if (mounted) {
         setState(() => _chatLoading = false);
@@ -1456,6 +1518,7 @@ class _IdeScreenState extends State<IdeScreen> {
       }
     }
   }
+
 
   String _describeToolCall(String tool, Map<String, dynamic> args) {
     switch (tool) {

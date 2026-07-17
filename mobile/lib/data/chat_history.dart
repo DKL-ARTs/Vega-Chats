@@ -187,4 +187,24 @@ class ChatHistory {
       }
     }
   }
+
+  static Future<void> overwriteMessages(int chatId, List<Map<String, dynamic>> messages) async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString(_key);
+    if (data == null) return;
+    List<dynamic> chats;
+    try {
+      chats = jsonDecode(data) as List<dynamic>;
+    } catch (e) {
+      return;
+    }
+    for (int i = 0; i < chats.length; i++) {
+      if (chats[i] is Map && chats[i]['id'] == chatId) {
+        final chat = chats[i] as Map<String, dynamic>;
+        chat['messages'] = messages;
+        await prefs.setString(_key, jsonEncode(chats));
+        return;
+      }
+    }
+  }
 }
