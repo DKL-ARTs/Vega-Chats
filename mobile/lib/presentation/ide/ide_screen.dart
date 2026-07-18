@@ -19,6 +19,7 @@ import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
 import '../chat/widgets/terminal_command_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:open_file_plus/open_file_plus.dart';
 import 'editor_screen.dart';
 import 'phone_file_browser.dart';
 import '../terminal/terminal_screen.dart';
@@ -3832,29 +3833,11 @@ class _FileCard extends StatefulWidget {
   State<_FileCard> createState() => _FileCardState();
 }
 
-class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixin {
-  bool _opened = false;
+class _FileCardState extends State<_FileCard> {
   bool _downloading = false;
   bool _showDiff = false;
-  late AnimationController _checkCtrl;
-  late Animation<double> _checkAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
-    _checkAnim = CurvedAnimation(parent: _checkCtrl, curve: Curves.easeOut);
-  }
-
-  @override
-  void dispose() {
-    _checkCtrl.dispose();
-    super.dispose();
-  }
 
   void _openFile(BuildContext context) {
-    setState(() => _opened = true);
-    _checkCtrl.forward();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -3866,51 +3849,28 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
     );
   }
 
-  Future<void> _downloadFile(BuildContext context) async {
+  Future<void> _openExternalFile(BuildContext context) async {
     setState(() => _downloading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
       widget.client.baseUrl = prefs.getString('base_url') ?? 'http://127.0.0.1:8765';
       
       String content = widget.fileContent;
-      // If content is empty (e.g. from a download link pattern), fetch it from workspace first
       if (content.isEmpty) {
         final result = await widget.client.readFile(widget.filePath);
         content = result['content'] as String? ?? '';
       }
       
-      // Save/write the file content into the workspace (application file list)
-      await widget.client.writeFile(widget.filePath, content);
+      final tempDir = await getTemporaryDirectory();
+      final baseName = p.basename(widget.filePath);
+      final localFile = File(p.join(tempDir.path, baseName));
       
-      // Call parent reload callback to refresh workspace file explorer drawer
-      if (widget.onSaved != null) {
-        widget.onSaved!();
-      }
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Файл сохранен в Проводник файлов: ${widget.fileName}',
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFF1E293B),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      await localFile.writeAsString(content);
+      await OpenFile.open(localFile.path);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка сохранения: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Ошибка открытия: $e'), backgroundColor: Colors.redAccent),
         );
       }
     } finally {
@@ -3945,7 +3905,7 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
                   child: const Center(
                     child: Icon(
                       Icons.insert_drive_file_rounded,
-                      color: VegaTheme.accent, // VegaTheme.accent is purple
+                      color: VegaTheme.accent,
                       size: 24,
                     ),
                   ),
@@ -4027,50 +3987,45 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
               ),
             const SizedBox(height: 6),
           ],
-          // Divider
           Divider(height: 1, color: VegaTheme.border.withOpacity(0.5)),
           // Action buttons row
           IntrinsicHeight(
             child: Row(
               children: [
-                // Open button
+                // Open button (Left)
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => _openFile(context),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
+                    onTap: _downloading ? null : () => _openExternalFile(context),
+                    child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 13),
-                      decoration: BoxDecoration(
-                        color: _opened
-                            ? Colors.green.withOpacity(0.08)
-                            : Colors.transparent,
-                        borderRadius: const BorderRadius.only(
+                      decoration: const BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.only(
                           bottomLeft: Radius.circular(16),
                         ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          ScaleTransition(
-                            scale: Tween<double>(begin: 1.0, end: 1.0).animate(_checkAnim),
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 300),
-                              child: _opened
-                                  ? const Icon(Icons.check_circle_rounded,
-                                      color: Colors.greenAccent, size: 18, key: ValueKey('check'))
-                                  : const Icon(Icons.edit_rounded,
-                                      color: VegaTheme.accent, size: 18, key: ValueKey('edit')),
-                            ),
-                          ),
+                          if (_downloading)
+                            const SizedBox(
+                              width: 16, height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: VegaTheme.accent,
+                              ),
+                            )
+                          else
+                            const Icon(Icons.open_in_new_rounded,
+                                color: VegaTheme.accent, size: 18),
                           const SizedBox(width: 6),
-                          AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 300),
+                          const Text(
+                            'Открыть',
                             style: TextStyle(
-                              color: _opened ? Colors.greenAccent : VegaTheme.textPrimary,
+                              color: VegaTheme.textPrimary,
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                             ),
-                            child: Text(_opened ? 'Редактируется' : 'Редактировать'),
                           ),
                         ],
                       ),
@@ -4082,33 +4037,26 @@ class _FileCardState extends State<_FileCard> with SingleTickerProviderStateMixi
                   width: 1,
                   color: VegaTheme.border.withOpacity(0.5),
                 ),
-                // Download button
+                // Edit button (Right)
                 Expanded(
                   child: GestureDetector(
-                    onTap: _downloading ? null : () => _downloadFile(context),
+                    onTap: () => _openFile(context),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       decoration: const BoxDecoration(
+                        color: Colors.transparent,
                         borderRadius: BorderRadius.only(
                           bottomRight: Radius.circular(16),
                         ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _downloading
-                              ? const SizedBox(
-                                  width: 16, height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: VegaTheme.accent,
-                                  ),
-                                )
-                              : const Icon(Icons.download_rounded,
-                                  color: VegaTheme.accent, size: 18),
-                          const SizedBox(width: 6),
-                          const Text(
-                            'Скачать',
+                        children: const [
+                          Icon(Icons.edit_rounded,
+                              color: VegaTheme.accent, size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            'Редактировать',
                             style: TextStyle(
                               color: VegaTheme.textPrimary,
                               fontSize: 13,
@@ -4493,7 +4441,11 @@ class _EditMessageDialogState extends State<EditMessageDialog> {
   @override
   void initState() {
     super.initState();
-    _textController = TextEditingController(text: widget.initialText);
+    final cleanText = widget.initialText.replaceAll(
+      RegExp(r'!\[image\]\(data:[^)]+\)'), 
+      ''
+    ).trim();
+    _textController = TextEditingController(text: cleanText);
 
     if (widget.initialFilePaths.isNotEmpty) {
       for (int i = 0; i < widget.initialFilePaths.length; i++) {

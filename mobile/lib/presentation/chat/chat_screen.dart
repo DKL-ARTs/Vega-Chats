@@ -2581,7 +2581,11 @@ class _EditMessageDialogState extends State<EditMessageDialog> {
   @override
   void initState() {
     super.initState();
-    _textController = TextEditingController(text: widget.initialText);
+    final cleanText = widget.initialText.replaceAll(
+      RegExp(r'!\[image\]\(data:[^)]+\)'), 
+      ''
+    ).trim();
+    _textController = TextEditingController(text: cleanText);
 
     if (widget.initialFilePaths.isNotEmpty) {
       for (int i = 0; i < widget.initialFilePaths.length; i++) {
