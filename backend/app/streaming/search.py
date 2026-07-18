@@ -97,10 +97,16 @@ async def decide_and_perform_search(
     last_user_msg = ""
     for msg in reversed(messages):
         if msg.get("role") == "user":
-            last_user_msg = msg.get("content", "")
-            if isinstance(last_user_msg, list):
-                last_user_msg = " ".join([item.get("text", "") for item in last_user_msg if item.get("type") == "text"])
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                last_user_msg = " ".join([item.get("text", "") for item in content if item.get("type") == "text"])
+            else:
+                last_user_msg = str(content)
             break
+
+    if last_user_msg:
+        # Clean any base64 markdown images to prevent sending raw base64 payload to LLM classifier
+        last_user_msg = re.sub(r'!\[image\]\(data:([^)]+)\)', '[Изображение]', last_user_msg).strip()
 
     if not last_user_msg:
         return None, None
