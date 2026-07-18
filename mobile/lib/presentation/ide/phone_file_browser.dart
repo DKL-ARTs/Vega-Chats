@@ -506,10 +506,7 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
       return _buildPermissionDenied();
     }
 
-    final filteredEntries = _entries.where((e) {
-      final name = p.basename(e.path).toLowerCase();
-      return name.contains(_fileSearchQuery.toLowerCase());
-    }).toList();
+    final treeItems = _buildTreeItems();
 
     // Breadcrumb path
     final pathParts = _currentPath.split('/').where((s) => s.isNotEmpty).toList();
