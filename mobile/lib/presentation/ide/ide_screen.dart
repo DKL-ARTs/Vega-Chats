@@ -42,6 +42,8 @@ class _IdeScreenState extends State<IdeScreen> {
   bool _filesLoading = true;
   String _fileSearchQuery = '';
   final Map<String, String> _originalFileContents = {};
+  final Set<String> _expandedDirs = {};
+  final Map<String, List<Map<String, dynamic>>> _subDirContents = {};
 
   // === GIT STATE ===
   String _activeDrawerTab = 'files'; // 'files' | 'phone' | 'git' | 'search'
@@ -269,9 +271,51 @@ class _IdeScreenState extends State<IdeScreen> {
     setState(() => _attachedFiles.removeAt(index));
   }
 
-  // ==========================================
-  // === FILE EXPLORER LOGIC ===
-  // ==========================================
+  List<_TreeItem> _buildTreeItems() {
+    final List<_TreeItem> items = [];
+    
+    void addDirContents(String dirPath, int depth) {
+      final List<Map<String, dynamic>> contents;
+      if (dirPath == _currentPath) {
+        contents = _files;
+      } else {
+        contents = _subDirContents[dirPath] ?? [];
+      }
+      
+      final filtered = contents.where((f) {
+        final name = (f['name'] as String).toLowerCase();
+        return name.contains(_fileSearchQuery);
+      }).toList();
+      
+      filtered.sort((a, b) {
+        final aIsDir = a['is_dir'] == true;
+        final bIsDir = b['is_dir'] == true;
+        if (aIsDir != bIsDir) {
+          return aIsDir ? -1 : 1;
+        }
+        return (a['name'] as String).compareTo(b['name'] as String);
+      });
+      
+      for (final item in filtered) {
+        final itemPath = dirPath == '/' ? '/${item['name']}' : '$dirPath/${item['name']}';
+        final isDir = item['is_dir'] == true;
+        
+        items.add(_TreeItem(
+          item: item,
+          fullPath: itemPath,
+          depth: depth,
+        ));
+        
+        if (isDir && _expandedDirs.contains(itemPath)) {
+          addDirContents(itemPath, depth + 1);
+        }
+      }
+    }
+    
+    addDirContents(_currentPath, 0);
+    return items;
+  }
+
   Future<void> _loadFiles() async {
     setState(() => _filesLoading = true);
     try {
@@ -688,13 +732,31 @@ class _IdeScreenState extends State<IdeScreen> {
     );
   }
 
-  Future<void> _openFileItem(Map<String, dynamic> item) async {
-    final fullPath = '$_currentPath/${item['name']}';
+  Future<void> _openFileItem(Map<String, dynamic> item, String fullPath) async {
     if (item['is_dir'] == true) {
       setState(() {
-        _currentPath = fullPath;
+        if (_expandedDirs.contains(fullPath)) {
+          _expandedDirs.remove(fullPath);
+        } else {
+          _expandedDirs.add(fullPath);
+        }
       });
-      await _loadFiles();
+      
+      if (_expandedDirs.contains(fullPath) && !_subDirContents.containsKey(fullPath)) {
+        setState(() => _filesLoading = true);
+        try {
+          final result = await _client.listFiles(fullPath);
+          setState(() {
+            _subDirContents[fullPath] = List<Map<String, dynamic>>.from(result['items'] ?? []);
+          });
+        } catch (_) {
+          setState(() {
+            _subDirContents[fullPath] = [];
+          });
+        } finally {
+          setState(() => _filesLoading = false);
+        }
+      }
     } else {
       // Close files drawer first
       Navigator.pop(context);
@@ -2393,126 +2455,143 @@ class _IdeScreenState extends State<IdeScreen> {
                           child: _filesLoading
                               ? const Center(child: CircularProgressIndicator(color: VegaTheme.accent))
                               : () {
-                                  final filteredFiles = _files.where((f) {
-                                    final name = (f['name'] as String).toLowerCase();
-                                    return name.contains(_fileSearchQuery);
-                                  }).toList();
+                                  final treeItems = _buildTreeItems();
                                   
-                                  return filteredFiles.isEmpty
+                                  return treeItems.isEmpty
                                       ? const Center(child: Text('Ничего не найдено', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 13)))
                                       : ListView.builder(
-                                          itemCount: filteredFiles.length,
+                                          itemCount: treeItems.length,
                                           itemBuilder: (ctx, i) {
-                                            final item = filteredFiles[i];
+                                            final treeItem = treeItems[i];
+                                            final item = treeItem.item;
                                             final isDir = item['is_dir'] == true;
-                                            return ListTile(
-                                              leading: Icon(
-                                                isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                                                color: isDir ? VegaTheme.accent : VegaTheme.textSecondary,
-                                                size: 20,
-                                              ),
-                                              title: Text(
-                                                item['name'],
-                                                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
-                                              ),
-                                              trailing: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  if (!isDir)
-                                                    Text(
-                                                      '${item['size']} B',
-                                                      style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 10),
+                                            final isExpanded = _expandedDirs.contains(treeItem.fullPath);
+                                            
+                                            return Padding(
+                                              padding: EdgeInsets.only(left: treeItem.depth * 14.0),
+                                              child: ListTile(
+                                                dense: true,
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                                                leading: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    if (isDir)
+                                                      Icon(
+                                                        isExpanded 
+                                                            ? Icons.keyboard_arrow_down_rounded 
+                                                            : Icons.keyboard_arrow_right_rounded,
+                                                        color: Colors.white30,
+                                                        size: 14,
+                                                      ),
+                                                    Icon(
+                                                      isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
+                                                      color: isDir ? VegaTheme.accent : VegaTheme.textSecondary,
+                                                      size: 18,
                                                     ),
-                                                  PopupMenuButton<String>(
-                                                    icon: const Icon(Icons.more_vert_rounded, color: VegaTheme.textSecondary, size: 18),
-                                                    color: VegaTheme.surface,
-                                                    padding: EdgeInsets.zero,
-                                                    constraints: const BoxConstraints(),
-                                                    onSelected: (value) {
-                                                      if (value == 'rename') {
-                                                        _renameFileOrDir(item);
-                                                      } else if (value == 'delete') {
-                                                        _deleteFileOrDir(item);
-                                                      } else if (value.startsWith('ai_')) {
-                                                        final actionType = value.substring(3);
-                                                        final fullPath = '$_currentPath/${item['name']}';
-                                                        Navigator.pop(context); // Close endDrawer explorer
-                                                        _triggerAiAction(actionType, fullPath, item['name']);
-                                                      }
-                                                    },
-                                                    itemBuilder: (context) => [
-                                                      const PopupMenuItem(
-                                                        value: 'rename',
-                                                        child: Row(
-                                                          children: [
-                                                            Icon(Icons.edit_rounded, color: VegaTheme.textPrimary, size: 16),
-                                                            SizedBox(width: 8),
-                                                            Text('Переименовать', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                                          ],
-                                                        ),
+                                                  ],
+                                                ),
+                                                title: Text(
+                                                  item['name'],
+                                                  style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
+                                                ),
+                                                trailing: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    if (!isDir)
+                                                      Text(
+                                                        '${item['size']} B',
+                                                        style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 10),
                                                       ),
-                                                      const PopupMenuItem(
-                                                        value: 'delete',
-                                                        child: Row(
-                                                          children: [
-                                                            Icon(Icons.delete_rounded, color: Colors.redAccent, size: 16),
-                                                            SizedBox(width: 8),
-                                                            Text('Удалить', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                      if (!isDir) ...[
-                                                        const PopupMenuDivider(),
+                                                    PopupMenuButton<String>(
+                                                      icon: const Icon(Icons.more_vert_rounded, color: VegaTheme.textSecondary, size: 18),
+                                                      color: VegaTheme.surface,
+                                                      padding: EdgeInsets.zero,
+                                                      constraints: const BoxConstraints(),
+                                                      onSelected: (value) {
+                                                        if (value == 'rename') {
+                                                          _renameFileOrDir(item);
+                                                        } else if (value == 'delete') {
+                                                          _deleteFileOrDir(item);
+                                                        } else if (value.startsWith('ai_')) {
+                                                          final actionType = value.substring(3);
+                                                          Navigator.pop(context); // Close endDrawer explorer
+                                                          _triggerAiAction(actionType, treeItem.fullPath, item['name']);
+                                                        }
+                                                      },
+                                                      itemBuilder: (context) => [
                                                         const PopupMenuItem(
-                                                          value: 'ai_explain',
+                                                          value: 'rename',
                                                           child: Row(
                                                             children: [
-                                                              Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 16),
+                                                              Icon(Icons.edit_rounded, color: VegaTheme.textPrimary, size: 16),
                                                               SizedBox(width: 8),
-                                                              Text('Объяснить код', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                              Text('Переименовать', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
                                                             ],
                                                           ),
                                                         ),
                                                         const PopupMenuItem(
-                                                          value: 'ai_tests',
+                                                          value: 'delete',
                                                           child: Row(
                                                             children: [
-                                                              Icon(Icons.science_rounded, color: Colors.amberAccent, size: 16),
+                                                              Icon(Icons.delete_rounded, color: Colors.redAccent, size: 16),
                                                               SizedBox(width: 8),
-                                                              Text('Написать тесты', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                              Text('Удалить', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
                                                             ],
                                                           ),
                                                         ),
-                                                        const PopupMenuItem(
-                                                          value: 'ai_refactor',
-                                                          child: Row(
-                                                            children: [
-                                                              Icon(Icons.build_circle_rounded, color: Colors.amberAccent, size: 16),
-                                                              SizedBox(width: 8),
-                                                              Text('Рефакторинг', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                                            ],
+                                                        if (!isDir) ...[
+                                                          const PopupMenuDivider(),
+                                                          const PopupMenuItem(
+                                                            value: 'ai_explain',
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 16),
+                                                                SizedBox(width: 8),
+                                                                Text('Объяснить код', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                              ],
+                                                            ),
                                                           ),
-                                                        ),
-                                                        const PopupMenuItem(
-                                                          value: 'ai_bugs',
-                                                          child: Row(
-                                                            children: [
-                                                              Icon(Icons.bug_report_rounded, color: Colors.amberAccent, size: 16),
-                                                              SizedBox(width: 8),
-                                                              Text('Найти баги', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                                            ],
+                                                          const PopupMenuItem(
+                                                            value: 'ai_tests',
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(Icons.science_rounded, color: Colors.amberAccent, size: 16),
+                                                                SizedBox(width: 8),
+                                                                Text('Написать тесты', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                              ],
+                                                            ),
                                                           ),
-                                                        ),
+                                                          const PopupMenuItem(
+                                                            value: 'ai_refactor',
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(Icons.build_circle_rounded, color: Colors.amberAccent, size: 16),
+                                                                SizedBox(width: 8),
+                                                                Text('Рефакторинг', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          const PopupMenuItem(
+                                                            value: 'ai_bugs',
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(Icons.bug_report_rounded, color: Colors.amberAccent, size: 16),
+                                                                SizedBox(width: 8),
+                                                                Text('Найти баги', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ],
                                                       ],
-                                                    ],
-                                                  ),
-                                                ],
+                                                    ),
+                                                  ],
+                                                ),
+                                                onTap: () => _openFileItem(item, treeItem.fullPath),
                                               ),
-                                              onTap: () => _openFileItem(item),
                                             );
                                           },
                                         );
-                                }(),
+                                 }(),
                         ),
                       ],
                     )
@@ -3243,61 +3322,54 @@ class _IdeScreenState extends State<IdeScreen> {
           tooltip: 'Чаты IDE',
         ),
         titleSpacing: 0,
-        title: Row(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Files drawer open button (opens right endDrawer)
-            IconButton(
-              icon: const Icon(Icons.folder_open_rounded, color: VegaTheme.accent, size: 24),
-              onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-              tooltip: 'Проводник файлов',
+            const Text(
+              'Режим IDE',
+              style: TextStyle(
+                color: VegaTheme.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -0.5,
+              ),
             ),
-            // Terminal dialog open button
-            IconButton(
-              icon: const Icon(Icons.terminal_rounded, color: VegaTheme.accent, size: 24),
-              onPressed: () => _showTerminalBottomSheet(context),
-              tooltip: 'Консоль',
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+            Row(
               children: [
-                const Text(
-                  'Режим IDE',
-                  style: TextStyle(
-                    color: VegaTheme.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5,
+                Container(
+                  width: 5,
+                  height: 5,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF22C55E),
                   ),
                 ),
-                Row(
-                  children: [
-                    Container(
-                      width: 5,
-                      height: 5,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF22C55E),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Text(
-                      'AI Agent',
-                      style: TextStyle(
-                        color: Color(0xFF6366F1),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                  ],
+                const SizedBox(width: 4),
+                const Text(
+                  'AI Agent',
+                  style: TextStyle(
+                    color: Color(0xFF6366F1),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.3,
+                  ),
                 ),
               ],
             ),
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.folder_open_rounded, color: VegaTheme.accent, size: 24),
+            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+            tooltip: 'Проводник файлов',
+          ),
+          IconButton(
+            icon: const Icon(Icons.terminal_rounded, color: VegaTheme.accent, size: 24),
+            onPressed: () => _showTerminalBottomSheet(context),
+            tooltip: 'Консоль',
+          ),
           IconButton(
             icon: const Icon(Icons.arrow_forward_ios_rounded, color: VegaTheme.textPrimary, size: 20),
             onPressed: () => Navigator.pop(context),
@@ -3333,10 +3405,18 @@ class _IdeScreenState extends State<IdeScreen> {
                               ),
                             );
                           }
-                          
                           final msg = _chatMessages[idx];
                           final role = msg['role'] as String? ?? '';
                           final isUser = role == 'user';
+
+                          bool isFinalAssistant = false;
+                          if (!isUser && role == 'assistant') {
+                            if (idx == _chatMessages.length - 1) {
+                              isFinalAssistant = !_chatLoading;
+                            } else if (_chatMessages[idx + 1]['role'] == 'user') {
+                              isFinalAssistant = true;
+                            }
+                          }
 
                           // ── Tool Call chip ──
                           if (role == 'tool_call') {
@@ -3536,7 +3616,7 @@ class _IdeScreenState extends State<IdeScreen> {
                                 ),
                               
                               // Action buttons under assistant message
-                              if (!isUser && cleanContent.isNotEmpty && !(_chatLoading && idx == _chatMessages.length - 1))
+                              if (!isUser && cleanContent.isNotEmpty && isFinalAssistant)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 12, left: 8, top: 4),
                                   child: Row(
@@ -4667,4 +4747,11 @@ class _EditMessageDialogState extends State<EditMessageDialog> {
       ],
     );
   }
+}
+
+class _TreeItem {
+  final Map<String, dynamic> item;
+  final String fullPath;
+  final int depth;
+  const _TreeItem({required this.item, required this.fullPath, required this.depth});
 }

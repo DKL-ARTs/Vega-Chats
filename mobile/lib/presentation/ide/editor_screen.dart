@@ -1105,12 +1105,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       size: 22,
                     ),
                     tooltip: _showMarkdownPreview ? 'Редактор' : 'Просмотр MD',
-                  ),
-                IconButton(
-                  onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-                  icon: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 24),
-                  tooltip: 'Открыть файл',
-                ),
+
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.auto_awesome_rounded, color: Colors.amberAccent, size: 24),
                   color: VegaTheme.surface,
@@ -1197,9 +1192,9 @@ class _EditorScreenState extends State<EditorScreen> {
                   tooltip: 'Полноэкранный режим',
                 ),
                 IconButton(
-                  onPressed: _showInlineAiAssistant,
-                  icon: const Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 26),
-                  tooltip: 'Изменить с ИИ',
+                  onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+                  icon: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 24),
+                  tooltip: 'Проводник файлов',
                 ),
                 IconButton(
                   onPressed: _runCode,
