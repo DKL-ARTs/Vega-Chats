@@ -634,7 +634,7 @@ class _ChatScreenState extends State<ChatScreen> {
               title: const Text('Редактировать', style: TextStyle(color: VegaTheme.textPrimary)),
               onTap: () {
                 Navigator.pop(ctx);
-                _editMessage(index, message['content'] ?? '');
+                _editMessage(index, message);
               },
             ),
             ListTile(
@@ -651,45 +651,28 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _editMessage(int index, String currentText) {
-    final textController = TextEditingController(text: currentText);
-    showDialog(
+  void _editMessage(int index, Map<String, dynamic> message) async {
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: VegaTheme.surface,
-        title: const Text('Редактировать сообщение', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16)),
-        content: TextField(
-          controller: textController,
-          maxLines: 6,
-          minLines: 1,
-          style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
-            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () async {
-              final newText = textController.text.trim();
-              if (newText.isNotEmpty) {
-                Navigator.pop(ctx);
-                await _submitEditedMessage(index, newText);
-              }
-            },
-            child: const Text('Отправить', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold)),
-          ),
-        ],
+      builder: (ctx) => EditMessageDialog(
+        initialText: message['content'] ?? '',
+        initialFilePaths: List<String>.from(message['filePaths'] ?? []),
+        initialFileNames: List<String>.from(message['fileNames'] ?? []),
+        initialFilePath: message['filePath'] ?? '',
+        initialFileName: message['fileName'] ?? '',
+        initialIsImage: message['isImage'] == true,
+        copyFileToAppDir: _copyFileToAppDir,
       ),
     );
+
+    if (result != null) {
+      final newText = result['text'] as String;
+      final attachments = result['attachments'] as List<Map<String, dynamic>>;
+      await _submitEditedMessage(index, newText, attachments);
+    }
   }
 
-  Future<void> _submitEditedMessage(int userIndex, String newText) async {
+  Future<void> _submitEditedMessage(int userIndex, String newText, List<Map<String, dynamic>> attachments) async {
     if (_loading) return;
 
     int assistantIndex = userIndex + 1;
@@ -703,6 +686,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final prefix = _messages.sublist(0, userIndex);
     final targetUser = Map<String, dynamic>.from(_messages[userIndex]);
     targetUser['content'] = newText;
+    final allFilePaths = attachments.map((att) => att['path'] as String).toList();
+    final allFileNames = attachments.map((att) => att['name'] as String).toList();
+    final firstIsImage = attachments.isNotEmpty && attachments.first['isImage'] == true;
+    final firstFilePath = attachments.isNotEmpty ? attachments.first['path'] as String : '';
+    final firstFileName = attachments.isNotEmpty ? attachments.first['name'] as String : '';
+
+    targetUser['filePaths'] = allFilePaths;
+    targetUser['fileNames'] = allFileNames;
+    targetUser['filePath'] = firstFilePath;
+    targetUser['fileName'] = firstFileName;
+    targetUser['isImage'] = firstIsImage;
+
     final suffix = assistantIndex + 1 < _messages.length 
         ? _messages.sublist(assistantIndex + 1) 
         : <Map<String, dynamic>>[];
@@ -726,26 +721,33 @@ class _ChatScreenState extends State<ChatScreen> {
         {'role': m['role'].toString(), 'content': m['content'].toString()}).toList();
         
       List<Map<String, String>>? regenFiles;
-      final filePaths = targetUser['filePaths'] as List<dynamic>? ?? [];
-      final fileNames = targetUser['fileNames'] as List<dynamic>? ?? [];
-      final singlePath = targetUser['filePath']?.toString() ?? '';
-      final singleName = targetUser['fileName']?.toString() ?? 'file';
-
-      if (filePaths.isNotEmpty) {
+      final nonImageAtts = attachments.where((att) => att['isImage'] != true).toList();
+      if (nonImageAtts.isNotEmpty) {
         regenFiles = [];
-        for (int i = 0; i < filePaths.length; i++) {
+        for (final att in nonImageAtts) {
           try {
-            final bytes = await File(filePaths[i] as String).readAsBytes();
-            regenFiles.add({'name': fileNames.length > i ? fileNames[i] as String : 'file', 'content': base64Encode(bytes)});
+            final bytes = await File(att['path'] as String).readAsBytes();
+            regenFiles.add({'name': att['name'] as String, 'content': base64Encode(bytes)});
           } catch (_) {}
         }
         if (regenFiles.isEmpty) regenFiles = null;
-      } else if (targetUser['isImage'] != true && singlePath.isNotEmpty) {
+      }
+
+      final imageAtts = attachments.where((att) => att['isImage'] == true).toList();
+      String updatedMsgContent = newText;
+      for (final att in imageAtts) {
         try {
-          final bytes = await File(singlePath).readAsBytes();
-          regenFiles = [{'name': singleName, 'content': base64Encode(bytes)}];
+          final bytes = await File(att['path'] as String).readAsBytes();
+          final ext = (att['name'] as String).split('.').last.toLowerCase();
+          final mime = ext == 'png' ? 'image/png' : (ext == 'gif' ? 'image/gif' : 'image/jpeg');
+          final b64 = base64Encode(bytes);
+          updatedMsgContent = updatedMsgContent.isEmpty
+              ? '![image](data:$mime;base64,$b64)'
+              : '$updatedMsgContent\n\n![image](data:$mime;base64,$b64)';
         } catch (_) {}
       }
+
+      msgs.last['content'] = updatedMsgContent;
 
       final responseBuffer = StringBuffer();
       bool firstChunk = true;
@@ -2544,6 +2546,228 @@ class _CopyButtonState extends State<CopyButton> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class EditMessageDialog extends StatefulWidget {
+  final String initialText;
+  final List<String> initialFilePaths;
+  final List<String> initialFileNames;
+  final String initialFilePath;
+  final String initialFileName;
+  final bool initialIsImage;
+  final Future<String> Function(String sourcePath, String fileName) copyFileToAppDir;
+
+  const EditMessageDialog({
+    super.key,
+    required this.initialText,
+    required this.initialFilePaths,
+    required this.initialFileNames,
+    required this.initialFilePath,
+    required this.initialFileName,
+    required this.initialIsImage,
+    required this.copyFileToAppDir,
+  });
+
+  @override
+  State<EditMessageDialog> createState() => _EditMessageDialogState();
+}
+
+class _EditMessageDialogState extends State<EditMessageDialog> {
+  late final TextEditingController _textController;
+  final List<Map<String, dynamic>> _attachments = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController(text: widget.initialText);
+
+    if (widget.initialFilePaths.isNotEmpty) {
+      for (int i = 0; i < widget.initialFilePaths.length; i++) {
+        final path = widget.initialFilePaths[i];
+        final name = widget.initialFileNames.length > i ? widget.initialFileNames[i] : 'file';
+        final isImg = path.toLowerCase().endsWith('.png') ||
+            path.toLowerCase().endsWith('.jpg') ||
+            path.toLowerCase().endsWith('.jpeg') ||
+            path.toLowerCase().endsWith('.gif');
+        _attachments.add({'path': path, 'name': name, 'isImage': isImg});
+      }
+    } else if (widget.initialFilePath.isNotEmpty) {
+      _attachments.add({
+        'path': widget.initialFilePath,
+        'name': widget.initialFileName,
+        'isImage': widget.initialIsImage,
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: true);
+    if (result != null) {
+      for (final f in result.files) {
+        if (f.path == null) continue;
+        final savedPath = await widget.copyFileToAppDir(f.path!, f.name);
+        setState(() => _attachments.add({'path': savedPath, 'name': f.name, 'isImage': false}));
+      }
+    }
+  }
+
+  Future<void> _pickImages() async {
+    final picker = ImagePicker();
+    final images = await picker.pickMultiImage();
+    for (final image in images) {
+      final savedPath = await widget.copyFileToAppDir(image.path, image.name);
+      setState(() => _attachments.add({'path': savedPath, 'name': image.name, 'isImage': true}));
+    }
+  }
+
+  void _showAttachMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.surface,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: VegaTheme.accent),
+              title: const Text('Фото'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickImages();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file, color: VegaTheme.accent),
+              title: const Text('Файл'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickFiles();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: VegaTheme.surface,
+      title: const Text('Редактировать сообщение', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 16)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _textController,
+              maxLines: 6,
+              minLines: 1,
+              style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.border)),
+                focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: VegaTheme.accent)),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.attach_file, color: VegaTheme.textSecondary),
+                  onPressed: _showAttachMenu,
+                ),
+              ),
+            ),
+            if (_attachments.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text('Вложения:', style: TextStyle(color: VegaTheme.textSecondary, fontSize: 12)),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 70,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _attachments.length,
+                  itemBuilder: (ctx, i) {
+                    final att = _attachments[i];
+                    final isImg = att['isImage'] == true;
+                    return Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          isImg
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.file(File(att['path'] as String), width: 60, height: 60, fit: BoxFit.cover),
+                                )
+                              : Container(
+                                  width: 60,
+                                  height: 60,
+                                  decoration: BoxDecoration(color: VegaTheme.card, borderRadius: BorderRadius.circular(8)),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.insert_drive_file, color: VegaTheme.accent, size: 20),
+                                      const SizedBox(height: 4),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                                        child: Text(
+                                          att['name'] as String,
+                                          style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 8),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                          Positioned(
+                            top: -4,
+                            right: -4,
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _attachments.removeAt(i);
+                                });
+                              },
+                              child: Container(
+                                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                padding: const EdgeInsets.all(3),
+                                child: const Icon(Icons.close, color: Colors.white, size: 10),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Отмена', style: TextStyle(color: VegaTheme.textSecondary)),
+        ),
+        TextButton(
+          onPressed: () {
+            final newText = _textController.text.trim();
+            Navigator.pop(context, {
+              'text': newText,
+              'attachments': _attachments,
+            });
+          },
+          child: const Text('Отправить', style: TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 }
