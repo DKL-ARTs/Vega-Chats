@@ -2215,7 +2215,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               ],
                             ),
                           ),
-                          if (!isUser && msg['content']?.isNotEmpty == true)
+                          if (!isUser && msg['content']?.isNotEmpty == true && !(_loading && i == _messages.length - 1))
                             Padding(
                               padding: const EdgeInsets.only(bottom: 12, left: 4),
                               child: Row(

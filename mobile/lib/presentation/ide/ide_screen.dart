@@ -1443,6 +1443,8 @@ class _IdeScreenState extends State<IdeScreen> {
           setState(() => _chatLoading = false);
           _scrollChatToBottom();
         }
+        await _loadFiles();
+        await _loadGitStatus();
       }
       return;
     }
@@ -1517,6 +1519,8 @@ class _IdeScreenState extends State<IdeScreen> {
         setState(() => _chatLoading = false);
         _scrollChatToBottom();
       }
+      await _loadFiles();
+      await _loadGitStatus();
     }
   }
 
@@ -3532,7 +3536,7 @@ class _IdeScreenState extends State<IdeScreen> {
                                 ),
                               
                               // Action buttons under assistant message
-                              if (!isUser && cleanContent.isNotEmpty)
+                              if (!isUser && cleanContent.isNotEmpty && !(_chatLoading && idx == _chatMessages.length - 1))
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 12, left: 8, top: 4),
                                   child: Row(
@@ -3836,6 +3840,18 @@ class _FileCard extends StatefulWidget {
 class _FileCardState extends State<_FileCard> {
   bool _downloading = false;
   bool _showDiff = false;
+  int _addedCount = 0;
+  int _deletedCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.originalContent != null && widget.originalContent != widget.fileContent) {
+      final diff = _computeLineDiff(widget.originalContent!, widget.fileContent);
+      _addedCount = diff.where((d) => d['type'] == 'add').length;
+      _deletedCount = diff.where((d) => d['type'] == 'delete').length;
+    }
+  }
 
   void _openFile(BuildContext context) {
     Navigator.push(
@@ -3955,10 +3971,27 @@ class _FileCardState extends State<_FileCard> {
                         size: 16,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        _showDiff ? 'Скрыть изменения' : 'Показать изменения',
-                        style: const TextStyle(color: VegaTheme.accent, fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
+                      RichText(
+                        text: TextSpan(
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'sans-serif'),
+                          children: [
+                            TextSpan(
+                              text: _showDiff ? 'Скрыть изменения' : 'Показать изменения ',
+                              style: const TextStyle(color: VegaTheme.accent),
+                            ),
+                            if (!_showDiff) ...[
+                              TextSpan(
+                                text: '+$_addedCount ',
+                                style: const TextStyle(color: Colors.greenAccent),
+                              ),
+                              TextSpan(
+                                text: '-$_deletedCount',
+                                style: const TextStyle(color: Colors.redAccent),
+                              ),
+                            ]
+                          ],
+                        ),
+                      )
                     ],
                   ),
                 ),
