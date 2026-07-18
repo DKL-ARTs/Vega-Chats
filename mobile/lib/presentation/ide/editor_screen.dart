@@ -1105,7 +1105,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       size: 22,
                     ),
                     tooltip: _showMarkdownPreview ? 'Редактор' : 'Просмотр MD',
-
+                  ),
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.auto_awesome_rounded, color: Colors.amberAccent, size: 24),
                   color: VegaTheme.surface,
