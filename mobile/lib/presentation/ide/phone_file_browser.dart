@@ -30,6 +30,9 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
   String _fileSearchQuery = '';
   String? _errorMsg;
 
+  final Set<String> _expandedDirs = {};
+  final Map<String, List<FileSystemEntity>> _subDirContents = {};
+
   @override
   void initState() {
     super.initState();
@@ -223,6 +226,8 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
     setState(() {
       _loading = true;
       _errorMsg = null;
+      _expandedDirs.clear();
+      _subDirContents.clear();
     });
 
     try {
@@ -259,6 +264,82 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
     final parent = p.dirname(_currentPath);
     if (parent != _currentPath) {
       _loadDir(parent);
+    }
+  }
+
+  List<_PhoneTreeItem> _buildTreeItems() {
+    final List<_PhoneTreeItem> items = [];
+    
+    void addDirContents(String dirPath, int depth) {
+      final List<FileSystemEntity> contents;
+      if (dirPath == _currentPath) {
+        contents = _entries;
+      } else {
+        contents = _subDirContents[dirPath] ?? [];
+      }
+      
+      final filtered = contents.where((e) {
+        final name = p.basename(e.path).toLowerCase();
+        return name.contains(_fileSearchQuery.toLowerCase());
+      }).toList();
+      
+      // Sort: folders first, then files, both alphabetically
+      filtered.sort((a, b) {
+        final aIsDir = a is Directory;
+        final bIsDir = b is Directory;
+        if (aIsDir && !bIsDir) return -1;
+        if (!aIsDir && bIsDir) return 1;
+        return p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase());
+      });
+      
+      for (final entity in filtered) {
+        final isDir = entity is Directory;
+        
+        items.add(_PhoneTreeItem(
+          entity: entity,
+          fullPath: entity.path,
+          depth: depth,
+        ));
+        
+        if (isDir && _expandedDirs.contains(entity.path)) {
+          addDirContents(entity.path, depth + 1);
+        }
+      }
+    }
+    
+    addDirContents(_currentPath, 0);
+    return items;
+  }
+
+  Future<void> _openFileItem(FileSystemEntity entity) async {
+    final fullPath = entity.path;
+    if (entity is Directory) {
+      setState(() {
+        if (_expandedDirs.contains(fullPath)) {
+          _expandedDirs.remove(fullPath);
+        } else {
+          _expandedDirs.add(fullPath);
+        }
+      });
+      
+      if (_expandedDirs.contains(fullPath) && !_subDirContents.containsKey(fullPath)) {
+        try {
+          final dir = Directory(fullPath);
+          final List<FileSystemEntity> entries = [];
+          await for (final child in dir.list(followLinks: false)) {
+            entries.add(child);
+          }
+          setState(() {
+            _subDirContents[fullPath] = entries;
+          });
+        } catch (_) {
+          setState(() {
+            _subDirContents[fullPath] = [];
+          });
+        }
+      }
+    } else {
+      await _openFile(entity);
     }
   }
 
@@ -586,14 +667,16 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
                         ],
                       ),
                     ))
-                  : filteredEntries.isEmpty
+                  : treeItems.isEmpty
                       ? const Center(child: Text('Папка пуста', style: TextStyle(color: Colors.white38, fontSize: 13)))
                       : ListView.builder(
-                          itemCount: filteredEntries.length,
+                          itemCount: treeItems.length,
                           itemBuilder: (ctx, i) {
-                            final entity = filteredEntries[i];
+                            final treeItem = treeItems[i];
+                            final entity = treeItem.entity;
                             final name = p.basename(entity.path);
                             final isDir = entity is Directory;
+                            final isExpanded = _expandedDirs.contains(treeItem.fullPath);
                             
                             String? sizeLabel;
                             if (!isDir) {
@@ -603,126 +686,151 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
                               } catch (_) {}
                             }
 
-                            return ListTile(
-                              dense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-                              leading: isDir
-                                  ? const Icon(Icons.folder_rounded, color: VegaTheme.accent, size: 22)
-                                  : Text(_getFileIcon(name), style: const TextStyle(fontSize: 18)),
-                              title: Text(
-                                name,
-                                style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: sizeLabel != null
-                                  ? Text(sizeLabel, style: const TextStyle(color: Colors.white38, fontSize: 10))
-                                  : null,
-                              trailing: PopupMenuButton<String>(
-                                icon: const Icon(Icons.more_vert_rounded, color: Colors.white38, size: 18),
-                                color: VegaTheme.surface,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                onSelected: (value) async {
-                                  switch (value) {
-                                    case 'copy_path':
-                                      await _copyPathToClipboard(entity.path);
-                                      break;
-                                    case 'copy_to_server':
-                                      if (!isDir) await _copyToServer(entity);
-                                      break;
-                                    case 'open_editor':
-                                      if (!isDir) await _openFile(entity);
-                                      break;
-                                    case 'delete':
-                                      await _deleteEntity(entity);
-                                      break;
-                                    case 'ai_explain':
-                                    case 'ai_tests':
-                                    case 'ai_refactor':
-                                    case 'ai_bugs':
-                                      if (widget.onAiAction != null) {
-                                        widget.onAiAction!(value.substring(3), entity.path, name);
-                                      }
-                                      break;
-                                  }
-                                },
-                                itemBuilder: (ctx) => [
-                                  const PopupMenuItem(
-                                    value: 'copy_path',
-                                    child: Row(children: [
-                                      Icon(Icons.link_rounded, color: VegaTheme.textPrimary, size: 16),
-                                      SizedBox(width: 8),
-                                      Text('Копировать путь', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                    ]),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(children: [
-                                      Icon(Icons.delete_forever_rounded, color: Colors.redAccent, size: 16),
-                                      SizedBox(width: 8),
-                                      Text('Удалить', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
-                                    ]),
-                                  ),
-                                  if (!isDir) ...[
-                                    const PopupMenuItem(
-                                      value: 'open_editor',
-                                      child: Row(children: [
-                                        Icon(Icons.edit_rounded, color: VegaTheme.textPrimary, size: 16),
-                                        SizedBox(width: 8),
-                                        Text('Открыть в редакторе', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                      ]),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'copy_to_server',
-                                      child: Row(children: [
-                                        Icon(Icons.cloud_upload_rounded, color: Colors.greenAccent, size: 16),
-                                        SizedBox(width: 8),
-                                        Text('Копировать на сервер', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                      ]),
-                                    ),
-                                    const PopupMenuDivider(),
-                                    const PopupMenuItem(
-                                      value: 'ai_explain',
-                                      child: Row(children: [
-                                        Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 16),
-                                        SizedBox(width: 8),
-                                        Text('Объяснить код', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                      ]),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'ai_tests',
-                                      child: Row(children: [
-                                        Icon(Icons.science_rounded, color: Colors.amberAccent, size: 16),
-                                        SizedBox(width: 8),
-                                        Text('Написать тесты', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                      ]),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'ai_refactor',
-                                      child: Row(children: [
-                                        Icon(Icons.build_circle_rounded, color: Colors.amberAccent, size: 16),
-                                        SizedBox(width: 8),
-                                        Text('Рефакторинг', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                      ]),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'ai_bugs',
-                                      child: Row(children: [
-                                        Icon(Icons.bug_report_rounded, color: Colors.amberAccent, size: 16),
-                                        SizedBox(width: 8),
-                                        Text('Найти баги', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
-                                      ]),
-                                    ),
+                            return Padding(
+                              padding: EdgeInsets.only(left: treeItem.depth * 14.0),
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                                leading: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isDir)
+                                      Icon(
+                                        isExpanded 
+                                            ? Icons.keyboard_arrow_down_rounded 
+                                            : Icons.keyboard_arrow_right_rounded,
+                                        color: Colors.white30,
+                                        size: 14,
+                                      ),
+                                    isDir
+                                        ? const Icon(Icons.folder_rounded, color: VegaTheme.accent, size: 22)
+                                        : Text(_getFileIcon(name), style: const TextStyle(fontSize: 18)),
                                   ],
-                                ],
+                                ),
+                                title: Text(
+                                  name,
+                                  style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: sizeLabel != null
+                                    ? Text(sizeLabel, style: const TextStyle(color: Colors.white38, fontSize: 10))
+                                    : null,
+                                trailing: PopupMenuButton<String>(
+                                  icon: const Icon(Icons.more_vert_rounded, color: Colors.white38, size: 18),
+                                  color: VegaTheme.surface,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onSelected: (value) async {
+                                    switch (value) {
+                                      case 'set_root':
+                                        setState(() {
+                                          _currentPath = entity.path;
+                                        });
+                                        await _loadDir(_currentPath);
+                                        break;
+                                      case 'copy_path':
+                                        await _copyPathToClipboard(entity.path);
+                                        break;
+                                      case 'copy_to_server':
+                                        if (!isDir) await _copyToServer(entity);
+                                        break;
+                                      case 'open_editor':
+                                        if (!isDir) await _openFile(entity);
+                                        break;
+                                      case 'delete':
+                                        await _deleteEntity(entity);
+                                        break;
+                                      case 'ai_explain':
+                                      case 'ai_tests':
+                                      case 'ai_refactor':
+                                      case 'ai_bugs':
+                                        if (widget.onAiAction != null) {
+                                          widget.onAiAction!(value.substring(3), entity.path, name);
+                                        }
+                                        break;
+                                    }
+                                  },
+                                  itemBuilder: (ctx) => [
+                                    if (isDir)
+                                      const PopupMenuItem(
+                                        value: 'set_root',
+                                        child: Row(children: [
+                                          Icon(Icons.folder_shared_rounded, color: VegaTheme.accent, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Выбрать папку', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                        ]),
+                                      ),
+                                    const PopupMenuItem(
+                                      value: 'copy_path',
+                                      child: Row(children: [
+                                        Icon(Icons.link_rounded, color: VegaTheme.textPrimary, size: 16),
+                                        SizedBox(width: 8),
+                                        Text('Копировать путь', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                      ]),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'delete',
+                                      child: Row(children: [
+                                        Icon(Icons.delete_forever_rounded, color: Colors.redAccent, size: 16),
+                                        SizedBox(width: 8),
+                                        Text('Удалить', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                                      ]),
+                                    ),
+                                    if (!isDir) ...[
+                                      const PopupMenuItem(
+                                        value: 'open_editor',
+                                        child: Row(children: [
+                                          Icon(Icons.edit_rounded, color: VegaTheme.textPrimary, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Открыть в редакторе', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                        ]),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'copy_to_server',
+                                        child: Row(children: [
+                                          Icon(Icons.cloud_upload_rounded, color: Colors.greenAccent, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Копировать на сервер', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                        ]),
+                                      ),
+                                      const PopupMenuDivider(),
+                                      const PopupMenuItem(
+                                        value: 'ai_explain',
+                                        child: Row(children: [
+                                          Icon(Icons.psychology_rounded, color: Colors.amberAccent, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Объяснить код', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                        ]),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'ai_tests',
+                                        child: Row(children: [
+                                          Icon(Icons.science_rounded, color: Colors.amberAccent, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Написать тесты', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                        ]),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'ai_refactor',
+                                        child: Row(children: [
+                                          Icon(Icons.build_circle_rounded, color: Colors.amberAccent, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Рефакторинг', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                        ]),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'ai_bugs',
+                                        child: Row(children: [
+                                          Icon(Icons.bug_report_rounded, color: Colors.amberAccent, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Найти баги', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                        ]),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                onTap: () => _openFileItem(entity),
                               ),
-                              onTap: () {
-                                if (isDir) {
-                                  _loadDir(entity.path);
-                                } else {
-                                  _openFile(entity);
-                                }
-                              },
                             );
                           },
                         ),
@@ -730,4 +838,11 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
       ],
     );
   }
+}
+
+class _PhoneTreeItem {
+  final FileSystemEntity entity;
+  final String fullPath;
+  final int depth;
+  const _PhoneTreeItem({required this.entity, required this.fullPath, required this.depth});
 }

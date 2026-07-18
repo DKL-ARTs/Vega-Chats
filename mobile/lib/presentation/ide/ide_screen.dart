@@ -743,7 +743,6 @@ class _IdeScreenState extends State<IdeScreen> {
       });
       
       if (_expandedDirs.contains(fullPath) && !_subDirContents.containsKey(fullPath)) {
-        setState(() => _filesLoading = true);
         try {
           final result = await _client.listFiles(fullPath);
           setState(() {
@@ -753,8 +752,6 @@ class _IdeScreenState extends State<IdeScreen> {
           setState(() {
             _subDirContents[fullPath] = [];
           });
-        } finally {
-          setState(() => _filesLoading = false);
         }
       }
     } else {
@@ -2512,6 +2509,13 @@ class _IdeScreenState extends State<IdeScreen> {
                                                           _renameFileOrDir(item);
                                                         } else if (value == 'delete') {
                                                           _deleteFileOrDir(item);
+                                                        } else if (value == 'set_root') {
+                                                          setState(() {
+                                                            _currentPath = treeItem.fullPath;
+                                                            _expandedDirs.clear();
+                                                            _subDirContents.clear();
+                                                          });
+                                                          _loadFiles();
                                                         } else if (value.startsWith('ai_')) {
                                                           final actionType = value.substring(3);
                                                           Navigator.pop(context); // Close endDrawer explorer
@@ -2519,6 +2523,17 @@ class _IdeScreenState extends State<IdeScreen> {
                                                         }
                                                       },
                                                       itemBuilder: (context) => [
+                                                        if (isDir)
+                                                          const PopupMenuItem(
+                                                            value: 'set_root',
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(Icons.folder_shared_rounded, color: VegaTheme.accent, size: 16),
+                                                                SizedBox(width: 8),
+                                                                Text('Выбрать папку', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                              ],
+                                                            ),
+                                                          ),
                                                         const PopupMenuItem(
                                                           value: 'rename',
                                                           child: Row(
