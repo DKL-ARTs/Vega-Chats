@@ -243,6 +243,26 @@ You are running inside a Linux container on Android. Common tools available: pyt
 """
 
 
+def parse_message_content(content: str):
+    import re
+    pattern = r'!\[image\]\(data:([^)]+)\)'
+    matches = re.findall(pattern, content)
+
+    if not matches:
+        return content, []
+
+    clean_text = re.sub(pattern, '[Изображение]', content).strip()
+
+    images = []
+    for data_uri in matches:
+        images.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{data_uri}"}
+        })
+
+    return clean_text, images
+
+
 # ──────────────────────────────────────────────
 # WebSocket Agent Endpoint
 # ──────────────────────────────────────────────
@@ -273,10 +293,22 @@ async def agent_run(ws: WebSocket):
         # Notify start
         await ws.send_json({"type": "start", "task": task, "cwd": cwd})
         
+        # Clean images from prompt for Gemini visual model OpenAI-compatible structure
+        clean_text, images = parse_message_content(task)
+        if images:
+            user_content = []
+            if clean_text and clean_text != '[Изображение]':
+                user_content.append({"type": "text", "text": f"Task: {clean_text}\n\nWorking directory: {cwd}"})
+            else:
+                user_content.append({"type": "text", "text": f"Task: (See image)\n\nWorking directory: {cwd}"})
+            user_content.extend(images)
+        else:
+            user_content = f"Task: {task}\n\nWorking directory: {cwd}"
+
         # Build initial messages
         messages = [
             {"role": "system", "content": AGENT_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Task: {task}\n\nWorking directory: {cwd}"},
+            {"role": "user", "content": user_content},
         ]
         
         iteration = 0
