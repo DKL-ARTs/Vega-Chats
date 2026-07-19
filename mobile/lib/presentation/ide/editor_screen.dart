@@ -1094,31 +1094,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 ],
               ),
               actions: [
-                // 1. Save
-                IconButton(
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  icon: const Icon(Icons.save_rounded, color: VegaTheme.accent, size: 22),
-                  onPressed: _saveFile,
-                  tooltip: 'Сохранить',
-                ),
-                // 2. Run code
-                IconButton(
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  icon: const Icon(Icons.play_arrow_rounded, color: Colors.greenAccent, size: 24),
-                  onPressed: _runCode,
-                  tooltip: 'Запустить код',
-                ),
-                // 3. Folder open
-                IconButton(
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  icon: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 22),
-                  onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-                  tooltip: 'Проводник файлов',
-                ),
-                // 4. AI Helper stars popup
+                // 1. AI Helper stars popup
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.auto_awesome_rounded, color: Colors.amberAccent, size: 22),
                   color: VegaTheme.surface,
@@ -1176,7 +1152,15 @@ class _EditorScreenState extends State<EditorScreen> {
                     ),
                   ],
                 ),
-                // 5. Change with AI brain
+                // 2. Search & Replace
+                IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  icon: Icon(Icons.search_rounded, color: _showSearchBar ? VegaTheme.accent : Colors.white, size: 22),
+                  onPressed: () => setState(() => _showSearchBar = !_showSearchBar),
+                  tooltip: 'Поиск и замена',
+                ),
+                // 3. Change with AI brain
                 IconButton(
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
@@ -1184,7 +1168,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   onPressed: _showInlineAiAssistant,
                   tooltip: 'Изменить с ИИ',
                 ),
-                // 6. Terminal
+                // 4. Terminal
                 IconButton(
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
@@ -1197,13 +1181,29 @@ class _EditorScreenState extends State<EditorScreen> {
                   },
                   tooltip: 'Терминал',
                 ),
-                // 7. Fullscreen toggle
+                // 5. Settings
                 IconButton(
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  icon: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 22),
-                  onPressed: () => setState(() => _isFullscreen = true),
-                  tooltip: 'Полноэкранный режим',
+                  icon: const Icon(Icons.settings_rounded, color: Colors.white, size: 22),
+                  onPressed: _showSettingsBottomSheet,
+                  tooltip: 'Настройки редактора',
+                ),
+                // 6. Save (in place of fullscreen!)
+                IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  icon: const Icon(Icons.save_rounded, color: VegaTheme.accent, size: 22),
+                  onPressed: _saveFile,
+                  tooltip: 'Сохранить',
+                ),
+                // 7. Folder Open
+                IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  icon: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 22),
+                  onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+                  tooltip: 'Проводник файлов',
                 ),
                 // 8. Three dots menu for more options
                 PopupMenuButton<String>(
@@ -1213,32 +1213,20 @@ class _EditorScreenState extends State<EditorScreen> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onSelected: (val) {
-                    if (val == 'search') {
-                      setState(() => _showSearchBar = !_showSearchBar);
-                    } else if (val == 'settings') {
-                      _showSettingsBottomSheet();
+                    if (val == 'run') {
+                      _runCode();
                     } else if (val == 'markdown') {
                       setState(() => _showMarkdownPreview = !_showMarkdownPreview);
                     }
                   },
                   itemBuilder: (ctx) => [
                     const PopupMenuItem(
-                      value: 'search',
+                      value: 'run',
                       child: Row(
                         children: [
-                          Icon(Icons.search_rounded, color: Colors.white, size: 16),
+                          Icon(Icons.play_arrow_rounded, color: Colors.greenAccent, size: 16),
                           SizedBox(width: 8),
-                          Text('Поиск и замена', style: TextStyle(color: Colors.white, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'settings',
-                      child: Row(
-                        children: [
-                          Icon(Icons.settings_rounded, color: Colors.white, size: 16),
-                          SizedBox(width: 8),
-                          Text('Настройки', style: TextStyle(color: Colors.white, fontSize: 12)),
+                          Text('Запустить код', style: TextStyle(color: Colors.white, fontSize: 12)),
                         ],
                       ),
                     ),
