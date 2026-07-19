@@ -1732,9 +1732,13 @@ class _EditorScreenState extends State<EditorScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Проводник файлов',
-                    style: TextStyle(color: VegaTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+                  const Expanded(
+                    child: Text(
+                      'Проводник файлов',
+                      style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),

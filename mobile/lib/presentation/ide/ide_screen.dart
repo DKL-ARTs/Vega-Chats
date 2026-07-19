@@ -2544,7 +2544,17 @@ class _IdeScreenState extends State<IdeScreen> {
                                                             ],
                                                           ),
                                                         ),
-                                                        const PopupMenuItem(
+                                                                                                                 const PopupMenuItem(
+                                                           value: 'copy_path',
+                                                           child: Row(
+                                                             children: [
+                                                               Icon(Icons.copy_all_rounded, color: VegaTheme.textSecondary, size: 16),
+                                                               SizedBox(width: 8),
+                                                               Text('Копировать путь', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                             ],
+                                                           ),
+                                                         ),
+const PopupMenuItem(
                                                           value: 'delete',
                                                           child: Row(
                                                             children: [
