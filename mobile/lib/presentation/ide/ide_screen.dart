@@ -2221,13 +2221,21 @@ class _IdeScreenState extends State<IdeScreen> {
                           ),
                         ),
                         alignment: Alignment.center,
-                        child: Text(
-                          'Проводник',
-                          style: TextStyle(
-                            color: _activeDrawerTab == 'files' ? Colors.white : VegaTheme.textSecondary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.folder_open_rounded, size: 12,
+                              color: _activeDrawerTab == 'files' ? Colors.white : VegaTheme.textSecondary),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Файлы',
+                              style: TextStyle(
+                                color: _activeDrawerTab == 'files' ? Colors.white : VegaTheme.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),

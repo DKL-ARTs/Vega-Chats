@@ -1181,15 +1181,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   },
                   tooltip: 'Терминал',
                 ),
-                // 5. Settings
-                IconButton(
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  icon: const Icon(Icons.settings_rounded, color: Colors.white, size: 22),
-                  onPressed: _showSettingsBottomSheet,
-                  tooltip: 'Настройки редактора',
-                ),
-                // 6. Save (in place of fullscreen!)
+                // 5. Save
                 IconButton(
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
@@ -1197,7 +1189,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   onPressed: _saveFile,
                   tooltip: 'Сохранить',
                 ),
-                // 7. Folder Open
+                // 6. Folder Open
                 IconButton(
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
@@ -1205,7 +1197,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
                   tooltip: 'Проводник файлов',
                 ),
-                // 8. Three dots menu for more options
+                // 7. Three dots menu for more options
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 22),
                   color: VegaTheme.surface,
@@ -1213,13 +1205,25 @@ class _EditorScreenState extends State<EditorScreen> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onSelected: (val) {
-                    if (val == 'run') {
+                    if (val == 'settings') {
+                      _showSettingsBottomSheet();
+                    } else if (val == 'run') {
                       _runCode();
                     } else if (val == 'markdown') {
                       setState(() => _showMarkdownPreview = !_showMarkdownPreview);
                     }
                   },
                   itemBuilder: (ctx) => [
+                    const PopupMenuItem(
+                      value: 'settings',
+                      child: Row(
+                        children: [
+                          Icon(Icons.settings_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 8),
+                          Text('Настройки редактора', style: TextStyle(color: Colors.white, fontSize: 12)),
+                        ],
+                      ),
+                    ),
                     const PopupMenuItem(
                       value: 'run',
                       child: Row(
