@@ -126,8 +126,10 @@ AGENT_TOOLS = [
 
 def _safe_path(path: str) -> Path:
     p = Path(path)
-    allowed = ('/root', '/sdcard', '/storage', '/var', '/tmp', '/home')
+    allowed = ('/root', '/sdcard', '/storage', '/var', '/tmp', '/home', '/data', '/mnt')
     if p.is_absolute():
+        if any(str(p).startswith(prefix) for prefix in allowed):
+            return p.resolve()
         resolved = p.resolve()
         if any(str(resolved).startswith(prefix) for prefix in allowed):
             return resolved

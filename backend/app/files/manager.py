@@ -41,8 +41,10 @@ def safe_path(path: str) -> Path:
     p = Path(path)
     
     # If the client specifies an absolute path that is inside allowed directories, allow it directly
-    allowed_prefixes = ('/root', '/sdcard', '/storage', '/var', '/tmp')
+    allowed_prefixes = ('/root', '/sdcard', '/storage', '/var', '/tmp', '/home', '/data', '/mnt')
     if p.is_absolute():
+        if any(str(p).startswith(prefix) for prefix in allowed_prefixes):
+            return p.resolve()
         resolved = p.resolve()
         if any(str(resolved).startswith(prefix) for prefix in allowed_prefixes):
             return resolved
