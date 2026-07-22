@@ -24,6 +24,7 @@ import 'editor_screen.dart';
 import 'phone_file_browser.dart';
 import '../terminal/terminal_screen.dart';
 import '../agent/agent_screen.dart';
+import 'package:go_router/go_router.dart';
 
 class IdeScreen extends StatefulWidget {
   const IdeScreen({super.key});
@@ -1601,6 +1602,17 @@ class _IdeScreenState extends State<IdeScreen> {
     Clipboard.setData(ClipboardData(text: text));
   }
 
+  void _copyPathToClipboard(String path) {
+    Clipboard.setData(ClipboardData(text: path));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Путь скопирован в буфер'),
+            duration: Duration(seconds: 1)),
+      );
+    }
+  }
+
   void _showUserMessageMenu(BuildContext context, Map<String, dynamic> message, int index) {
     showModalBottomSheet(
       context: context,
@@ -2272,15 +2284,22 @@ class _IdeScreenState extends State<IdeScreen> {
                           ),
                         ),
                         alignment: Alignment.center,
-                        child: Text(
-                          'Git',
-                          style: TextStyle(
-                            color: _activeDrawerTab == 'git' ? Colors.white : VegaTheme.textSecondary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.commit_rounded, size: 12,
+                              color: _activeDrawerTab == 'git' ? Colors.white : VegaTheme.textSecondary),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Git',
+                              style: TextStyle(
+                                color: _activeDrawerTab == 'git' ? Colors.white : VegaTheme.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),                      ),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -2332,9 +2351,13 @@ class _IdeScreenState extends State<IdeScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
-                                'Проводник файлов',
-                                style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+                              const Expanded(
+                                child: Text(
+                                  'Проводник файлов',
+                                  style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                               Row(
                                 children: [
@@ -2509,6 +2532,8 @@ class _IdeScreenState extends State<IdeScreen> {
                                                           _renameFileOrDir(item);
                                                         } else if (value == 'delete') {
                                                           _deleteFileOrDir(item);
+                                                        } else if (value == 'copy_path') {
+                                                          _copyPathToClipboard(treeItem.fullPath);
                                                         } else if (value == 'set_root') {
                                                           setState(() {
                                                             _currentPath = treeItem.fullPath;
@@ -3324,7 +3349,15 @@ const PopupMenuItem(
                 );
               }),
             ),
-
+            ListTile(
+              leading: const Icon(Icons.settings_outlined, color: VegaTheme.accent),
+              title: const Text('Настройки', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                context.push('/settings');
+              },
+            ),
+            const SizedBox(height: 16),
           ],
         ),
       ),
