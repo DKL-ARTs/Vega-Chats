@@ -35,14 +35,35 @@ final _providers = <_ProviderInfo>[
     keyHelper: 'Получить на openrouter.ai',
     models: {
       'openrouter/auto': 'Auto Router (Автовыбор модели)',
-      'deepseek/deepseek-r1:free': 'DeepSeek R1 (С рассуждением)',
-      'deepseek/deepseek-chat': 'DeepSeek V3 (Чат-модель)',
-      'openai/gpt-4o': 'GPT-4o',
-      'openai/gpt-4o-mini': 'GPT-4o Mini',
+      // ── Anthropic Claude ──
+      'anthropic/claude-sonnet-5': 'Claude Sonnet 5 ✦ NEW',
+      'anthropic/claude-opus-4.8': 'Claude Opus 4.8',
+      'anthropic/claude-sonnet-4': 'Claude Sonnet 4',
       'anthropic/claude-3.5-sonnet': 'Claude 3.5 Sonnet',
       'anthropic/claude-3-haiku': 'Claude 3 Haiku (Быстрый)',
-      'meta-llama/llama-3.3-70b-instruct:free': 'Llama 3.3 70B',
-      'qwen/qwen-2.5-72b-instruct:free': 'Qwen 2.5 72B',
+      // ── OpenAI GPT ──
+      'openai/gpt-5.6-sol': 'GPT-5.6 Sol (Флагман) ✦ NEW',
+      'openai/gpt-5.6-terra': 'GPT-5.6 Terra (Баланс)',
+      'openai/gpt-5.6-luna': 'GPT-5.6 Luna (Быстрый)',
+      'openai/gpt-4o': 'GPT-4o',
+      'openai/gpt-4o-mini': 'GPT-4o Mini',
+      // ── Google Gemini ──
+      'google/gemini-3.6-flash': 'Gemini 3.6 Flash ✦ NEW',
+      'google/gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
+      'google/gemini-2.5-pro': 'Gemini 2.5 Pro',
+      'google/gemini-2.5-flash': 'Gemini 2.5 Flash',
+      // ── DeepSeek ──
+      'deepseek/deepseek-v4-pro': 'DeepSeek V4 Pro ✦ NEW',
+      'deepseek/deepseek-v4-flash': 'DeepSeek V4 Flash',
+      'deepseek/deepseek-r1:free': 'DeepSeek R1 (Free)',
+      // ── Moonshot Kimi ──
+      'moonshot/kimi-k3': 'Kimi K3 (2.8T) ✦ NEW',
+      // ── Zhipu GLM ──
+      'zhipu/glm-5.2': 'GLM-5.2 Open-source ✦ NEW',
+      // ── Meta Llama ──
+      'meta-llama/llama-3.3-70b-instruct:free': 'Llama 3.3 70B (Free)',
+      // ── Qwen ──
+      'qwen/qwen-2.5-72b-instruct:free': 'Qwen 2.5 72B (Free)',
     },
   ),
   _ProviderInfo(
@@ -51,11 +72,12 @@ final _providers = <_ProviderInfo>[
     keyHint: 'Gemini API Key',
     keyHelper: 'Получить на aistudio.google.com',
     models: {
+      'gemini-3.6-flash': 'Gemini 3.6 Flash ✦ NEW',
+      'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
       'gemini-2.5-flash': 'Gemini 2.5 Flash',
       'gemini-2.5-pro': 'Gemini 2.5 Pro',
       'gemini-2.0-flash': 'Gemini 2.0 Flash',
       'gemini-1.5-pro': 'Gemini 1.5 Pro',
-      'gemini-1.5-flash': 'Gemini 1.5 Flash',
     },
   ),
 ];
