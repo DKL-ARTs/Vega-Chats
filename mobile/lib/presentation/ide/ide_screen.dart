@@ -40,6 +40,52 @@ class IdeScreen extends StatefulWidget {
 
 class _IdeScreenState extends State<IdeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  int _pinnedPointer = 0;
+  int? _highlightedIndex;
+
+  void _togglePinMessage(int index) {
+    if (index < 0 || index >= _chatMessages.length) return;
+    setState(() {
+      final isPinned = _chatMessages[index]['isPinned'] == true;
+      _chatMessages[index]['isPinned'] = !isPinned;
+    });
+    if (_ideChatId != null) {
+      ChatHistory.overwriteMessages(_ideChatId!, _chatMessages);
+    }
+  }
+
+  void _jumpToPinnedMessage() {
+    final pinnedList = _chatMessages.asMap().entries.where((e) => e.value['isPinned'] == true).toList();
+    if (pinnedList.isEmpty) return;
+
+    if (_pinnedPointer >= pinnedList.length) {
+      _pinnedPointer = 0;
+    }
+
+    final targetEntry = pinnedList[_pinnedPointer];
+    final targetIdx = targetEntry.key;
+
+    setState(() {
+      _pinnedPointer = (_pinnedPointer + 1) % pinnedList.length;
+      _highlightedIndex = targetIdx;
+    });
+
+    if (_chatScrollCtrl.hasClients) {
+      final maxScroll = _chatScrollCtrl.position.maxScrollExtent;
+      final totalCount = _chatMessages.length;
+      double targetOffset = (targetIdx / totalCount) * maxScroll;
+      _chatScrollCtrl.animateTo(
+        targetOffset.clamp(0.0, maxScroll),
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _highlightedIndex = null);
+    });
+  }
   final _client = ApiClient();
 
   // === FILE EXPLORER STATE ===
@@ -3810,8 +3856,11 @@ const PopupMenuItem(
                       },
                     ),
                   ),
+                ),
+              ],
             ),
           ),
+        ),
 
           // Glassmorphic Input Panel positioned at the bottom
           Positioned(

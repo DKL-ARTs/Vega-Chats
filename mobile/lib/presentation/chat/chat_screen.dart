@@ -695,6 +695,20 @@ class _ChatScreenState extends State<ChatScreen> {
                 _copyMessage(message['content'] ?? '');
               },
             ),
+            ListTile(
+              leading: Icon(
+                message['isPinned'] == true ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                color: VegaTheme.accent,
+              ),
+              title: Text(
+                message['isPinned'] == true ? 'Открепить' : 'Закрепить',
+                style: const TextStyle(color: VegaTheme.textPrimary),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _togglePinMessage(index);
+              },
+            ),
           ],
         ),
       ),
