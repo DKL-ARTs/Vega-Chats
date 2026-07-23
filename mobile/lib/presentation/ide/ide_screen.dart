@@ -21,6 +21,7 @@ import '../../data/chat_history.dart';
 import '../chat/widgets/terminal_command_widget.dart';
 import '../chat/widgets/image_viewer_dialog.dart';
 import '../chat/widgets/shimmer_thinking_indicator.dart';
+import '../chat/widgets/vega_search_card.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:open_file_plus/open_file_plus.dart';
 import 'editor_screen.dart';
@@ -1926,9 +1927,17 @@ class _IdeScreenState extends State<IdeScreen> {
     if (anyWritten) await _loadFiles();
   }
 
+  String? _extractSearchQuery(String content) {
+    final match = RegExp(r'🔍\s*\*?(?:Поиск в сети|Чтение содержимого сайта):\s*\\?["\']?([^"\'*\n]+)\\?["\']?\*?').firstMatch(content);
+    if (match != null) return match.group(1)?.trim();
+    final altMatch = RegExp(r'\[VEGA_SEARCH:query=([^|\]]+)').firstMatch(content);
+    return altMatch?.group(1)?.trim();
+  }
+
   String _cleanMessageContent(String content) {
     String cleaned = content;
     cleaned = cleaned.replaceAll(RegExp(r'!\[.*?\]\(.*?\)', dotAll: true), '');
+    cleaned = cleaned.replaceAll(RegExp(r'🔍\s*\*?(?:Поиск в сети|Чтение содержимого сайта).*?\n\n?', dotAll: true), '');
     cleaned = cleaned.replaceAll(RegExp(r'!\\[image\\]\(data:[^;]+;base64,[^)]+\)'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\][\s\S]*?\[/WRITE_FILE\]'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\]'), '');
@@ -3626,9 +3635,15 @@ const PopupMenuItem(
                           final cleanContent = _cleanMessageContent(content);
                           final cmd = _extractCommand(content);
 
+                          final searchQuery = _extractSearchQuery(msg['content'] ?? '');
                           return Column(
                             crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                             children: [
+                              if (searchQuery != null && searchQuery.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: VegaSearchCard(query: searchQuery),
+                                ),
                               // Show image: prefer base64 in content, but if isImage==true
                               // and content has no base64 (only file path) — use filePath renderer.
                               // Avoid showing both to prevent duplication.

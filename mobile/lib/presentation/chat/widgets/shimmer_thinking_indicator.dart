@@ -82,11 +82,11 @@ class _ShimmerThinkingIndicatorState extends State<ShimmerThinkingIndicator> wit
                 shaderCallback: (bounds) {
                   return LinearGradient(
                     colors: const [
-                      Color(0xFF94A3B8), // Slate gray
-                      Color(0xFFA855F7), // Purple
-                      Color(0xFF38BDF8), // Cyan / Sky blue
-                      Color(0xFFF43F5E), // Rose / Magenta
-                      Color(0xFF94A3B8), // Slate gray
+                      Color(0xFF6B21A8), // Deep purple
+                      Color(0xFF9333EA), // Purple
+                      Color(0xFFC084FC), // Bright violet glow
+                      Color(0xFFA855F7), // Light purple
+                      Color(0xFF6B21A8), // Deep purple
                     ],
                     stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
                     begin: Alignment(-1.0 + (_shimmerController.value * 2.6), -0.2),

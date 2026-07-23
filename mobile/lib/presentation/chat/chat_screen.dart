@@ -23,6 +23,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../ide/ide_screen.dart';
 import 'widgets/image_viewer_dialog.dart';
 import 'widgets/shimmer_thinking_indicator.dart';
+import 'widgets/vega_search_card.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -1335,8 +1336,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   /// Cleans the raw file download markdown block from assistant message content.
+  String? _extractSearchQuery(String content) {
+    final match = RegExp(r'🔍\s*\*?(?:Поиск в сети|Чтение содержимого сайта):\s*\\?["\']?([^"\'*\n]+)\\?["\']?\*?').firstMatch(content);
+    if (match != null) return match.group(1)?.trim();
+    final altMatch = RegExp(r'\[VEGA_SEARCH:query=([^|\]]+)').firstMatch(content);
+    return altMatch?.group(1)?.trim();
+  }
+
   String _cleanMessageContent(String content) {
     String cleaned = content;
+    cleaned = cleaned.replaceAll(RegExp(r'🔍\s*\*?(?:Поиск в сети|Чтение содержимого сайта).*?\n\n?', dotAll: true), '');
     // Strip write file tags and their contents completely
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\][\s\S]*?\[/WRITE_FILE\]'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\]'), '');
@@ -2128,9 +2137,15 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (i >= _messages.length) return const SizedBox.shrink();
                       final msg = _messages[i];
                       final isUser = msg['role'] == 'user';
+                      final searchQuery = _extractSearchQuery(msg['content'] ?? '');
                       return Column(
                         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
+                          if (searchQuery != null && searchQuery.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: VegaSearchCard(query: searchQuery),
+                            ),
                           GestureDetector(
                             onLongPress: isUser
                                 ? () => _showUserMessageMenu(context, msg, i)
