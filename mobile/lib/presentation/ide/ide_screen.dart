@@ -19,6 +19,7 @@ import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
 import '../chat/widgets/terminal_command_widget.dart';
+import '../chat/widgets/image_viewer_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:open_file_plus/open_file_plus.dart';
 import 'editor_screen.dart';
@@ -757,6 +758,14 @@ class _IdeScreenState extends State<IdeScreen> {
         }
       }
     } else {
+      final ext = p.extension(fullPath).toLowerCase();
+      final isImgExt = const ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico'].contains(ext);
+      if (isImgExt) {
+        if (Navigator.canPop(context)) Navigator.pop(context);
+        showImageViewer(context, imagePath: fullPath, title: item['name'] ?? p.basename(fullPath));
+        return;
+      }
+
       // Close files drawer first
       Navigator.pop(context);
       
@@ -1722,13 +1731,16 @@ class _IdeScreenState extends State<IdeScreen> {
         final b64 = matches.first.group(2)!;
         return RepaintBoundary(
           key: ValueKey('img_${b64.substring(0, b64.length.clamp(0, 20))}'),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.memory(
-              base64Decode(b64),
-              width: 250, fit: BoxFit.cover,
-              gaplessPlayback: true,
-              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+          child: GestureDetector(
+            onTap: () => showImageViewer(context, base64Data: b64),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(
+                base64Decode(b64),
+                width: 250, fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+              ),
             ),
           ),
         );
@@ -1745,13 +1757,16 @@ class _IdeScreenState extends State<IdeScreen> {
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (ctx, i) {
               final b64 = matches[i].group(2)!;
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.memory(
-                  base64Decode(b64),
-                  width: 160, height: 180, fit: BoxFit.cover,
-                  gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+              return GestureDetector(
+                onTap: () => showImageViewer(context, base64Data: b64),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(
+                    base64Decode(b64),
+                    width: 160, height: 180, fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+                  ),
                 ),
               );
             },
@@ -1762,11 +1777,14 @@ class _IdeScreenState extends State<IdeScreen> {
 
     final filePath = (msg['filePath'] ?? '') as String;
     if (filePath.isNotEmpty && msg['isImage'] == true) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.file(File(filePath), width: 250, fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+      return GestureDetector(
+        onTap: () => showImageViewer(context, imagePath: filePath, title: p.basename(filePath)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.file(File(filePath), width: 250, fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+        ),
       );
     }
 
@@ -3771,9 +3789,12 @@ const PopupMenuItem(
                             clipBehavior: Clip.none,
                             children: [
                               isImg
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.file(File(att['path'] as String), width: 64, height: 64, fit: BoxFit.cover),
+                                ? GestureDetector(
+                                    onTap: () => showImageViewer(context, imagePath: att['path'] as String, title: att['name'] as String?),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(File(att['path'] as String), width: 64, height: 64, fit: BoxFit.cover),
+                                    ),
                                   )
                                 : Container(
                                     width: 64, height: 64,
@@ -4765,9 +4786,12 @@ class _EditMessageDialogState extends State<EditMessageDialog> {
                         clipBehavior: Clip.none,
                         children: [
                           isImg
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.file(File(att['path'] as String), width: 60, height: 60, fit: BoxFit.cover),
+                              ? GestureDetector(
+                                  onTap: () => showImageViewer(context, imagePath: att['path'] as String, title: att['name'] as String?),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(File(att['path'] as String), width: 60, height: 60, fit: BoxFit.cover),
+                                  ),
                                 )
                               : Container(
                                   width: 60,

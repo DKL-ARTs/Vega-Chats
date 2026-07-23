@@ -21,6 +21,7 @@ import 'package:speech_to_text/speech_to_text.dart' as speechToText;
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../ide/ide_screen.dart';
+import 'widgets/image_viewer_dialog.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -1253,13 +1254,16 @@ class _ChatScreenState extends State<ChatScreen> {
         final b64 = matches.first.group(2)!;
         return RepaintBoundary(
           key: ValueKey('img_${b64.substring(0, b64.length.clamp(0, 20))}'),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.memory(
-              base64Decode(b64),
-              width: 250, fit: BoxFit.cover,
-              gaplessPlayback: true,
-              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+          child: GestureDetector(
+            onTap: () => showImageViewer(context, base64Data: b64),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(
+                base64Decode(b64),
+                width: 250, fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+              ),
             ),
           ),
         );
@@ -1277,13 +1281,16 @@ class _ChatScreenState extends State<ChatScreen> {
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (ctx, i) {
               final b64 = matches[i].group(2)!;
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.memory(
-                  base64Decode(b64),
-                  width: 160, height: 180, fit: BoxFit.cover,
-                  gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+              return GestureDetector(
+                onTap: () => showImageViewer(context, base64Data: b64),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(
+                    base64Decode(b64),
+                    width: 160, height: 180, fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary),
+                  ),
                 ),
               );
             },
@@ -1295,11 +1302,14 @@ class _ChatScreenState extends State<ChatScreen> {
     // Fallback: single image from file path
     final filePath = (msg['filePath'] ?? '') as String;
     if (filePath.isNotEmpty && msg['isImage'] == true) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.file(File(filePath), width: 250, fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+      return GestureDetector(
+        onTap: () => showImageViewer(context, imagePath: filePath, title: p.basename(filePath)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.file(File(filePath), width: 250, fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: VegaTheme.textSecondary)),
+        ),
       );
     }
 
@@ -2308,9 +2318,12 @@ class _ChatScreenState extends State<ChatScreen> {
                             clipBehavior: Clip.none,
                             children: [
                               isImg
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.file(File(att['path'] as String), width: 64, height: 64, fit: BoxFit.cover),
+                                ? GestureDetector(
+                                    onTap: () => showImageViewer(context, imagePath: att['path'] as String, title: att['name'] as String?),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(File(att['path'] as String), width: 64, height: 64, fit: BoxFit.cover),
+                                    ),
                                   )
                                 : Container(
                                     width: 64, height: 64,
@@ -2705,9 +2718,12 @@ class _EditMessageDialogState extends State<EditMessageDialog> {
                         clipBehavior: Clip.none,
                         children: [
                           isImg
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.file(File(att['path'] as String), width: 60, height: 60, fit: BoxFit.cover),
+                              ? GestureDetector(
+                                  onTap: () => showImageViewer(context, imagePath: att['path'] as String, title: att['name'] as String?),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(File(att['path'] as String), width: 60, height: 60, fit: BoxFit.cover),
+                                  ),
                                 )
                               : Container(
                                   width: 60,
