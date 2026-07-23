@@ -24,6 +24,7 @@ import '../ide/ide_screen.dart';
 import 'widgets/image_viewer_dialog.dart';
 import 'widgets/shimmer_thinking_indicator.dart';
 import 'widgets/vega_search_card.dart';
+import 'widgets/pinned_message_banner.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -33,6 +34,52 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  int _pinnedPointer = 0;
+  int? _highlightedIndex;
+
+  void _togglePinMessage(int index) {
+    if (index < 0 || index >= _messages.length) return;
+    setState(() {
+      final isPinned = _messages[index]['isPinned'] == true;
+      _messages[index]['isPinned'] = !isPinned;
+    });
+    if (_chatId != null) {
+      ChatHistory.overwriteMessages(_chatId!, _messages);
+    }
+  }
+
+  void _jumpToPinnedMessage() {
+    final pinnedList = _messages.asMap().entries.where((e) => e.value['isPinned'] == true).toList();
+    if (pinnedList.isEmpty) return;
+
+    if (_pinnedPointer >= pinnedList.length) {
+      _pinnedPointer = 0;
+    }
+
+    final targetEntry = pinnedList[_pinnedPointer];
+    final targetIdx = targetEntry.key;
+
+    setState(() {
+      _pinnedPointer = (_pinnedPointer + 1) % pinnedList.length;
+      _highlightedIndex = targetIdx;
+    });
+
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final totalCount = _messages.length;
+      double targetOffset = (targetIdx / totalCount) * maxScroll;
+      _scrollController.animateTo(
+        targetOffset.clamp(0.0, maxScroll),
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _highlightedIndex = null);
+    });
+  }
+
   final _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final _client = ApiClient();
@@ -2112,14 +2159,35 @@ class _ChatScreenState extends State<ChatScreen> {
           Positioned.fill(
             child: _showNewChatScreen
                 ? _buildWelcomeScreen()
-                : GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                    child: SelectionArea(
-                      child: ListView.builder(
+                : Column(
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight + 4),
+                        child: Builder(builder: (context) {
+                          final pinned = _messages.where((m) => m['isPinned'] == true).toList();
+                          if (pinned.isEmpty) return const SizedBox.shrink();
+                          return PinnedMessageBanner(
+                            pinnedMessages: pinned,
+                            currentIndex: _pinnedPointer % pinned.length,
+                            onTap: _jumpToPinnedMessage,
+                            onUnpinCurrent: () {
+                              final safeIdx = _pinnedPointer % pinned.length;
+                              final msgToUnpin = pinned[safeIdx];
+                              final realIdx = _messages.indexOf(msgToUnpin);
+                              if (realIdx >= 0) _togglePinMessage(realIdx);
+                            },
+                          );
+                        }),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                          child: SelectionArea(
+                            child: ListView.builder(
                       padding: EdgeInsets.fromLTRB(
                         16,
-                        MediaQuery.of(context).padding.top + kToolbarHeight + 8,
+                        8,
                         16,
                         16 + 70 + (_attachedFiles.isNotEmpty ? 88 : 0),
                       ),

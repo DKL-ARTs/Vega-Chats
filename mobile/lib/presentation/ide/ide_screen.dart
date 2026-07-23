@@ -22,6 +22,7 @@ import '../chat/widgets/terminal_command_widget.dart';
 import '../chat/widgets/image_viewer_dialog.dart';
 import '../chat/widgets/shimmer_thinking_indicator.dart';
 import '../chat/widgets/vega_search_card.dart';
+import '../chat/widgets/pinned_message_banner.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:open_file_plus/open_file_plus.dart';
 import 'editor_screen.dart';
@@ -1652,6 +1653,20 @@ class _IdeScreenState extends State<IdeScreen> {
               onTap: () {
                 Navigator.pop(ctx);
                 _copyMessage(message['content'] ?? '');
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                message['isPinned'] == true ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                color: VegaTheme.accent,
+              ),
+              title: Text(
+                message['isPinned'] == true ? 'Открепить' : 'Закрепить',
+                style: const TextStyle(color: VegaTheme.textPrimary),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _togglePinMessage(index);
               },
             ),
           ],
@@ -3500,8 +3515,26 @@ const PopupMenuItem(
               padding: const EdgeInsets.only(bottom: 85),
               child: _chatMessages.isEmpty
                   ? _buildWelcomeScreen()
-                  : SelectionArea(
-                      child: ListView.builder(
+                  : Column(
+                      children: [
+                        Builder(builder: (context) {
+                          final pinned = _chatMessages.where((m) => m['isPinned'] == true).toList();
+                          if (pinned.isEmpty) return const SizedBox.shrink();
+                          return PinnedMessageBanner(
+                            pinnedMessages: pinned,
+                            currentIndex: _pinnedPointer % pinned.length,
+                            onTap: _jumpToPinnedMessage,
+                            onUnpinCurrent: () {
+                              final safeIdx = _pinnedPointer % pinned.length;
+                              final msgToUnpin = pinned[safeIdx];
+                              final realIdx = _chatMessages.indexOf(msgToUnpin);
+                              if (realIdx >= 0) _togglePinMessage(realIdx);
+                            },
+                          );
+                        }),
+                        Expanded(
+                          child: SelectionArea(
+                            child: ListView.builder(
                         controller: _chatScrollCtrl,
                         padding: const EdgeInsets.all(16),
                         itemCount: _chatMessages.length + (_chatLoading ? 1 : 0),
