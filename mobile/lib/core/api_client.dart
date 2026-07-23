@@ -3,6 +3,15 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class ApiClient {
+  WebSocketChannel? _activeAgentChannel;
+
+  void cancelActiveAgent() {
+    try {
+      _activeAgentChannel?.sink.close();
+    } catch (_) {}
+    _activeAgentChannel = null;
+  }
+
   String baseUrl;
   String apiKey;
 
@@ -88,6 +97,7 @@ class ApiClient {
     WebSocketChannel? channel;
     try {
       channel = WebSocketChannel.connect(Uri.parse('$wsUrl/api/agent/run'));
+      _activeAgentChannel = channel;
 
       // Send initial config
       channel.sink.add(jsonEncode({

@@ -5,6 +5,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:path/path.dart' as p;
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
+import 'package:open_file_plus/open_file_plus.dart';
+import '../chat/widgets/image_viewer_dialog.dart';
 
 class PhoneFileBrowser extends StatefulWidget {
   final ApiClient client;
@@ -385,13 +387,26 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
 
   Future<void> _openFile(FileSystemEntity entity) async {
     final name = p.basename(entity.path);
+    final ext = p.extension(name).toLowerCase();
+    final isImgExt = const ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico'].contains(ext);
+
+    if (isImgExt) {
+      showImageViewer(context, imagePath: entity.path, title: name);
+      return;
+    }
+
     if (!_isTextFile(name)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Бинарные файлы не поддерживаются для редактирования'),
-          backgroundColor: VegaTheme.surface,
-        ),
-      );
+      final res = await OpenFile.open(entity.path);
+      if (res.type != ResultType.done) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Бинарные файлы не поддерживаются для редактирования'),
+              backgroundColor: VegaTheme.surface,
+            ),
+          );
+        }
+      }
       return;
     }
 
@@ -730,6 +745,9 @@ class _PhoneFileBrowserState extends State<PhoneFileBrowser> {
                                         break;
                                       case 'copy_to_server':
                                         if (!isDir) await _copyToServer(entity);
+                                        break;
+                                      case 'open_with':
+                                        if (!isDir) OpenFile.open(entity.path);
                                         break;
                                       case 'open_editor':
                                         if (!isDir) await _openFile(entity);

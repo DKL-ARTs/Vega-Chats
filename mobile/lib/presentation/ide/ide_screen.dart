@@ -1923,6 +1923,7 @@ class _IdeScreenState extends State<IdeScreen> {
 
   String _cleanMessageContent(String content) {
     String cleaned = content;
+    cleaned = cleaned.replaceAll(RegExp(r'!\\[image\\]\(data:[^;]+;base64,[^)]+\)'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\][\s\S]*?\[/WRITE_FILE\]'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\]'), '');
     cleaned = cleaned.replaceAll('[/WRITE_FILE]', '');
@@ -3889,6 +3890,31 @@ const PopupMenuItem(
                             // Circular Send Button with upward arrow, dynamically disabled/greyed out
                             Builder(
                               builder: (context) {
+                                if (_chatLoading) {
+                                  return GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _cancelStream = true;
+                                        _chatLoading = false;
+                                      });
+                                      _client.cancelActiveAgent();
+                                    },
+                                    child: Container(
+                                      width: 44,
+                                      height: 44,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: VegaTheme.surface,
+                                        border: Border.all(color: VegaTheme.accent, width: 2),
+                                      ),
+                                      child: const Icon(
+                                        Icons.stop_rounded,
+                                        color: VegaTheme.accent,
+                                        size: 22,
+                                      ),
+                                    ),
+                                  );
+                                }
                                 final hasContent = _chatHasText || _attachedFiles.isNotEmpty;
                                 return GestureDetector(
                                   onTap: hasContent ? _sendChatMessage : null,
@@ -3900,7 +3926,7 @@ const PopupMenuItem(
                                       color: hasContent ? VegaTheme.accent : VegaTheme.surface,
                                     ),
                                     child: Icon(
-                                      Icons.arrow_upward_rounded, // Upward arrow
+                                      Icons.arrow_upward_rounded,
                                       color: hasContent ? Colors.white : VegaTheme.textSecondary,
                                       size: 22,
                                     ),
