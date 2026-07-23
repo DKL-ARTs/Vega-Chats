@@ -22,6 +22,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../ide/ide_screen.dart';
 import 'widgets/image_viewer_dialog.dart';
+import 'widgets/shimmer_thinking_indicator.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -2116,11 +2117,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       itemCount: _messages.length + (_loading ? 1 : 0),
                       itemBuilder: (ctx, i) {
                       if (_loading && i == _messages.length) {
-                        return Align(
+                        return const Align(
                           alignment: Alignment.centerLeft,
                           child: Padding(
-                            padding: const EdgeInsets.only(bottom: 12, top: 4),
-                            child: Text(_thinkingText, style: TextStyle(color: VegaTheme.textSecondary, fontSize: 15, fontStyle: FontStyle.italic)),
+                            padding: EdgeInsets.only(bottom: 12, top: 4),
+                            child: ShimmerThinkingIndicator(fontSize: 14),
                           ),
                         );
                       }

@@ -20,6 +20,7 @@ import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
 import '../chat/widgets/terminal_command_widget.dart';
 import '../chat/widgets/image_viewer_dialog.dart';
+import '../chat/widgets/shimmer_thinking_indicator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:open_file_plus/open_file_plus.dart';
 import 'editor_screen.dart';
@@ -3497,15 +3498,9 @@ const PopupMenuItem(
                         itemCount: _chatMessages.length + (_chatLoading ? 1 : 0),
                         itemBuilder: (context, idx) {
                           if (_chatLoading && idx == _chatMessages.length) {
-                            return Align(
+                            return const Align(
                               alignment: Alignment.centerLeft,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                                child: Text(
-                                  _thinkingText,
-                                  style: const TextStyle(color: VegaTheme.textSecondary, fontSize: 13, fontStyle: FontStyle.italic),
-                                ),
-                              ),
+                              child: ShimmerThinkingIndicator(fontSize: 13),
                             );
                           }
                           final msg = _chatMessages[idx];
