@@ -20,15 +20,13 @@ class _ShimmerThinkingIndicatorState extends State<ShimmerThinkingIndicator> wit
   int _phraseIndex = 0;
 
   static const List<String> _thinkingPhrases = [
-    'Анализирую контекст...',
-    'Изучаю файлы проекта...',
-    'Обдумываю решение...',
-    'Формирую структуры данных...',
-    'Подбираю оптимальный код...',
-    'Проверяю логику и функции...',
-    'Генерирую реализацию...',
-    'Сверяю зависимости...',
-    'Синтезирую ответ...',
+    'Думаю...',
+    'Анализирую...',
+    'Генерирую...',
+    'Проверяю...',
+    'Обдумываю...',
+    'Формирую...',
+    'Синтезирую...',
   ];
 
   @override
@@ -39,7 +37,7 @@ class _ShimmerThinkingIndicatorState extends State<ShimmerThinkingIndicator> wit
       duration: const Duration(milliseconds: 1800),
     )..repeat();
 
-    _phraseTimer = Timer.periodic(const Duration(milliseconds: 2800), (_) {
+    _phraseTimer = Timer.periodic(const Duration(milliseconds: 2200), (_) {
       if (mounted) {
         setState(() {
           _phraseIndex = (_phraseIndex + 1) % _thinkingPhrases.length;
