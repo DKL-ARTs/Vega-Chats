@@ -14,6 +14,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as speechToText;
+import 'package:open_file_plus/open_file_plus.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../data/chat_history.dart';
@@ -2542,6 +2543,8 @@ class _IdeScreenState extends State<IdeScreen> {
                                                           _deleteFileOrDir(item);
                                                         } else if (value == 'copy_path') {
                                                           _copyPathToClipboard(treeItem.fullPath);
+                                                        } else if (value == 'open_with') {
+                                                          OpenFile.open(treeItem.fullPath);
                                                         } else if (value == 'set_root') {
                                                           setState(() {
                                                             _currentPath = treeItem.fullPath;
@@ -2598,6 +2601,16 @@ const PopupMenuItem(
                                                           ),
                                                         ),
                                                         if (!isDir) ...[
+                                                          const PopupMenuItem(
+                                                            value: 'open_with',
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(Icons.open_in_new_rounded, color: VegaTheme.accent, size: 16),
+                                                                SizedBox(width: 8),
+                                                                Text('Открыть с помощью', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 13)),
+                                                              ],
+                                                            ),
+                                                          ),
                                                           const PopupMenuDivider(),
                                                           const PopupMenuItem(
                                                             value: 'ai_explain',
@@ -3597,7 +3610,15 @@ const PopupMenuItem(
                           return Column(
                             crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                             children: [
-                              if (msg['isImage'] == true || (msg['content'] as String? ?? '').contains('base64,'))
+                              // Show image: prefer base64 in content, but if isImage==true
+                              // and content has no base64 (only file path) — use filePath renderer.
+                              // Avoid showing both to prevent duplication.
+                              if ((msg['content'] as String? ?? '').contains('base64,'))
+                                 Container(
+                                   margin: const EdgeInsets.only(bottom: 8),
+                                   child: _buildImagesRow(msg),
+                                 )
+                              else if (msg['isImage'] == true)
                                  Container(
                                    margin: const EdgeInsets.only(bottom: 8),
                                    child: _buildImagesRow(msg),
