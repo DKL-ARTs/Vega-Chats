@@ -1143,12 +1143,15 @@ class _IdeScreenState extends State<IdeScreen> {
   // ==========================================
   Future<void> _initIdeChat() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('ide_chat_id'); // Ensure it is cleared
-
-    // Every time we enter the IDE, start in a completely new, empty chat session
-    _ideChatId = null;
-    _chatMessages = [];
-    await _loadIdeChats(); // Load existing chats for the drawer list
+    final savedId = prefs.getInt('ide_chat_id');
+    await _loadIdeChats();
+    if (savedId != null && _ideChats.any((c) => c['id'] == savedId)) {
+      _ideChatId = savedId;
+      await _loadChatMessages();
+    } else {
+      _ideChatId = null;
+      _chatMessages = [];
+    }
   }
 
   Future<void> _loadChatMessages() async {
@@ -1393,10 +1396,12 @@ class _IdeScreenState extends State<IdeScreen> {
     _scrollChatToBottom();
 
     final prefs = await SharedPreferences.getInstance();
+    final provider = prefs.getString('provider') ?? 'openrouter';
     final geminiKey = prefs.getString('gemini_api_key') ?? '';
+    final isGeminiAgent = (provider == 'gemini') && geminiKey.isNotEmpty;
 
     // ── AGENT MODE (Gemini function calling) ──
-    if (geminiKey.isNotEmpty) {
+    if (isGeminiAgent) {
       final currentRunMessages = <Map<String, dynamic>>[];
       try {
         await _client.runAgent(
@@ -1923,6 +1928,7 @@ class _IdeScreenState extends State<IdeScreen> {
 
   String _cleanMessageContent(String content) {
     String cleaned = content;
+    cleaned = cleaned.replaceAll(RegExp(r'!\[.*?\]\(.*?\)', dotAll: true), '');
     cleaned = cleaned.replaceAll(RegExp(r'!\\[image\\]\(data:[^;]+;base64,[^)]+\)'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\][\s\S]*?\[/WRITE_FILE\]'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\[WRITE_FILE:.*?\]'), '');
