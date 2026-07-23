@@ -144,15 +144,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final providerInfo = _providers.firstWhere((p) => p.id == resolvedProvider,
         orElse: () => _providers.first);
 
+    final correctedModel = providerInfo.models.containsKey(resolvedModel)
+        ? resolvedModel
+        : providerInfo.models.keys.first;
+
+    // If model was invalid/stale, persist the correction immediately
+    if (correctedModel != resolvedModel) {
+      prefs.setString('model', correctedModel);
+      prefs.setString('model_for_backend', correctedModel);
+    }
+
     setState(() {
       _selectedProviderId = providerInfo.id;
       _apiKeyCtrl.text = _selectedProviderId == 'openrouter' ? _openrouterKey : _geminiKey;
       _baseUrlCtrl.text = baseUrl;
       _developerMode =
           baseUrl != 'https://vega-chats-production.up.railway.app';
-      _selectedModel = providerInfo.models.containsKey(resolvedModel)
-          ? resolvedModel
-          : providerInfo.models.keys.first;
+      _selectedModel = correctedModel;
       _selectedLocale = _locales.containsKey(locale) ? locale : 'ru_RU';
     });
   }
