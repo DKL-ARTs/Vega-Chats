@@ -3,6 +3,22 @@ from app.config import settings
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
+# Remap stale/removed model IDs to current equivalents
+GEMINI_MODEL_REMAP = {
+    "gemini-2.5-flash": "gemini-3.6-flash",
+    "gemini-2.5-pro": "gemini-3.1-pro-preview",
+    "gemini-2.0-flash": "gemini-3.6-flash",
+    "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+    "gemini-1.5-flash": "gemini-3.6-flash",
+}
+
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
+
+
+def _resolve_gemini_model(model: str) -> str:
+    """Remap removed/stale model names to current ones."""
+    return GEMINI_MODEL_REMAP.get(model, model) if model else DEFAULT_GEMINI_MODEL
+
 
 class GeminiProvider:
     name = "gemini"
@@ -11,7 +27,7 @@ class GeminiProvider:
         self.api_key = api_key or settings.gemini_api_key
 
     async def chat(self, messages: list[dict], model: str = None, **kwargs) -> str:
-        model = model or "gemini-2.5-flash"
+        model = _resolve_gemini_model(model)
         key = kwargs.get("api_key") or self.api_key
         if not key or not key.strip():
             return "Error: No Gemini API key provided"
@@ -27,7 +43,7 @@ class GeminiProvider:
             return resp.json()["choices"][0]["message"]["content"]
 
     async def stream(self, messages: list[dict], model: str = None, api_key: str = None, **kwargs):
-        model = model or "gemini-2.5-flash"
+        model = _resolve_gemini_model(model)
         key = api_key or self.api_key
         if not key or not key.strip():
             yield "Error: No Gemini API key provided"
