@@ -288,7 +288,7 @@ async def agent_run(ws: WebSocket):
         task = config.get("task", "")
         cwd = config.get("cwd", settings.workspace_root)
         gemini_api_key = config.get("gemini_api_key", "") or settings.gemini_api_key
-        model = config.get("model", "gemini-2.5-flash")
+        model = config.get("model", "gemini-3.6-flash")
         max_iterations = config.get("max_iterations", 30)
         
         if not task:

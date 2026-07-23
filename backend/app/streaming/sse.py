@@ -837,7 +837,7 @@ async def update_profile_manual_endpoint(body: dict):
     # Try gemini first, then openrouter
     api_key = settings.gemini_api_key or settings.openrouter_api_key
     provider_name = "gemini" if settings.gemini_api_key else "openrouter"
-    model = "gemini-2.5-flash" if provider_name == "gemini" else settings.default_model
+    model = "gemini-3.6-flash" if provider_name == "gemini" else settings.default_model
     
     try:
         provider = get_provider(provider_name)

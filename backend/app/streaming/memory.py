@@ -95,7 +95,7 @@ async def update_profile_in_background(
     try:
         provider = get_provider(provider_name)
         # Use fast model for background memory task if possible
-        memory_model = "gemini-2.5-flash" if provider_name == "gemini" else model
+        memory_model = "gemini-3.6-flash" if provider_name == "gemini" else model
         
         response = await provider.chat(
             messages=[{"role": "user", "content": prompt}],

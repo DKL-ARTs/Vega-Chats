@@ -144,7 +144,7 @@ async def decide_and_perform_search(
 
     try:
         provider = get_provider(provider_name)
-        classifier_model = "gemini-2.5-flash" if provider_name == "gemini" else model
+        classifier_model = "gemini-3.6-flash" if provider_name == "gemini" else model
         
         response = await provider.chat(
             messages=[{"role": "user", "content": classifier_prompt}],
