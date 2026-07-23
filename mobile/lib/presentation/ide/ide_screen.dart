@@ -1928,7 +1928,7 @@ class _IdeScreenState extends State<IdeScreen> {
   }
 
   String? _extractSearchQuery(String content) {
-    final match = RegExp(r'🔍\s*\*?(?:Поиск в сети|Чтение содержимого сайта):\s*\\?["\']?([^"\'*\n]+)\\?["\']?\*?').firstMatch(content);
+    final match = RegExp(r'🔍\s*\*?(?:Поиск в сети|Чтение содержимого сайта):\s*"?([^"*\n]+)"?\*?').firstMatch(content);
     if (match != null) return match.group(1)?.trim();
     final altMatch = RegExp(r'\[VEGA_SEARCH:query=([^|\]]+)').firstMatch(content);
     return altMatch?.group(1)?.trim();
