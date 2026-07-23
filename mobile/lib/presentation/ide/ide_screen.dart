@@ -1531,7 +1531,6 @@ class _IdeScreenState extends State<IdeScreen> {
         'Для файлов используй: [WRITE_FILE:путь]\nкод\n[/WRITE_FILE]\n'
         'Для команд: <execute_command>команда</execute_command>';
 
-    final provider = prefs.getString('provider') ?? 'openrouter';
     final savedModel = prefs.getString('model') ?? 'openrouter/auto';
     final model = prefs.getString('model_for_backend') ?? savedModel;
 
