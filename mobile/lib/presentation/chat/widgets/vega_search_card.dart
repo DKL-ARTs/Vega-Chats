@@ -29,7 +29,7 @@ class _VegaSearchCardState extends State<VegaSearchCard> with SingleTickerProvid
     super.initState();
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
   }
 
@@ -53,23 +53,10 @@ class _VegaSearchCardState extends State<VegaSearchCard> with SingleTickerProvid
     final cleanQuery = widget.query.replaceAll('"', '').trim();
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10, top: 4),
+      margin: const EdgeInsets.only(bottom: 8, top: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF13111C),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: widget.isSearching
-              ? const Color(0xFFA855F7).withOpacity(0.6)
-              : const Color(0xFF7C3AED).withOpacity(0.3),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF7C3AED).withOpacity(widget.isSearching ? 0.2 : 0.08),
-            blurRadius: 12,
-            spreadRadius: 1,
-          ),
-        ],
+        color: const Color(0xFF161426),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -81,24 +68,28 @@ class _VegaSearchCardState extends State<VegaSearchCard> with SingleTickerProvid
                 _isExpanded = !_isExpanded;
               });
             },
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Row(
                 children: [
-                  // Logo / Search Badge
+                  // Animated Magnifying Glass Icon (Animated Pulse/Scale)
                   Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
                       color: const Color(0xFF7C3AED).withOpacity(0.2),
                       shape: BoxShape.circle,
                     ),
-                    child: widget.isSearching
-                        ? FadeTransition(
-                            opacity: Tween(begin: 0.4, end: 1.0).animate(_pulseController),
-                            child: const Icon(Icons.language_rounded, color: Color(0xFFA855F7), size: 16),
-                          )
-                        : const Icon(Icons.language_rounded, color: Color(0xFFA855F7), size: 16),
+                    child: ScaleTransition(
+                      scale: Tween(begin: 0.88, end: 1.15).animate(
+                        CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+                      ),
+                      child: const Icon(
+                        Icons.search_rounded,
+                        color: Color(0xFFA855F7),
+                        size: 16,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 10),
 
@@ -149,7 +140,7 @@ class _VegaSearchCardState extends State<VegaSearchCard> with SingleTickerProvid
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: Text(
-                        '⚡ ${widget.executionTime}',
+                        '${widget.executionTime}',
                         style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
                       ),
                     ),
@@ -173,7 +164,7 @@ class _VegaSearchCardState extends State<VegaSearchCard> with SingleTickerProvid
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
               decoration: BoxDecoration(
                 border: Border(
-                  top: BorderSide(color: Colors.white.withOpacity(0.06)),
+                  top: BorderSide(color: Colors.white.withOpacity(0.05)),
                 ),
               ),
               child: Column(
@@ -233,7 +224,6 @@ class _VegaSearchCardState extends State<VegaSearchCard> with SingleTickerProvid
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.06),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.white.withOpacity(0.08)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
