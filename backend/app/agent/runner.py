@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import httpx
 from app.config import settings
+from app.providers.gemini import _resolve_gemini_model
 
 router = APIRouter()
 
@@ -288,7 +289,7 @@ async def agent_run(ws: WebSocket):
         task = config.get("task", "")
         cwd = config.get("cwd", settings.workspace_root)
         gemini_api_key = config.get("gemini_api_key", "") or settings.gemini_api_key
-        model = config.get("model", "gemini-3.6-flash")
+        model = _resolve_gemini_model(config.get("model", ""))
         max_iterations = config.get("max_iterations", 30)
         
         if not task:

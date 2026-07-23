@@ -76,7 +76,7 @@ class ApiClient {
     required String task,
     required String cwd,
     required String geminiApiKey,
-    String model = 'gemini-2.5-flash',
+    String model = 'gemini-3.6-flash',
     int maxIterations = 30,
     required void Function(Map<String, dynamic> event) onEvent,
     required void Function(String error) onError,
