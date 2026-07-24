@@ -2350,6 +2350,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  // Copy
                                   InkWell(
                                     onTap: () => _copyMessage(_stripImageMarkdown(msg['content'] ?? '')),
                                     borderRadius: BorderRadius.circular(4),
@@ -2359,12 +2360,49 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
+                                  // Regenerate
                                   InkWell(
                                     onTap: () => _regenerate(i),
                                     borderRadius: BorderRadius.circular(4),
                                     child: Padding(
                                       padding: const EdgeInsets.all(4),
                                       child: Icon(Icons.refresh, size: 16, color: VegaTheme.textSecondary),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Pin
+                                  InkWell(
+                                    onTap: () => _togglePinMessage(i),
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(
+                                        msg['isPinned'] == true
+                                            ? Icons.push_pin_rounded
+                                            : Icons.push_pin_outlined,
+                                        size: 16,
+                                        color: msg['isPinned'] == true
+                                            ? VegaTheme.accent
+                                            : VegaTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Favourite
+                                  InkWell(
+                                    onTap: () => _toggleFavoriteMessage(i),
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(
+                                        msg['isFavorite'] == true
+                                            ? Icons.star_rounded
+                                            : Icons.star_outline_rounded,
+                                        size: 16,
+                                        color: msg['isFavorite'] == true
+                                            ? Colors.amber
+                                            : VegaTheme.textSecondary,
+                                      ),
                                     ),
                                   ),
                                 ],
