@@ -42,9 +42,12 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     _loadFavorites();
   }
 
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void dispose() {
     _shimmerController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -70,10 +73,23 @@ class _FavoritesScreenState extends State<FavoritesScreen>
         }
       }
     }
+
+    // Sort chronologically (oldest chat/message first, newest last)
+    entries.sort((a, b) {
+      final chatCmp = a.chatId.compareTo(b.chatId);
+      if (chatCmp != 0) return chatCmp;
+      return a.msgIndex.compareTo(b.msgIndex);
+    });
+
     if (mounted) {
       setState(() {
         _entries = entries;
         _loading = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
       });
     }
   }
@@ -251,6 +267,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                   backgroundColor: VegaTheme.surface,
                   onRefresh: _loadFavorites,
                   child: ListView.separated(
+                    controller: _scrollController,
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                     itemCount: _entries.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 12),

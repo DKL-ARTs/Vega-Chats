@@ -64,7 +64,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final slicedMessages = _messages
         .sublist(0, index + 1)
-        .map((m) => Map<String, dynamic>.from(m))
+        .map((m) {
+          final copy = Map<String, dynamic>.from(m);
+          copy['isFavorite'] = false;
+          return copy;
+        })
         .toList();
 
     String baseTitle = 'Чат';
@@ -89,7 +93,8 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    final newTitle = '$baseTitle (ветка)';
+    final cleanBaseTitle = baseTitle.startsWith('Ветвь: ') ? baseTitle.substring(7) : baseTitle;
+    final newTitle = 'Ветвь: $cleanBaseTitle';
     final newChatId = await ChatHistory.createChat(newTitle, projectId: _activeProjectId);
     await ChatHistory.overwriteMessages(newChatId, slicedMessages);
 
@@ -144,10 +149,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (_scrollController.hasClients) {
       final maxScroll = _scrollController.position.maxScrollExtent;
+      final viewportHeight = _scrollController.position.viewportDimension;
       final totalCount = _messages.length;
-      double targetOffset = (targetIdx / totalCount) * maxScroll;
+      double estimatedOffset = (targetIdx / totalCount) * maxScroll;
+      double centeredOffset = estimatedOffset - (viewportHeight / 2);
       _scrollController.animateTo(
-        targetOffset.clamp(0.0, maxScroll),
+        centeredOffset.clamp(0.0, maxScroll),
         duration: const Duration(milliseconds: 350),
         curve: Curves.easeOutCubic,
       );
