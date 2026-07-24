@@ -131,6 +131,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  final Map<int, GlobalKey> _messageKeys = {};
+
   void _jumpToPinnedMessage() {
     final pinnedList = _messages.asMap().entries.where((e) => e.value['isPinned'] == true).toList();
     if (pinnedList.isEmpty) return;
@@ -147,17 +149,29 @@ class _ChatScreenState extends State<ChatScreen> {
       _highlightedIndex = targetIdx;
     });
 
-    if (_scrollController.hasClients) {
+    void scrollToKey() {
+      final key = _messageKeys[targetIdx];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(
+          key!.currentContext!,
+          alignment: 0.0, // 0.0 aligns the VERY TOP of the message with the top of the viewport
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    }
+
+    final key = _messageKeys[targetIdx];
+    if (key?.currentContext != null) {
+      scrollToKey();
+    } else if (_scrollController.hasClients) {
       final maxScroll = _scrollController.position.maxScrollExtent;
-      final viewportHeight = _scrollController.position.viewportDimension;
       final totalCount = _messages.length;
       double estimatedOffset = (targetIdx / totalCount) * maxScroll;
-      double centeredOffset = estimatedOffset - (viewportHeight / 2);
-      _scrollController.animateTo(
-        centeredOffset.clamp(0.0, maxScroll),
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOutCubic,
-      );
+      _scrollController.jumpTo(estimatedOffset.clamp(0.0, maxScroll));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        scrollToKey();
+      });
     }
 
     Future.delayed(const Duration(milliseconds: 1500), () {
@@ -491,6 +505,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadChat(int chatId) async {
     final messages = await ChatHistory.getMessages(chatId);
+    _messageKeys.clear();
     setState(() {
       _messages.clear();
       for (final msg in messages) {
@@ -2392,9 +2407,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       final msg = _messages[i];
                       final isUser = msg['role'] == 'user';
                       final searchQuery = _extractSearchQuery(msg['content'] ?? '');
-                      return Column(
-                        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                        children: [
+                      final msgKey = _messageKeys.putIfAbsent(i, () => GlobalKey());
+                      return Container(
+                        key: msgKey,
+                        child: Column(
+                          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                          children: [
                           if (searchQuery != null && searchQuery.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 6),
