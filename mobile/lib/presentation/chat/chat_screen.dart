@@ -27,6 +27,22 @@ import 'widgets/vega_search_card.dart';
 import 'widgets/pinned_message_banner.dart';
 import 'favorites_screen.dart';
 
+class _GlobalSearchResult {
+  final int chatId;
+  final String chatTitle;
+  final int msgIndex;
+  final String role;
+  final String snippet;
+
+  _GlobalSearchResult({
+    required this.chatId,
+    required this.chatTitle,
+    required this.msgIndex,
+    required this.role,
+    required this.snippet,
+  });
+}
+
 class ChatScreen extends StatefulWidget {
   final int? chatId;
   const ChatScreen({super.key, this.chatId});
@@ -197,6 +213,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSearching = false;
   String _searchQuery = '';
   final _searchController = TextEditingController();
+  List<_GlobalSearchResult> _searchResults = [];
   bool _isTyping = false; // tracks whether user has typed anything
   final Map<String, String> _fileDownloadStatus = {}; // tracks 'path' -> 'idle' | 'loading' | 'success'
   List<Map<String, dynamic>> _projects = [];
@@ -2050,62 +2067,310 @@ class _ChatScreenState extends State<ChatScreen> {
       key: _scaffoldKey,
       backgroundColor: VegaTheme.dark,
       extendBodyBehindAppBar: true,
+  Future<void> _performGlobalSearch(String query) async {
+    if (query.isEmpty) {
+      if (mounted) setState(() => _searchResults = []);
+      return;
+    }
+
+    final q = query.toLowerCase();
+    final chats = await ChatHistory.getChats();
+    final results = <_GlobalSearchResult>[];
+
+    for (final chat in chats) {
+      final chatId = chat['id'] as int?;
+      if (chatId == null) continue;
+      final chatTitle = (chat['title'] as String?) ?? 'Чат';
+
+      if (chatTitle.toLowerCase().contains(q)) {
+        results.add(_GlobalSearchResult(
+          chatId: chatId,
+          chatTitle: chatTitle,
+          msgIndex: -1,
+          role: 'chat',
+          snippet: 'Название чата совпадает',
+        ));
+      }
+
+      final messages = ((chat['messages'] as List?) ?? []).cast<Map<String, dynamic>>();
+      for (int i = 0; i < messages.length; i++) {
+        final msg = messages[i];
+        final rawContent = (msg['content'] as String?) ?? '';
+        if (rawContent.isEmpty) continue;
+
+        final clean = _stripImageMarkdown(rawContent);
+        final lower = clean.toLowerCase();
+
+        if (lower.contains(q)) {
+          final matchIdx = lower.indexOf(q);
+          int start = (matchIdx - 25).clamp(0, clean.length);
+          int end = (matchIdx + q.length + 35).clamp(0, clean.length);
+          String snippet = clean.substring(start, end).replaceAll('\n', ' ');
+          if (start > 0) snippet = '...$snippet';
+          if (end < clean.length) snippet = '$snippet...';
+
+          results.add(_GlobalSearchResult(
+            chatId: chatId,
+            chatTitle: chatTitle,
+            msgIndex: i,
+            role: (msg['role'] as String?) ?? 'assistant',
+            snippet: snippet,
+          ));
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _searchResults = results;
+      });
+    }
+  }
+
+  Widget _buildGlobalSearchResults() {
+    if (_searchResults.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.search_off_rounded, color: VegaTheme.textSecondary, size: 48),
+            SizedBox(height: 12),
+            Text(
+              'Ничего не найдено',
+              style: TextStyle(color: VegaTheme.textSecondary, fontSize: 15),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      itemCount: _searchResults.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (ctx, i) {
+        final res = _searchResults[i];
+        final isChatTitle = res.msgIndex == -1;
+        final isUser = res.role == 'user';
+
+        return InkWell(
+          onTap: () async {
+            _scaffoldKey.currentState?.closeDrawer();
+            setState(() {
+              _isSearching = false;
+              _searchController.clear();
+              _searchQuery = '';
+              _searchResults.clear();
+            });
+
+            _currentChatId = res.chatId;
+            await _loadChat(res.chatId);
+
+            if (res.msgIndex >= 0) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                final key = _messageKeys[res.msgIndex];
+                if (key?.currentContext != null) {
+                  Scrollable.ensureVisible(
+                    key!.currentContext!,
+                    alignment: 0.0,
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeOutCubic,
+                  );
+                } else if (_scrollController.hasClients) {
+                  final maxScroll = _scrollController.position.maxScrollExtent;
+                  final totalCount = _messages.length;
+                  double estimatedOffset = (res.msgIndex / totalCount) * maxScroll;
+                  _scrollController.jumpTo(estimatedOffset.clamp(0.0, maxScroll));
+                }
+              });
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: VegaTheme.card,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: VegaTheme.border.withOpacity(0.5)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isChatTitle ? Icons.chat_bubble_outline_rounded : Icons.chat_rounded,
+                      size: 15,
+                      color: VegaTheme.accent,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        res.chatTitle,
+                        style: const TextStyle(
+                          color: VegaTheme.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (!isChatTitle)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isUser
+                              ? VegaTheme.accentBlue.withOpacity(0.15)
+                              : VegaTheme.accent.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          isUser ? 'Вы' : 'Vega',
+                          style: TextStyle(
+                            color: isUser ? VegaTheme.accentBlue : VegaTheme.accent,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                _buildHighlightedText(res.snippet, _searchQuery),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHighlightedText(String text, String query) {
+    if (query.isEmpty) {
+      return Text(text, style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, height: 1.4));
+    }
+    final spans = <TextSpan>[];
+    final lowerText = text.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    int start = 0;
+
+    while (true) {
+      final index = lowerText.indexOf(lowerQuery, start);
+      if (index == -1) {
+        spans.add(TextSpan(text: text.substring(start)));
+        break;
+      }
+      if (index > start) {
+        spans.add(TextSpan(text: text.substring(start, index)));
+      }
+      spans.add(
+        TextSpan(
+          text: text.substring(index, index + query.length),
+          style: const TextStyle(
+            color: VegaTheme.accent,
+            backgroundColor: Color(0x337C4DFF),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+      start = index + query.length;
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 13, height: 1.4),
+        children: spans,
+      ),
+      maxLines: 3,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
       drawer: Drawer(
-        width: MediaQuery.of(context).size.width * 0.65,
+        width: _isSearching
+            ? MediaQuery.of(context).size.width
+            : MediaQuery.of(context).size.width * 0.70,
         backgroundColor: VegaTheme.surface,
         child: SafeArea(
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Vega Chat', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: Icon(_isSearching ? Icons.close : Icons.search, color: VegaTheme.textSecondary, size: 22),
-                          onPressed: () {
-                            setState(() {
-                              _isSearching = !_isSearching;
-                              if (!_isSearching) {
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: _isSearching
+                    ? Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: VegaTheme.textPrimary, size: 18),
+                            onPressed: () {
+                              setState(() {
+                                _isSearching = false;
                                 _searchController.clear();
                                 _searchQuery = '';
-                              }
-                            });
-                          },
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.add, color: VegaTheme.accent),
-                          onPressed: _startNewChat,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                                _searchResults.clear();
+                              });
+                            },
+                          ),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              autofocus: true,
+                              style: const TextStyle(color: VegaTheme.textPrimary, fontSize: 16),
+                              decoration: const InputDecoration(
+                                hintText: 'Поиск по сообщениям...',
+                                hintStyle: TextStyle(color: VegaTheme.textSecondary, fontSize: 15),
+                                border: InputBorder.none,
+                              ),
+                              onChanged: (v) {
+                                final q = v.trim();
+                                setState(() => _searchQuery = q);
+                                _performGlobalSearch(q);
+                              },
+                            ),
+                          ),
+                          if (_searchController.text.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.close, color: VegaTheme.textSecondary, size: 20),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  _searchQuery = '';
+                                  _searchResults.clear();
+                                });
+                              },
+                            ),
+                        ],
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(left: 8),
+                            child: Text('Vega Chat', style: TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.search, color: VegaTheme.textSecondary, size: 22),
+                                onPressed: () {
+                                  setState(() {
+                                    _isSearching = true;
+                                  });
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add, color: VegaTheme.accent),
+                                onPressed: _startNewChat,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
               ),
-              if (_isSearching)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: TextField(
-                    controller: _searchController,
-                    autofocus: true,
-                    style: TextStyle(color: VegaTheme.textPrimary, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'Поиск чатов...',
-                      hintStyle: TextStyle(color: VegaTheme.textSecondary),
-                      filled: true,
-                      fillColor: VegaTheme.card,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      prefixIcon: Icon(Icons.search, color: VegaTheme.textSecondary, size: 20),
-                    ),
-                    onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()),
-                  ),
-                ),
+              const Divider(height: 1, thickness: 1, color: VegaTheme.border),
               Expanded(
-                child: Builder(builder: (ctx) {
+                child: _isSearching && _searchQuery.isNotEmpty
+                    ? _buildGlobalSearchResults()
+                    : Builder(builder: (ctx) {
                   final projectChats = _chats.where((c) {
                     final pId = c['projectId'];
                     return pId == null || pId == 'default' || pId == '';
