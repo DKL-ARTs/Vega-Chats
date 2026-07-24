@@ -2061,12 +2061,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: VegaTheme.dark,
-      extendBodyBehindAppBar: true,
   Future<void> _performGlobalSearch(String query) async {
     if (query.isEmpty) {
       if (mounted) setState(() => _searchResults = []);
@@ -2286,6 +2280,12 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: VegaTheme.dark,
+      extendBodyBehindAppBar: true,
       drawer: Drawer(
         width: _isSearching
             ? MediaQuery.of(context).size.width

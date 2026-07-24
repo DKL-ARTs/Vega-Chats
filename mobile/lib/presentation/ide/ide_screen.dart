@@ -104,7 +104,7 @@ class _IdeScreenState extends State<IdeScreen> {
 
     final cleanBaseTitle = baseTitle.startsWith('Ветвь: ') ? baseTitle.substring(7) : baseTitle;
     final newTitle = 'Ветвь: $cleanBaseTitle';
-    final newChatId = await ChatHistory.createChat(newTitle, projectId: _activeProjectId);
+    final newChatId = await ChatHistory.createChat(newTitle);
     await ChatHistory.overwriteMessages(newChatId, slicedMessages);
 
     final prefs = await SharedPreferences.getInstance();
