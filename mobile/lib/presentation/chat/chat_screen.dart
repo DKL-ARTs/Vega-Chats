@@ -498,6 +498,8 @@ class _ChatScreenState extends State<ChatScreen> {
           'isImage': msg['isImage'] ?? false,
           'filePaths': rawPaths is List ? rawPaths.cast<String>() : <String>[],
           'fileNames': rawNames is List ? rawNames.cast<String>() : <String>[],
+          'isPinned': msg['isPinned'] == true,
+          'isFavorite': msg['isFavorite'] == true,
         });
       }
     });

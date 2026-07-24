@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../core/theme.dart';
 import '../../data/chat_history.dart';
 
@@ -179,131 +180,6 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     );
   }
 
-  Widget _buildCard(_FavoriteEntry entry) {
-    final msg = entry.message;
-    final content = (msg['content'] as String?) ?? '';
-    final isUser = msg['role'] == 'user';
-
-    return Dismissible(
-      key: ValueKey('${entry.chatId}_${entry.msgIndex}'),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Icon(Icons.star_border_rounded, color: Colors.red, size: 28),
-      ),
-      onDismissed: (_) => _unfavorite(entry),
-      child: Container(
-        decoration: BoxDecoration(
-          color: VegaTheme.card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: VegaTheme.accent.withOpacity(0.18),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 10, 0),
-              child: Row(
-                children: [
-                  ShaderMask(
-                    shaderCallback: (b) => const LinearGradient(
-                      colors: [Color(0xFF7C4DFF), Color(0xFFB388FF)],
-                    ).createShader(b),
-                    child: const Icon(
-                      Icons.star_rounded,
-                      size: 16,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      entry.chatTitle,
-                      style: const TextStyle(
-                        color: VegaTheme.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  // Role chip
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isUser
-                          ? VegaTheme.accentBlue.withOpacity(0.15)
-                          : VegaTheme.accent.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      isUser ? 'Вы' : 'Vega',
-                      style: TextStyle(
-                        color: isUser ? VegaTheme.accentBlue : VegaTheme.accent,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  // Actions
-                  IconButton(
-                    icon: const Icon(Icons.copy_rounded, size: 17),
-                    color: VegaTheme.textSecondary,
-                    tooltip: 'Копировать',
-                    constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.all(6),
-                    onPressed: () => _copyContent(content),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.star_border_rounded, size: 17),
-                    color: Colors.amber,
-                    tooltip: 'Убрать из избранного',
-                    constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.all(6),
-                    onPressed: () => _unfavorite(entry),
-                  ),
-                ],
-              ),
-            ),
-            // Divider
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              child: Divider(
-                height: 1,
-                thickness: 1,
-                color: VegaTheme.border.withOpacity(0.5),
-              ),
-            ),
-            // Content
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: Text(
-                content,
-                style: const TextStyle(
-                  color: VegaTheme.textPrimary,
-                  fontSize: 14,
-                  height: 1.55,
-                ),
-                maxLines: 8,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -378,9 +254,234 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                     itemCount: _entries.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (_, i) => _buildCard(_entries[i]),
+                    itemBuilder: (_, i) => _FavoriteCardItem(
+                      key: ValueKey('${_entries[i].chatId}_${_entries[i].msgIndex}'),
+                      entry: _entries[i],
+                      onUnfavorite: () => _unfavorite(_entries[i]),
+                      onCopy: _copyContent,
+                    ),
                   ),
                 ),
+    );
+  }
+}
+
+class _FavoriteCardItem extends StatefulWidget {
+  final _FavoriteEntry entry;
+  final VoidCallback onUnfavorite;
+  final Function(String) onCopy;
+
+  const _FavoriteCardItem({
+    required this.entry,
+    required this.onUnfavorite,
+    required this.onCopy,
+    super.key,
+  });
+
+  @override
+  State<_FavoriteCardItem> createState() => _FavoriteCardItemState();
+}
+
+class _FavoriteCardItemState extends State<_FavoriteCardItem> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = widget.entry;
+    final msg = entry.message;
+    final content = (msg['content'] as String?) ?? '';
+    final isUser = msg['role'] == 'user';
+    final isLong = content.length > 250 || content.split('\n').length > 5;
+
+    return Dismissible(
+      key: ValueKey('${entry.chatId}_${entry.msgIndex}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Icon(Icons.star_border_rounded, color: Colors.red, size: 28),
+      ),
+      onDismissed: (_) => widget.onUnfavorite(),
+      child: Container(
+        decoration: BoxDecoration(
+          color: VegaTheme.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: VegaTheme.accent.withOpacity(0.18),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 10, 0),
+              child: Row(
+                children: [
+                  ShaderMask(
+                    shaderCallback: (b) => const LinearGradient(
+                      colors: [Color(0xFF7C4DFF), Color(0xFFB388FF)],
+                    ).createShader(b),
+                    child: const Icon(
+                      Icons.star_rounded,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      entry.chatTitle,
+                      style: const TextStyle(
+                        color: VegaTheme.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  // Role chip
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isUser
+                          ? VegaTheme.accentBlue.withOpacity(0.15)
+                          : VegaTheme.accent.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      isUser ? 'Вы' : 'Vega',
+                      style: TextStyle(
+                        color: isUser ? VegaTheme.accentBlue : VegaTheme.accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // Actions
+                  IconButton(
+                    icon: const Icon(Icons.copy_rounded, size: 17),
+                    color: VegaTheme.textSecondary,
+                    tooltip: 'Копировать',
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(6),
+                    onPressed: () => widget.onCopy(content),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.star_rounded, size: 17),
+                    color: Colors.amber,
+                    tooltip: 'Убрать из избранного',
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(6),
+                    onPressed: widget.onUnfavorite,
+                  ),
+                ],
+              ),
+            ),
+            // Divider
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              child: Divider(
+                height: 1,
+                thickness: 1,
+                color: VegaTheme.border.withOpacity(0.5),
+              ),
+            ),
+            // Content with Markdown & optional max height
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+              child: Stack(
+                children: [
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: (isLong && !_expanded) ? 170.0 : double.infinity,
+                    ),
+                    child: ClipRect(
+                      child: SelectionArea(
+                        child: MarkdownBody(
+                          data: content,
+                          styleSheet: MarkdownStyleSheet(
+                            p: const TextStyle(color: VegaTheme.textPrimary, fontSize: 14, height: 1.55),
+                            h1: const TextStyle(color: VegaTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
+                            h2: const TextStyle(color: VegaTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                            h3: const TextStyle(color: VegaTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                            strong: const TextStyle(color: VegaTheme.accent, fontWeight: FontWeight.bold),
+                            code: const TextStyle(
+                              color: VegaTheme.accentBlue,
+                              backgroundColor: Colors.transparent,
+                              fontFamily: 'monospace',
+                            ),
+                            codeblockDecoration: BoxDecoration(
+                              color: VegaTheme.surface,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (isLong && !_expanded)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        height: 55,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              VegaTheme.card.withOpacity(0.0),
+                              VegaTheme.card.withOpacity(0.85),
+                              VegaTheme.card,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Expand / Collapse Toggle
+            if (isLong)
+              InkWell(
+                onTap: () => setState(() => _expanded = !_expanded),
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _expanded ? 'Свернуть' : 'Раскрыть полностью',
+                        style: const TextStyle(
+                          color: VegaTheme.accent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        _expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        color: VegaTheme.accent,
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
