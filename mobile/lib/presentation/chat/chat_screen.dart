@@ -59,6 +59,73 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _forkChatFromMessage(int index) async {
+    if (index < 0 || index >= _messages.length) return;
+
+    final slicedMessages = _messages
+        .sublist(0, index + 1)
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+
+    String baseTitle = 'Чат';
+    if (_currentChatId != null) {
+      final chats = await ChatHistory.getChats();
+      for (final c in chats) {
+        if (c['id'] == _currentChatId) {
+          baseTitle = c['title'] ?? 'Чат';
+          break;
+        }
+      }
+    } else {
+      final firstUserMsg = slicedMessages.firstWhere(
+        (m) => m['role'] == 'user',
+        orElse: () => <String, dynamic>{},
+      );
+      if ((firstUserMsg['content'] as String?)?.isNotEmpty == true) {
+        baseTitle = firstUserMsg['content'];
+        if (baseTitle.length > 25) {
+          baseTitle = '${baseTitle.substring(0, 25)}...';
+        }
+      }
+    }
+
+    final newTitle = '$baseTitle (ветка)';
+    final newChatId = await ChatHistory.createChat(newTitle, projectId: _activeProjectId);
+    await ChatHistory.overwriteMessages(newChatId, slicedMessages);
+
+    setState(() {
+      _currentChatId = newChatId;
+      _messages.clear();
+      _messages.addAll(slicedMessages);
+    });
+
+    await _loadChats();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.alt_route_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Создана новая ветка: "$newTitle"',
+                  style: const TextStyle(color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: VegaTheme.accent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   void _jumpToPinnedMessage() {
     final pinnedList = _messages.asMap().entries.where((e) => e.value['isPinned'] == true).toList();
     if (pinnedList.isEmpty) return;
@@ -708,6 +775,14 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.alt_route_rounded, color: VegaTheme.accent),
+              title: const Text('Создать ветку (форк)', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _forkChatFromMessage(index);
+              },
+            ),
+            ListTile(
               leading: Icon(
                 message['isPinned'] == true ? Icons.push_pin_rounded : Icons.push_pin_outlined,
                 color: VegaTheme.accent,
@@ -719,6 +794,73 @@ class _ChatScreenState extends State<ChatScreen> {
               onTap: () {
                 Navigator.pop(ctx);
                 _togglePinMessage(index);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAssistantMessageMenu(BuildContext context, Map<String, dynamic> message, int index) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VegaTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.copy, color: VegaTheme.accent),
+              title: const Text('Копировать', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _copyMessage(_stripImageMarkdown(message['content'] ?? ''));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh, color: VegaTheme.accent),
+              title: const Text('Повторить генерацию', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _regenerate(index);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.alt_route_rounded, color: VegaTheme.accent),
+              title: const Text('Создать ветку (форк)', style: TextStyle(color: VegaTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _forkChatFromMessage(index);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                message['isPinned'] == true ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                color: VegaTheme.accent,
+              ),
+              title: Text(
+                message['isPinned'] == true ? 'Открепить' : 'Закрепить',
+                style: const TextStyle(color: VegaTheme.textPrimary),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _togglePinMessage(index);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                message['isFavorite'] == true ? Icons.star_rounded : Icons.star_outline_rounded,
+                color: Colors.amber,
+              ),
+              title: Text(
+                message['isFavorite'] == true ? 'Убрать из избранного' : 'В избранное',
+                style: const TextStyle(color: VegaTheme.textPrimary),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _toggleFavoriteMessage(index);
               },
             ),
           ],
@@ -2367,6 +2509,16 @@ class _ChatScreenState extends State<ChatScreen> {
                                     child: Padding(
                                       padding: const EdgeInsets.all(4),
                                       child: Icon(Icons.refresh, size: 16, color: VegaTheme.textSecondary),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Fork
+                                  InkWell(
+                                    onTap: () => _forkChatFromMessage(i),
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(Icons.alt_route_rounded, size: 16, color: VegaTheme.textSecondary),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
