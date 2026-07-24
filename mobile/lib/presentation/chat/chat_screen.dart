@@ -25,6 +25,7 @@ import 'widgets/image_viewer_dialog.dart';
 import 'widgets/shimmer_thinking_indicator.dart';
 import 'widgets/vega_search_card.dart';
 import 'widgets/pinned_message_banner.dart';
+import 'favorites_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final int? chatId;
@@ -34,6 +35,16 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  void _toggleFavoriteMessage(int index) {
+    if (index < 0 || index >= _messages.length) return;
+    setState(() {
+      final isFav = _messages[index]['isFavorite'] == true;
+      _messages[index]['isFavorite'] = !isFav;
+    });
+    if (_currentChatId != null) {
+      ChatHistory.overwriteMessages(_currentChatId!, _messages);
+    }
+  }
   int _pinnedPointer = 0;
   int? _highlightedIndex;
 
@@ -43,8 +54,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final isPinned = _messages[index]['isPinned'] == true;
       _messages[index]['isPinned'] = !isPinned;
     });
-    if (_chatId != null) {
-      ChatHistory.overwriteMessages(_chatId!, _messages);
+    if (_currentChatId != null) {
+      ChatHistory.overwriteMessages(_currentChatId!, _messages);
     }
   }
 
@@ -81,6 +92,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   final _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   final List<Map<String, dynamic>> _messages = [];
   final _client = ApiClient();
   bool _loading = false;
@@ -2067,6 +2079,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.star_rounded, color: Colors.amber),
+                title: const Text('Избранное', style: TextStyle(color: VegaTheme.textPrimary)),
+                onTap: () {
+                  _scaffoldKey.currentState?.closeDrawer();
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoritesScreen()));
+                },
+              ),
+              ListTile(
                 leading: Icon(Icons.settings_outlined, color: VegaTheme.accent),
                 title: Text('Настройки', style: TextStyle(color: VegaTheme.textPrimary)),
                 onTap: () { _scaffoldKey.currentState?.closeDrawer(); context.push('/settings'); },
@@ -2199,6 +2219,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
                           child: SelectionArea(
                             child: ListView.builder(
+                      controller: _scrollController,
                       padding: EdgeInsets.fromLTRB(
                         16,
                         8,
@@ -2355,7 +2376,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
               ),
-            ),
+              ),
+            ],
+          ),
+          ),
           Positioned(
             top: 0, left: 0, right: 0,
             child: IgnorePointer(
